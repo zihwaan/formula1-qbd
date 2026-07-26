@@ -1,0 +1,8 @@
+metric,operator,target,unit,interpretation,suggested_revision
+dissolution_30min_percent,<,80,percent,고분자(예: PVP-VA) 점도가 높아 API 방출을 과도하게 억제하여 30분 용출률이 목표에 미달,결정 성장을 막는 최소한의 고분자 비율로 낮추고 붕해제(Crospovidone) 2% 추가
+tablet_hardness_N,<,40,newton,타정압 부족 또는 결합제 부족으로 정제 강도가 목표 하한 미달(운반 중 파손 위험),결합제 비율 상향 또는 타정압 증가 후 재타정
+tablet_hardness_N,>,200,newton,과압축으로 캡핑(Capping) 및 붕해 지연 위험,타정압 하향 및 활택제/붕해제 비율 재검토
+friability_percent,>,1.0,percent,마손도 규격(1.0%) 초과 — 정제 표면 강도 부족,결합제 증량 또는 과립 크기 상향으로 결합력 강화
+disintegration_min,>,15,minute,붕해 시간 규격 초과 — 붕해제 부족 또는 과압축,붕해제 비율 상향 및 타정압 하향
+impurity_total_percent,>,0.5,percent,총 불순물 증가 — 배합 금기·산화·가수분해 진행 정황,배합 재검토 및 방습(Alu-Alu)·항산화 포장 적용 후 안정성 재평가
+assay_percent,<,95,percent,함량 미달 — 공정 손실 또는 분해로 유효성분 감소,공정 수율 점검 및 원료 안정성 재평가

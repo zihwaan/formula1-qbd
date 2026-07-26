@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────────────────────────────────
+# 포장 식별자 → 룰북 서술 범주 사전
+#
+# packaging_compatibility_rules.csv 는 금지/필수 대상을 "고투습 포장", "투명 포장"처럼
+# **서술 범주**로 적는다. 반면 처방(Recipe.packaging)은 "PVC blister" 같은 **식별자**를 쓴다.
+# 문자열 매칭으로는 둘이 절대 만나지 않으므로, 이 사전이 둘을 잇는다.
+#
+# 이 파일은 약학 지식이 아니라 **엔진 배선**이다 — 룰북 CSV는 손대지 않는다.
+# 새 포장을 지원하려면 여기 항목 하나만 추가하면 된다.
+#
+# traits 어휘는 packaging_compatibility_rules.csv 의
+# prohibited_packaging / required_packaging 컬럼에 실제로 등장하는 표현을 그대로 쓴다.
+# ─────────────────────────────────────────────────────────────────────────
+
+pvc_blister:
+  aliases: ["pvc blister", "pvc", "pvc 블리스터", "일반 pvc 블리스터"]
+  traits: ["고투습 포장", "투명 포장", "일반 대기 포장", "비보호 포장"]
+
+pvdc_blister:
+  aliases: ["pvdc blister", "pvc/pvdc", "pvdc"]
+  traits: ["투명 포장", "일반 대기 포장", "비보호 포장"]
+
+alu_alu_blister:
+  aliases: ["alu-alu blister", "alu alu blister", "alu_alu_blister", "알루-알루 블리스터", "cold form blister"]
+  traits: ["저투습 포장", "차광 포장", "알루미늄 블리스터"]
+
+hdpe_bottle_desiccant:
+  aliases: ["hdpe bottle with desiccant", "방습 hdpe", "hdpe+desiccant", "hdpe 병+건조제"]
+  traits: ["저투습 포장", "방습 hdpe"]
+
+hdpe_bottle:
+  aliases: ["hdpe bottle", "hdpe 병", "백색 hdpe 병"]
+  traits: ["고투습 포장", "일반 대기 포장", "비보호 포장"]
+
+amber_glass_bottle:
+  aliases: ["amber bottle", "amber glass", "호박색 용기", "차광 용기"]
+  traits: ["차광 포장", "호박색 용기", "저투습 포장"]
+
+clear_glass_bottle:
+  aliases: ["clear bottle", "clear glass", "투명 용기", "투명 병"]
+  traits: ["투명 포장", "일반 대기 포장", "비보호 포장"]
+
+crc_bottle:
+  aliases: ["crc bottle", "child resistant closure", "어린이 보호 포장", "crc"]
+  traits: ["어린이 보호 포장(crc)", "어린이 보호 포장"]
+
+nitrogen_flushed_blister:
+  aliases: ["nitrogen flushed", "질소 충전 포장", "n2 flush"]
+  traits: ["질소 충전 또는 산소흡수제 포함 포장", "저투습 포장"]

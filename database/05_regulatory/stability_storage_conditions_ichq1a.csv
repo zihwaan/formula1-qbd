@@ -1,0 +1,12 @@
+condition_id,applies_to,storage_case,study_type,temperature_C,temp_tolerance,humidity_RH,humidity_tolerance,min_duration_months,is_optional_alternative,intermediate_required_if,source_doc,source_section,source_version,retrieved_on,verification_status,notes
+STB001,drug_substance;drug_product,general,long_term,25,+/-2,60,+/-5,12,no,가속조건에서 유의변화 발생 시 (25/60 선택한 경우),ICH Q1A(R2),2.1.7.1 / 2.2.7.1,Step4 2003-02-06,2026-07-24,VERIFIED,신청자가 25/60 또는 30/65 중 선택. Zone I/II 기준
+STB002,drug_substance;drug_product,general,long_term_alt,30,+/-2,65,+/-5,12,yes,없음(이 조건이 장기면 중간시험 불필요),ICH Q1A(R2),2.1.7.1 / 2.2.7.1,Step4 2003-02-06,2026-07-24,VERIFIED,25/60의 대체 장기조건. 이걸 쓰면 중간조건 시험 면제. Zone III/IV 대응
+STB003,drug_substance;drug_product,general,intermediate,30,+/-2,65,+/-5,6,no,가속조건 유의변화 시에만 수행,ICH Q1A(R2),2.1.7.1 / 2.2.7.1,Step4 2003-02-06,2026-07-24,VERIFIED,장기조건이 25/60일 때만 해당. 30/65가 장기면 중간조건 없음
+STB004,drug_substance;drug_product,general,accelerated,40,+/-2,75,+/-5,6,no,해당없음,ICH Q1A(R2),2.1.7.1 / 2.2.7.1,Step4 2003-02-06,2026-07-24,VERIFIED,
+STB005,drug_substance;drug_product,refrigerator,long_term,5,+/-3,,,12,no,해당없음,ICH Q1A(R2),2.1.7.2 / 2.2.7.4,Step4 2003-02-06,2026-07-24,VERIFIED,냉장 보관 원료/제품
+STB006,drug_substance;drug_product,refrigerator,accelerated,25,+/-2,60,+/-5,6,no,3-6개월 사이 유의변화 시 실시간 장기데이터 기반 결정,ICH Q1A(R2),2.1.7.2 / 2.2.7.4,Step4 2003-02-06,2026-07-24,VERIFIED,
+STB007,drug_substance;drug_product,freezer,long_term,-20,+/-5,,,12,no,가속조건 없음. 단일배치 승온시험(5 또는 25C)으로 단기이탈 평가,ICH Q1A(R2),2.1.7.3 / 2.2.7.5,Step4 2003-02-06,2026-07-24,VERIFIED,냉동은 가속조건 없음
+STB008,drug_product,semi_permeable,long_term,25,+/-2,40,+/-5,12,no,가속조건에서 물손실 외 유의변화 시,ICH Q1A(R2),2.2.7.3,Step4 2003-02-06,2026-07-24,VERIFIED,수성제품 반투과용기. 저습도로 물손실 평가
+STB009,drug_product,semi_permeable,long_term_alt,30,+/-2,35,+/-5,12,yes,없음(이 조건이 장기면 중간시험 불필요),ICH Q1A(R2),2.2.7.3,Step4 2003-02-06,2026-07-24,VERIFIED,25/40의 대체 장기조건
+STB010,drug_product,semi_permeable,intermediate,30,+/-2,65,+/-5,6,no,물손실 외 유의변화 시,ICH Q1A(R2),2.2.7.3,Step4 2003-02-06,2026-07-24,VERIFIED,
+STB011,drug_product,semi_permeable,accelerated,40,+/-2,NMT 25,,6,no,해당없음,ICH Q1A(R2),2.2.7.3,Step4 2003-02-06,2026-07-24,VERIFIED,NMT=not more than. 40C/25%RH 이하

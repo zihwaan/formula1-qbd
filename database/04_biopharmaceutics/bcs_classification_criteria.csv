@@ -1,0 +1,11 @@
+criterion_id,criterion,parameter,operator,threshold_value,unit,condition,applies_to_class,guideline,guideline_version,note,retrieved_on,verification_status
+BCS001,high_solubility,dose_solubility_volume,<=,250,mL,highest single therapeutic dose completely soluble across pH 1.2-6.8 at 37+/-1C,I;III,ICH M9,Step4 2019-11-16,현행 국제조화 기준. 최고 1회 치료용량이 pH 1.2-6.8 전 구간에서 250 mL 이하 매질에 완전 용해,2026-07-24,VERIFIED
+BCS002,low_solubility,dose_solubility_volume,>,250,mL,dose:solubility ratio > 250 mL for at least one pH value in 1.2-6.8,II;IV,ICH M9,Step4 2019-11-16,pH 1.2-6.8 중 한 지점이라도 250 mL 초과면 low solubility,2026-07-24,VERIFIED
+BCS003,high_permeability,fraction_absorbed,>=,85,%,absolute bioavailability >=85%,I;II,ICH M9,Step4 2019-11-16,절대 생체이용률 85% 이상. 또는 미변화체(+Phase1 산화/Phase2 포합 대사체)로 투여량 85% 이상 요중 회수,2026-07-24,VERIFIED
+BCS004,high_permeability_urinary,urinary_recovery,>=,85,%,85% of administered dose recovered in urine as parent (+Phase1 oxidative/Phase2 conjugative metabolites),I;II,ICH M9,Step4 2019-11-16,대체 기준. 분변 대사체는 산화/포합만 인정,2026-07-24,VERIFIED
+BCS005,low_permeability,fraction_absorbed,<,85,%,extent of absorption < 85%,III;IV,ICH M9,Step4 2019-11-16,흡수율 85% 미만,2026-07-24,VERIFIED
+BCS006,degradation_exclusion,degradation,>,10,%,significant degradation (>10%) precludes high permeability classification,,ICH M9,Step4 2019-11-16,유의 분해(>10%) 시 high permeability 분류 불가,2026-07-24,VERIFIED
+BCS007,very_rapid_dissolution,dissolved_pct,>=,85,%,"within 15 min in pH 1.2, 4.5, 6.8 (paddle 50/75 or basket 100 rpm, 500 mL)",III,ICH M9,Step4 2019-11-16,Class III 바이오웨이버는 very rapid 요구. 15분 내 85% 이상,2026-07-24,VERIFIED
+BCS008,rapid_dissolution,dissolved_pct,>=,85,%,"within 30 min in pH 1.2, 4.5, 6.8",I,ICH M9,Step4 2019-11-16,Class I 바이오웨이버는 rapid로 충분. 30분 내 85% 이상,2026-07-24,VERIFIED
+BCS009,high_solubility_LEGACY_FDA2000,dose_solubility_volume,<=,250,mL,pH 1-7.5 (SUPERSEDED),I;III,FDA,2000 (superseded),"구 FDA 기준. pH 범위 1-7.5, 현행과 다름. 레거시 데이터 해석 시에만 참조",2026-07-24,LEGACY
+BCS010,high_permeability_LEGACY_FDA2000,fraction_absorbed,>=,90,%,extent of absorption >=90% (SUPERSEDED),I;II,FDA,2000 (superseded),"구 FDA 기준. 90%, 현행 85%와 다름. 문헌의 옛 분류가 이 기준일 수 있어 재확인 필요",2026-07-24,LEGACY

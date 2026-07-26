@@ -1,0 +1,6 @@
+flag_id,flag_name,detection_method,smarts_pattern,rdkit_fragment_fn,deterministic,triggers_rule,risk_context,validation_status,source_doc,retrieved_on,verification_status,notes
+FLG001,has_primary_amine,SMARTS + fragment,[NX3;H2;!$(NC=O);!$(N=*)],fr_NH2,yes,incompatibility_1to1.csv:maillard_amine,환원당과 Maillard 반응,UNTESTED,RDKit SMARTS / 문헌,2026-07-24,STRUCTURAL_VERIFIED,RDKit로 미검증. 염 형태는 parent 추출 후 적용. INC001 연계
+FLG002,has_secondary_amine,SMARTS,[NX3;H1;!$(NC=O);!$(N=*);!$(N[a])],,yes,incompatibility_1to1.csv:maillard_amine,2차 아민도 Maillard 반응(fluoxetine 사례),UNTESTED,RDKit SMARTS / 문헌,2026-07-24,STRUCTURAL_VERIFIED,INC002 연계. 2차 아민 위험을 놓치지 않도록 필수
+FLG003,has_ester,SMARTS,[CX3](=O)[OX2H0][#6],fr_ester,yes,incompatibility_1to1.csv:acid_labile,알칼리 부형제에 의한 가수분해 촉진,UNTESTED,RDKit SMARTS / 문헌,2026-07-24,STRUCTURAL_VERIFIED,INC008(마그네슘 스테아레이트) 연계
+FLG004,has_carboxylic_acid,SMARTS,[CX3](=O)[OX2H1],fr_COO,yes,excipient pH 상호작용,산성 API,UNTESTED,RDKit SMARTS / 문헌,2026-07-24,STRUCTURAL_VERIFIED,
+FLG005,is_amide_not_amine,SMARTS,[NX3][CX3](=[OX1]),fr_amide,yes,Maillard 오탐 방지,아미드는 Maillard 비반응성,UNTESTED,RDKit SMARTS / 문헌,2026-07-24,STRUCTURAL_VERIFIED,중요: 아세트아미노펜은 아미드. FLG001과 상호배제 검증에 사용. 데모 오류 방지 핵심

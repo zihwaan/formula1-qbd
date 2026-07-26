@@ -1,0 +1,9 @@
+rule_id,solvent,ich_class,concentration_limit_ppm,pde_mg_day,control_basis,action,test_method,source_doc,source_version,retrieved_on,verification_status,notes
+RS001,(Class 1 general),1,avoid,,회피 대상 (발암성/환경유해),HARD_FAIL,HS-GC,ICH Q3C,R8 2021,2026-07-24,VERIFIED,"Class 1(벤젠, 사염화탄소 등)은 회피. 불가피시 엄격 한계"
+RS002,Ethanol,3,5000,50,Class 3 일반한계,REVIEWER_FLAG,HS-GC or LOD,ICH Q3C,R8 2021,2026-07-24,VERIFIED,Class 3. 5000ppm(0.5%) 이하 정당화 불필요. 비수계 과립 1순위 용매
+RS003,Isopropanol (2-propanol),3,5000,50,Class 3 일반한계,REVIEWER_FLAG,HS-GC or LOD,ICH Q3C,R8 2021,2026-07-24,VERIFIED,Class 3. 에탄올과 함께 흔히 사용
+RS004,Acetone,3,5000,50,Class 3 일반한계,REVIEWER_FLAG,HS-GC or LOD,ICH Q3C,R8 2021,2026-07-24,VERIFIED,Class 3
+RS005,Methanol,2,3000,,Class 2 Option1 (10g/day 가정),REVIEWER_FLAG,HS-GC,ICH Q3C,R8 2021,2026-07-24,VERIFIED,Class 2. 에탄올보다 독성 높음. 3000ppm. Option2는 실제 용량 기반 계산
+RS006,Dichloromethane,2,600,6.0,Class 2 Option1,REVIEWER_FLAG,HS-GC,ICH Q3C,R8 2021,2026-07-24,VERIFIED,Class 2. PDE 6mg/day
+RS007,(Class 3 general),3,5000,50,일반 한계,REVIEWER_FLAG,HS-GC or LOD,ICH Q3C,R8 2021,2026-07-24,VERIFIED,Class 3 solvent 일반: 50mg/day 또는 5000ppm 이하 정당화 불필요. Class 3만 쓰면 LOD로 대체 가능
+RS008,(unlisted solvent),unclassified,case_by_case,,독성자료 부족,ESCALATE_TO_HUMAN,HS-GC,ICH Q3C,R8 2021,2026-07-24,VERIFIED,ICH 미분류 용매는 사례별 평가. 사람 판단 필요

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Formula 1 — QbD 제형 설계 검증 엔진</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">F1</span>
+      <div>
+        <h1>Formula 1</h1>
+        <p>AI가 처방을 제안하고, 결정론적 규칙이 검증한다</p>
+      </div>
+    </div>
+    <div class="meta" id="meta">
+      <span class="pill" id="pill-rules">룰북 —</span>
+      <span class="pill" id="pill-llm">LLM —</span>
+    </div>
+  </header>
+
+  <section class="composer">
+    <input id="request" type="text" autocomplete="off"
+           value="소아용 바나나향 아세트아미노펜 정제를 설계해줘"
+           placeholder="설계 요구를 자연어로 입력 (예: 소아용 해열제 정제)">
+    <input id="smiles" type="text" autocomplete="off" placeholder="SMILES (선택)">
+    <button id="run">설계 실행</button>
+    <button id="replay" class="ghost" disabled>재생</button>
+  </section>
+
+  <main class="grid">
+    <!-- ── 좌: 분자 / 스펙 ─────────────────────────────────────────── -->
+    <aside class="panel" id="panel-chem">
+      <h2>API 물리화학 <small>RDKit</small></h2>
+      <div id="chem-empty" class="empty">설계를 실행하면 구조와 descriptor가 표시됩니다.</div>
+      <div id="chem-body" hidden>
+        <div class="mol" id="mol-svg"></div>
+        <div class="kv" id="mol-id"></div>
+        <h3>구조 플래그</h3>
+        <div class="flags" id="mol-flags"></div>
+        <h3>Descriptor</h3>
+        <table class="desc" id="mol-desc"></table>
+        <h3>물성 추정</h3>
+        <div id="mol-est"></div>
+        <div id="mol-warn"></div>
+      </div>
+    </aside>
+
+    <!-- ── 중앙: 에이전트 그래프 + 트레이스 ──────────────────────────── -->
+    <section class="center">
+      <div class="panel graph-panel">
+        <h2>에이전트 흐름 <small>노드가 실행되면 점등 · 심사관은 조건에 맞을 때만 소집</small></h2>
+        <svg id="graph" viewBox="0 0 980 300" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="legend">
+          <span><i class="sw det"></i>결정론 (오차 0%)</span>
+          <span><i class="sw llm"></i>LLM 판단</span>
+          <span><i class="sw jud"></i>동적 소집 심사관</span>
+        </div>
+      </div>
+      <div class="panel trace-panel">
+        <h2>실행 트레이스 <small>규칙 발동을 클릭하면 원본 CSV 행과 출처를 봅니다</small></h2>
+        <div id="trace" class="trace"></div>
+      </div>
+    </section>
+
+    <!-- ── 우: 후보 / 합의 / wet-lab ────────────────────────────────── -->
+    <aside class="panel" id="panel-cands">
+      <h2>후보 처방 <small id="cand-count"></small></h2>
+      <div id="cands" class="cands">
+        <div class="empty">아직 생성된 후보가 없습니다.</div>
+      </div>
+      <div id="consensus" class="consensus" hidden></div>
+      <details class="wetlab">
+        <summary>실험 결과 재입력 (closed loop)</summary>
+        <label>용출 30분 (%)<input id="wl-diss" type="number" value="45"></label>
+        <label>경도 (N)<input id="wl-hard" type="number" value="55"></label>
+        <label>총 불순물 (%)<input id="wl-imp" type="number" step="0.1" value="0.2"></label>
+        <button id="wl-submit" class="ghost">해석 요청</button>
+        <div id="wl-out"></div>
+      </details>
+    </aside>
+  </main>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-card">
+      <button class="close" id="modal-close">✕</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

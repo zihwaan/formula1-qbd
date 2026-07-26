@@ -1,0 +1,36 @@
+# ── 비밀정보 ──────────────────────────────────────────────────────────
+# GitHub 토큰 등. 절대 커밋되면 안 된다.
+.env
+.env.*
+!.env.example
+
+# ── 파이썬 ────────────────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ── OS ────────────────────────────────────────────────────────────────
+.DS_Store
+
+# ── 원본 자료 아카이브 ────────────────────────────────────────────────
+# 약대생 팀이 보내준 zip 원본. 내용물(룰북 CSV·SOURCES.md)은 이미
+# `database/` 로 전개되어 있으므로 저장소에는 넣지 않는다.
+#
+# 특히 조하준 zip에는 상용 교재 PDF
+# (Handbook of Pharmaceutical Excipients 6th ed., 26MB)가 들어 있어
+# 저작권 문제로 공유 저장소에 올릴 수 없다.
+#
+# 원본이 필요하면 팀 드라이브에서 받아 `추가자료/` 에 두고
+# `python scripts/import_rulebook.py` 를 다시 돌리면 된다.
+추가자료/
+
+# 대회 제출용 원본 문서(팀 내부 배포본)
+*.docx
+QbD 3-Agent System - Technical Briefing.pdf
+
+# ── 이관 전 1세대 CSV의 저장소 루트 잔재 ──────────────────────────────
+# database/legacy/ 에 정식 보관되어 있다.
+/incompatibility_rules.csv
+/process_failure_rules.csv

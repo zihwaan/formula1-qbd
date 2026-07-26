@@ -1,0 +1,11 @@
+rule_id,functional_category,process_applicability,pct_min,pct_max,pct_typical,unit,operator_check,action,evidence_type,evidence_strength,source_citation,retrieved_on,verification_status,notes
+FR001,diluent,DC;WG;DG,0,,,% w/w,range_check,REVIEWER_FLAG,peer_reviewed_practice,strong,HPE; 제제 문헌; 특허 처방례,2026-07-24,VERIFIED_SECONDARY,희석제는 목표 정제 중량 맞추는 나머지(balance). 상한 없음(balance)
+FR002,binder,WG;DG,2,10,5,% w/w,range_check,REVIEWER_FLAG,peer_reviewed_practice,moderate,HPE; 제제 문헌; 특허 처방례,2026-07-24,VERIFIED_SECONDARY,결합제 통상 2-10%. 과다시 경도 과대·용출 지연
+FR003,disintegrant,DC;WG;DG,1,15,5,% w/w,range_check,REVIEWER_FLAG,peer_reviewed_practice,strong,HPE; 제제 문헌; 특허 처방례,2026-07-24,VERIFIED_SECONDARY,붕해제 1-15%(통상 <10% 또는 <5%). 초붕해제는 저농도(2-5%)
+FR004,superdisintegrant,DC;WG;DG,2,5,4,% w/w,range_check,REVIEWER_FLAG,peer_reviewed_practice,moderate,HPE; 제제 문헌; 특허 처방례,2026-07-24,VERIFIED_SECONDARY,초붕해제(크로스카멜로오스 등) 저농도 효과. 2-5%
+FR005,lubricant,DC;WG;DG,0.5,5,1,% w/w,range_check,REVIEWER_FLAG,peer_reviewed_practice,strong,HPE; 제제 문헌; 특허 처방례,2026-07-24,VERIFIED_SECONDARY,"활택제(마그네슘 스테아레이트) 0.5-5%, 전형 1%. 과다·과혼합시 강도저하·용출지연"
+FR006,glidant,DC;WG;DG,0.25,2,0.5,% w/w,range_check,REVIEWER_FLAG,peer_reviewed_practice,strong,HPE; 제제 문헌; 특허 처방례,2026-07-24,VERIFIED_SECONDARY,활택보조제(콜로이드성 이산화규소) 0.25-2%
+FR007,surfactant_wetting,DC;WG;DG,0.1,5,1,% w/w,range_check,REVIEWER_FLAG,peer_reviewed_practice,moderate,HPE; 제제 문헌; 특허 처방례,2026-07-24,VERIFIED_SECONDARY,계면활성제/습윤제. 저농도. 소아 제형은 pediatric_safety 상한 별도 확인
+FR008,film_coating,coating,2,4,3,% w/w,range_check,REVIEWER_FLAG,peer_reviewed_practice,moderate,HPE; 제제 문헌; 특허 처방례,2026-07-24,VERIFIED_SECONDARY,필름코팅 weight gain 2-4%
+FR009,enteric_coating,coating,5,8,6,% w/w,range_check,REVIEWER_FLAG,peer_reviewed_practice,moderate,HPE; 제제 문헌; 특허 처방례,2026-07-24,VERIFIED_SECONDARY,장용코팅 weight gain 5-8%(필름보다 높음)
+FR010,colorant_in_coat,coating,0,2,,% w/w,range_check,REVIEWER_FLAG,peer_reviewed_practice,moderate,HPE; 제제 문헌; 특허 처방례,2026-07-24,VERIFIED_SECONDARY,코팅 내 색소 최대 ~2%. 아조색소는 coloring_flavoring 별도 확인

@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+# 저장소 루트를 import 경로에 넣어 `formula` 패키지를 그대로 쓰게 한다.
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"

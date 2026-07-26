@@ -1,0 +1,416 @@
+# ─────────────────────────────────────────────────────────────────────────
+# 규칙 카탈로그 (Rulebook Catalog)
+#
+# 이 파일 하나가 "각 규칙표(CSV)를 어떤 방식으로 검사에 연결할지"를 선언한다.
+#   - eval_type: quantitative → 숫자/집합으로 판단 → 결정론적 검사 함수(툴)
+#                qualitative  → 자연어로 판단      → 판단 에이전트(Judge)
+#                reference    → 조회 전용(판정 안 함) — RAG·근거 표시용
+#   - trigger_priority: 실행 순서. **낮을수록 먼저.**
+#                파생값(flow_character → selected_route → bcs_class)을 만드는 규칙이
+#                그 값을 쓰는 규칙보다 반드시 앞에 와야 한다.
+#                십의 자리 = 개발자 가이드 2장의 파이프라인 단계, 일의 자리 = 단계 내 순서.
+#   - polarity: CSV 행이 '실패 조건'(fail_when, 기본)인지 '통과 조건'(pass_when)인지.
+#                ⚠ 03_process 룰북은 전부 통과 조건이다. 반대로 읽으면 판정이 뒤집힌다.
+#   - applies_when: 이 규칙이 언제 발동하는지 (입력 조건식)
+#   - provides: 이 규칙이 산출해 state에 기록하는 파생값
+#   - schema:  CSV 컬럼명을 검사 함수에 매핑
+#
+# 규칙표(CSV)와 여기 항목 한 개만 추가하면 검사 능력이 늘어난다. 백엔드 코드 변경 없음.
+# 근거가 없는 행(NO_SOURCE_FOUND/NOT_A_RULE/LEGACY)은 레지스트리가 자동으로 제외한다.
+# ─────────────────────────────────────────────────────────────────────────
+
+# ═══ 단계 0 · 참조 마스터 (판정하지 않음) ═══════════════════════════════
+- id: excipient_master
+  file: database/00_master/excipient_master.csv
+  layer: master
+  owner_agent: generator
+  eval_type: reference
+  trigger_priority: 0
+  applies_when: "true"
+
+- id: rdkit_descriptors
+  file: database/00_master/rdkit_descriptor_definitions.csv
+  layer: master
+  owner_agent: predictor
+  eval_type: reference   # formula/chem/descriptors.py 가 직접 구동
+  trigger_priority: 0
+  applies_when: "true"
+
+- id: structural_flags
+  file: database/00_master/structural_flags_smarts.csv
+  layer: master
+  owner_agent: predictor
+  eval_type: reference   # formula/chem/structural_flags.py 가 직접 구동
+  trigger_priority: 0
+  applies_when: "true"
+
+- id: physchem_estimation
+  file: database/00_master/physchem_estimation_rules.csv
+  layer: master
+  owner_agent: predictor
+  eval_type: reference   # advisory — 용해도/투과도는 확정 금지, 힌트만
+  trigger_priority: 0
+  applies_when: "true"
+
+# RDKit descriptor 임계값 (조하준 참조 테이블). property_name이 descriptors.py의
+# 산출 키(clogp/molecular_weight/tpsa/hbond_*/rotatable_bonds)와 그대로 일치한다.
+# risk_level=Low 행은 '정상 밴드' 서술이라 제외하고, 경고 밴드만 판정에 쓴다.
+# powder_properties(carr_index/hausner_ratio) 행은 powder_flow_scale과 중복이라 제외한다.
+- id: api_physchem_descriptors
+  file: database/reference/api_physchem_thresholds.csv
+  layer: master
+  owner_agent: predictor
+  eval_type: quantitative
+  severity: soft_score          # hard_rule=false — 개발성 경고이지 반려 사유가 아니다
+  trigger_priority: 5
+  strategy: threshold
+  applies_when: "true"
+  row_filter: "category == 'molecular_descriptors' and risk_level != 'Low'"
+  schema:
+    param_col: property_name
+    operator_col: lower_operator
+    threshold_col: low_threshold
+    reason_col: interpretation
+    suggestion_col: recommended_action
+    citation_col: source_url
+    verification_col: __none__   # 이 표엔 verification_status가 없다 → 보수적으로 HARD_FAIL 불가
+
+# ═══ 단계 1 · 공정 경로 분기 ═══════════════════════════════════════════
+# USP <1174> 유동성 등급을 먼저 산출해야 route_decision_tree가 그 값을 쓸 수 있다.
+- id: powder_flow_scale
+  file: database/01_route_decision/powder_flow_scale.csv
+  layer: route
+  owner_agent: predictor
+  eval_type: quantitative
+  trigger_priority: 10
+  strategy: band_lookup
+  applies_when: "true"
+  provides: [flow_character_normalized, flow_character]
+  schema:
+    param_col: parameter
+    min_col: value_min
+    max_col: value_max
+    output_col: flow_character_normalized
+    rule_id_col: scale_id
+    citation_col: source_doc
+    aggregate: first
+
+- id: route_decision_tree
+  file: database/01_route_decision/route_decision_tree.csv
+  layer: route
+  owner_agent: predictor
+  eval_type: quantitative
+  trigger_priority: 11
+  strategy: decision_tree
+  applies_when: "true"
+  provides: [selected_route]
+  schema:
+    condition_col: condition_expression
+    recommend_col: recommended_routes
+    exclude_col: excluded_routes
+    priority_col: route_priority
+    reason_col: rationale
+    suggestion_col: remediation_option
+
+# ═══ 단계 2 · 1차 Hard-Fail 스크린 ════════════════════════════════════
+# 셋 다 "값 조정"이 아니라 **성분 자체를 바꿔야** 하는 근본적 반려라 공정 룰보다 먼저 돈다.
+- id: incompatibility_1to1
+  file: database/02_incompatibility/incompatibility_1to1.csv
+  layer: chemical
+  owner_agent: predictor
+  eval_type: quantitative
+  trigger_priority: 20
+  strategy: pairwise_membership
+  applies_when: "true"
+  schema:
+    left_key: excipient_name_en
+    right_key: api_functional_group
+    reason_col: mechanism
+    suggestion_col: alternative_excipient_name
+
+# 소아 부형제 상한 — per_dose·mg 기준 행만 결정론 판정 대상.
+# (mg/kg/day·mmol·ppm 행은 환자 체중/노출량 계산이 필요 → 아래 별도 항목·심사관 이관)
+- id: pediatric_safety_mg
+  file: database/05_regulatory/pediatric_safety_rules.csv
+  layer: regulatory
+  owner_agent: auditor
+  eval_type: quantitative
+  trigger_priority: 21
+  strategy: threshold
+  applies_when: "is_pediatric"
+  row_filter: "threshold_basis == 'per_dose' and threshold_unit == 'mg'"
+  schema:
+    param_col: excipient_name_en
+    operator_col: comparator
+    threshold_col: threshold_value
+    source: ingredient_mg
+    reason_col: rationale
+    suggestion_col: leaflet_requirement
+    citation_col: source_doc
+
+# 상한 단위가 g인 행 — 처방은 mg 단위이므로 임계값을 1000배 환산해 비교한다.
+- id: pediatric_safety_g
+  file: database/05_regulatory/pediatric_safety_rules.csv
+  layer: regulatory
+  owner_agent: auditor
+  eval_type: quantitative
+  trigger_priority: 21
+  strategy: threshold
+  applies_when: "is_pediatric"
+  row_filter: "threshold_basis == 'per_dose' and threshold_unit == 'g'"
+  schema:
+    param_col: excipient_name_en
+    operator_col: comparator
+    threshold_col: threshold_value
+    threshold_scale: "1000"
+    source: ingredient_mg
+    reason_col: rationale
+    suggestion_col: leaflet_requirement
+    citation_col: source_doc
+
+- id: coloring_flavoring_pediatric
+  file: database/05_regulatory/coloring_flavoring_pediatric_rules.csv
+  layer: regulatory
+  owner_agent: auditor
+  eval_type: quantitative
+  trigger_priority: 22
+  strategy: subset_forbidden
+  applies_when: "is_pediatric"
+  schema:
+    combo_col: substance
+    condition_col: population
+    reason_col: concern
+    suggestion_col: leaflet_requirement
+    citation_col: source_doc
+
+# ═══ 단계 3 · 다성분 검사 ═════════════════════════════════════════════
+- id: incompatibility_multi
+  file: database/02_incompatibility/incompatibility_multicomponent.csv
+  layer: chemical
+  owner_agent: predictor
+  eval_type: quantitative
+  trigger_priority: 30
+  strategy: subset_forbidden
+  applies_when: "true"
+  schema:
+    combo_col: component_set
+    condition_col: required_conditions
+    reason_col: mechanism
+    suggestion_col: alternative
+
+# ═══ 단계 4 · 선택된 공정의 세부 규칙 ═════════════════════════════════
+# ⚠ 이 묶음은 전부 polarity: pass_when — 행이 '만족해야 하는 조건'을 서술한다.
+- id: direct_compression
+  file: database/03_process/direct_compression_rules.csv
+  layer: process
+  owner_agent: predictor
+  eval_type: quantitative
+  trigger_priority: 40
+  strategy: threshold
+  polarity: pass_when
+  applies_when: "selected_route == 'DC' or process == 'direct_compression'"
+  schema: {param_col: parameter, operator_col: operator, threshold_col: threshold_value,
+           reason_col: fail_mode, suggestion_col: target_range}
+
+- id: dry_granulation
+  file: database/03_process/dry_granulation_rules.csv
+  layer: process
+  owner_agent: predictor
+  eval_type: quantitative
+  trigger_priority: 41
+  strategy: threshold
+  polarity: pass_when
+  applies_when: "selected_route == 'DG' or process == 'dry_granulation'"
+  schema: {param_col: parameter, operator_col: operator, threshold_col: threshold_value,
+           reason_col: fail_mode, suggestion_col: target_range}
+
+- id: wet_granulation_aqueous
+  file: database/03_process/wet_granulation_aqueous_rules.csv
+  layer: process
+  owner_agent: predictor
+  eval_type: quantitative
+  trigger_priority: 42
+  strategy: threshold
+  polarity: pass_when
+  applies_when: "selected_route == 'WG_aqueous' or process == 'wet_granulation'"
+  schema: {param_col: parameter, operator_col: operator, threshold_col: threshold_value,
+           reason_col: fail_mode, suggestion_col: target_range}
+
+- id: wet_granulation_nonaqueous
+  file: database/03_process/wet_granulation_nonaqueous_rules.csv
+  layer: process
+  owner_agent: predictor
+  eval_type: quantitative
+  trigger_priority: 43
+  strategy: threshold
+  polarity: pass_when
+  applies_when: "selected_route == 'WG_nonaqueous' or process == 'wet_granulation_nonaqueous'"
+  schema: {param_col: parameter, operator_col: operator, threshold_col: threshold_value,
+           reason_col: fail_mode, suggestion_col: target_range}
+
+- id: capsule_filling
+  file: database/03_process/capsule_filling_rules.csv
+  layer: process
+  owner_agent: predictor
+  eval_type: quantitative
+  trigger_priority: 44
+  strategy: threshold
+  polarity: pass_when
+  applies_when: "dosage_form == 'capsule'"
+  schema: {param_col: parameter, operator_col: operator, threshold_col: threshold_value,
+           reason_col: fail_mode, suggestion_col: target_range}
+
+# 부형제 기능군별 배합비 — 항상 실행(공정 무관). role_percent에서 값을 가져온다.
+- id: excipient_functional_ratio
+  file: database/03_process/excipient_functional_ratio_rules.csv
+  layer: process
+  owner_agent: predictor
+  eval_type: quantitative
+  trigger_priority: 45
+  strategy: range
+  applies_when: "true"
+  schema:
+    param_col: functional_category
+    min_col: pct_min
+    max_col: pct_max
+    source: role_percent
+    reason_col: notes
+    suggestion_col: pct_typical
+
+# ═══ 단계 5 · 후속/조건부 공정 ════════════════════════════════════════
+# 코팅은 조건이 서술형(trigger_condition)이고 실험 데이터가 필요해 심사관 판단 대상이다.
+- id: coating_strategy
+  file: database/03_process/coating_rules.csv
+  layer: process
+  owner_agent: predictor
+  eval_type: qualitative
+  trigger_priority: 50
+  applies_when: "coating_required == True or hygroscopic == True or light_sensitive == True"
+  judge:
+    reviewer_id: REV002
+    persona: "가용화 전략 심사관"
+    rubric_prompt: config/prompts/solubilization_reviewer.txt
+    retrieval_namespace: biopharmaceutics
+    weight: 0.25
+
+- id: residual_solvent
+  file: database/03_process/residual_solvent_ich_q3c_rules.csv
+  layer: process
+  owner_agent: auditor
+  eval_type: quantitative
+  trigger_priority: 51
+  strategy: threshold
+  applies_when: "solvent_used == True"
+  schema:
+    param_col: solvent
+    threshold_col: concentration_limit_ppm
+    operator: ">"          # CSV에 연산자 컬럼이 없어 상수로 준다 (한계 초과 시 위반)
+    reason_col: control_basis
+    suggestion_col: test_method
+    citation_col: source_doc
+
+# ═══ 단계 6 · 생물약제학 ══════════════════════════════════════════════
+# BCS 분류는 **실측 용해도/투과도가 있을 때만** 확정한다.
+# RDKit 추정치로는 절대 확정하지 않는다(physchem_estimation_rules: confidence=low).
+- id: bcs_classification
+  file: database/04_biopharmaceutics/bcs_classification_criteria.csv
+  layer: biopharm
+  owner_agent: predictor
+  eval_type: quantitative
+  trigger_priority: 60
+  strategy: band_lookup
+  applies_when: "'dose_solubility_volume' in measured_keys and 'fraction_absorbed' in measured_keys"
+  provides: [bcs_class]
+  schema:
+    param_col: parameter
+    operator_col: operator
+    threshold_col: threshold_value
+    output_col: applies_to_class
+    rule_id_col: criterion_id
+    citation_col: guideline
+    aggregate: intersect
+
+- id: bcs_strategy
+  file: database/04_biopharmaceutics/bcs_strategy_rules.csv
+  layer: biopharm
+  owner_agent: predictor
+  eval_type: quantitative
+  trigger_priority: 61
+  strategy: categorical_requirement
+  applies_when: "bcs_class in ['II', 'IV']"
+  schema:
+    subject: bcs_class
+    class_col: bcs_class
+    options_col: recommended_strategies
+    reason_col: strategy_rationale
+    suggestion_col: recommended_strategies
+
+- id: dissolution_biowaiver
+  file: database/04_biopharmaceutics/dissolution_biowaiver_ichm9.csv
+  layer: biopharm
+  owner_agent: predictor
+  eval_type: qualitative   # f2 유사인자 계산은 실측 프로파일 필요 → 심사관 검토
+  trigger_priority: 62
+  applies_when: "bcs_class in ['I', 'III']"
+  judge:
+    reviewer_id: REV002
+    persona: "가용화 전략 심사관"
+    rubric_prompt: config/prompts/solubilization_reviewer.txt
+    retrieval_namespace: biopharmaceutics
+    weight: 0.25
+
+- id: dissolution_acceptance
+  file: database/04_biopharmaceutics/dissolution_acceptance_usp711.csv
+  layer: biopharm
+  owner_agent: auditor
+  eval_type: reference   # Q값이 개별 monograph에서 와야 함 — 이 파일엔 없다
+  trigger_priority: 63
+  applies_when: "true"
+
+- id: dissolution_apparatus
+  file: database/04_biopharmaceutics/dissolution_apparatus_usp711.csv
+  layer: biopharm
+  owner_agent: auditor
+  eval_type: reference
+  trigger_priority: 64
+  applies_when: "true"
+
+# ═══ 단계 7 · 최종 규제/분석/포장 ═════════════════════════════════════
+- id: packaging_compatibility
+  file: database/05_regulatory/packaging_compatibility_rules.csv
+  layer: regulatory
+  owner_agent: auditor
+  eval_type: quantitative
+  trigger_priority: 70
+  strategy: conditional_prohibition
+  applies_when: "true"
+  schema:
+    target: packaging
+    flag_col: product_property
+    forbidden_col: prohibited_packaging
+    reason_col: rationale
+    suggestion_col: required_packaging
+
+- id: analytical_method
+  file: database/04_biopharmaceutics/analytical_method_rules.csv
+  layer: biopharm
+  owner_agent: auditor
+  eval_type: reference   # advisory — 판정 아님. monograph가 있으면 monograph 우선
+  trigger_priority: 71
+  applies_when: "true"
+
+- id: stability_significant_change
+  file: database/05_regulatory/stability_significant_change_ichq1a.csv
+  layer: regulatory
+  owner_agent: auditor
+  eval_type: reference   # 실측 안정성 데이터가 있어야 판정 가능 → wet-lab 루프에서 사용
+  trigger_priority: 72
+  applies_when: "true"
+
+- id: stability_storage_conditions
+  file: database/05_regulatory/stability_storage_conditions_ichq1a.csv
+  layer: regulatory
+  owner_agent: auditor
+  eval_type: reference   # 시험 설계 참조표
+  trigger_priority: 73
+  applies_when: "true"

@@ -1,0 +1,30 @@
+config_id,csv_filename,category,judgment_type,engine_module,trigger_condition,trigger_priority,join_key,default_action_column,reviewer_agent,reviewer_id_ref,requires_patient_weight,requires_supplier_spec,blocking,status,notes
+CFG001,00_master/excipient_master.csv,master,reference_table,lookup,always,0,excipient_id,,,,no,no,no,PARTIAL,모든 규칙의 루트 참조 테이블. unii/cas/iid 컬럼은 TO_VERIFY 상태이므로 해당 컬럼 기반 판정 금지
+CFG002,00_master/rdkit_descriptor_definitions.csv,master,reference_table,calculator,always,0,descriptor_id,,,,no,no,no,ACTIVE,RDKit 계산 descriptor 정의. 결정론적. 파이프라인 최초 단계
+CFG027,00_master/structural_flags_smarts.csv,master,deterministic,structure_match,always,0,flag_name,,,,no,no,no,ACTIVE,SMARTS 구조 플래그 단일출처. incompatibility 등이 이 플래그를 참조. SMARTS 미검증(UNTESTED)
+CFG028,00_master/physchem_estimation_rules.csv,master,advisory,estimator,always,0,output_flag,,,,no,no,no,ACTIVE,"descriptor->물성 추정. 용해도/투과도는 confidence=low, 실측 우선. BCS 확정 전 단계"
+CFG003,01_route_decision/route_decision_tree.csv,route,deterministic,decision_tree,always,1,flow_character_normalized,recommended_routes,,,no,no,no,ACTIVE,설계 계층이 후보 공정을 고를 때 최우선 실행. powder_flow_scale.csv를 참조 테이블로 사용
+CFG022,01_route_decision/powder_flow_scale.csv,route,reference_table,lookup,always,1,flow_character_normalized,,,,no,no,no,ACTIVE,USP <1174> Table 1/2 원문. 측정조건(250mL/100g) 불일치 시 ESCALATE_TO_HUMAN 필수
+CFG004,02_incompatibility/incompatibility_1to1.csv,chemical,deterministic,structure_match,always,2,incompat_trigger,action,,,no,no,yes,ACTIVE,API 작용기 x 부형제 1:1 매칭. RDKit SMARTS로 작용기 검출 후 조인
+CFG005,02_incompatibility/incompatibility_multicomponent.csv,chemical,deterministic,combination_match,component_count>=3,3,component_set,action,,,no,no,yes,ACTIVE,다성분(3+) 상호작용. amine염+환원당+알칼리활택제 등. MC001/002 Hard Fail
+CFG006,03_process/direct_compression_rules.csv,process,hybrid,numeric_compare,selected_route=='DC',4,parameter,action,,,no,no,partial,ACTIVE,"유동성은 설계단계 예측 가능, 압축성(tensile strength 등)은 타정 실험 필요. requires_experiment 컬럼 참조"
+CFG007,03_process/dry_granulation_rules.csv,process,hybrid,numeric_compare,selected_route=='DG',4,parameter,action,,,no,no,partial,ACTIVE,건식과립(롤러컴팩션). 수분/열민감 API 적응. 리본SF 등 실험 필요
+CFG008,03_process/wet_granulation_aqueous_rules.csv,process,hybrid,numeric_compare,selected_route=='WG_aqueous',4,parameter,action,,,no,no,partial,ACTIVE,수계 습식과립. 결합액량 고유 엔드포인트 없음. 수분/열민감 배제
+CFG009,03_process/wet_granulation_nonaqueous_rules.csv,process,hybrid,numeric_compare,selected_route=='WG_nonaqueous',4,parameter,action,,,no,no,partial,ACTIVE,비수계 습식과립. 잔류용매 관리 필수. WGN003 Hard Fail
+CFG010,03_process/coating_rules.csv,process,hybrid,numeric_compare,coating_required==True,5,coating_type,action,가용화 전략 심사관,REV002,no,no,partial,ACTIVE,코팅. 장용성 필요는 위산안정성 맥락. CT006 내산성 Hard Fail
+CFG011,03_process/capsule_filling_rules.csv,process,hybrid,numeric_compare,dosage_form=='capsule',4,parameter,action,,,no,no,partial,ACTIVE,캡슐충전. 젤라틴 쉘 가교 주의. CAP005 중량균일성 Hard Fail
+CFG012,03_process/excipient_functional_ratio_rules.csv,process,deterministic,numeric_compare,always,4,functional_category,action,,,no,no,no,ACTIVE,부형제 기능군별 배합비 범위. 전형값이라 range 벗어나면 REVIEWER_FLAG
+CFG013,03_process/residual_solvent_ich_q3c_rules.csv,process,deterministic,numeric_compare,solvent_used==True,5,solvent,action,,,no,no,yes,ACTIVE,ICH Q3C 잔류용매 한계. 실측(HS-GC) 후 판정. Class1 회피
+CFG024,04_biopharmaceutics/bcs_classification_criteria.csv,biopharm,reference_table,lookup,always,6,bcs_class,,,,no,no,no,ACTIVE,ICH M9 분류 경계값. RDKit 계산 용해도/투과도를 class로 변환하는 기준. LEGACY 행은 구기준이므로 판정 사용 금지
+CFG014,04_biopharmaceutics/dissolution_acceptance_usp711.csv,biopharm,deterministic,numeric_compare,always,6,stage,,,,no,no,yes,ACTIVE,USP<711> QC 판정. Q값은 개별 monograph에서 와야 함(이 파일엔 없음)
+CFG025,04_biopharmaceutics/dissolution_apparatus_usp711.csv,biopharm,reference_table,lookup,always,6,apparatus_number,,,,no,no,no,ACTIVE,USP<711> 장치 사양. 시험 조건 선택용 참조
+CFG026,04_biopharmaceutics/dissolution_biowaiver_ichm9.csv,biopharm,hybrid,lookup,always,6,bcs_class,,가용화 전략 심사관,,no,no,no,ACTIVE,ICH M9 바이오웨이버 프로파일. f2 계산은 심사관 검토
+CFG015,04_biopharmaceutics/bcs_strategy_rules.csv,biopharm,hybrid,numeric_compare,"bcs_class in ['II','IV']",6,bcs_class,action,가용화 전략 심사관,REV002,no,no,no,ACTIVE,BCS class별 전략. 분류 자체는 bcs_classification_criteria.csv가 결정
+CFG016,04_biopharmaceutics/analytical_method_rules.csv,biopharm,advisory,method_advisor,always,7,selection_type,,가용화 전략 심사관,,no,no,no,ACTIVE,시험법 개발 제안(판정 아님). monograph 있으면 monograph 우선. 전 규칙 REVIEWER_FLAG
+CFG017,05_regulatory/pediatric_safety_rules.csv,regulatory,deterministic,numeric_compare,target_population=='pediatric' or patient_condition in rule.age_group,2,excipient_name_en,action,소아 안전 심사관,REV001,yes,no,yes,ACTIVE,체중 기반 임계값(mg/kg) 존재 -> 환자 체중 없으면 ESCALATE_TO_HUMAN 폴백 필수
+CFG018,05_regulatory/stability_storage_conditions_ichq1a.csv,regulatory,reference_table,reference_table,always,7,storage_case,,,,no,no,no,ACTIVE,ICH Q1A(R2) 저장조건표. 시험 설계 계획용 참조(판정 아님). 실제 안정성은 실험 데이터 필요
+CFG029,05_regulatory/stability_significant_change_ichq1a.csv,regulatory,hybrid,numeric_compare,always,7,attribute,,,,no,no,partial,ACTIVE,ICH Q1A(R2) 유의변화 정의. 실측 안정성 데이터가 있을 때만 판정 가능
+CFG019,05_regulatory/packaging_compatibility_rules.csv,regulatory,hybrid,lookup,hygroscopic==True or light_sensitive==True,7,product_property,action,규제 취지 심사관,REV004,no,no,no,ACTIVE,포장 적합성. 흡습/차광/산소/CRC. stability·coating 연계
+CFG020,05_regulatory/coloring_flavoring_pediatric_rules.csv,regulatory,escalation,human_review,flavoring_used==True or colorant_used==True,2,excipient_id,action,문헌 조사 심사관,REV005,no,yes,yes,ACTIVE,색소/향료/감미. EMA Annex 기반. 향료조성 미확인시 에스컬레이션
+CFG021,06_config/severity_scoring_config.csv,system,config,consensus_engine,always,99,category,,,,no,no,no,ACTIVE,"B모델: 점수는 순위결정 전용, 반려 권한 없음. 가중치 잠정값(본선 자문 보정 예정)"
+CFG023,06_config/reviewer_registry.csv,system,config,consensus_engine,always,99,,,,,no,no,no,ACTIVE,심사관 정의 및 순위 가중치. can_block=no (B모델)

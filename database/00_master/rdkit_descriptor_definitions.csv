@@ -1,0 +1,10 @@
+descriptor_id,descriptor_name,rdkit_function,rdkit_module,output_type,deterministic,physical_meaning,used_by,source_doc,source_version,retrieved_on,verification_status,notes
+DSC001,Molecular Weight,Descriptors.MolWt(mol),rdkit.Chem.Descriptors,float,yes,분자량 (g/mol),Lipinski; 용량:용해도比 계산,RDKit docs,2026.03 (2025.03 확인),2026-07-24,VERIFIED,Lipinski MW<=500
+DSC002,Crippen LogP,Descriptors.MolLogP(mol),rdkit.Chem.Descriptors,float,yes,Wildman-Crippen 계산 logP (친유성 추정),용해도 추정; Lipinski; BCS 힌트,RDKit docs,2026.03 (2025.03 확인),2026-07-24,VERIFIED,실측 logP 아님. 계산 추정값
+DSC003,TPSA,Descriptors.TPSA(mol),rdkit.Chem.Descriptors,float,yes,위상학적 극성 표면적 (A^2),투과도 추정; Veber,RDKit docs,2026.03 (2025.03 확인),2026-07-24,VERIFIED,Ertl TPSA. 투과도 직접값 아님
+DSC004,H-Bond Donors,Descriptors.NumHDonors(mol),rdkit.Chem.Descriptors,int,yes,수소결합 공여자 수,Lipinski; 용해도 추정,RDKit docs,2026.03 (2025.03 확인),2026-07-24,VERIFIED,
+DSC005,H-Bond Acceptors,Descriptors.NumHAcceptors(mol),rdkit.Chem.Descriptors,int,yes,수소결합 수용자 수,Lipinski; 용해도 추정,RDKit docs,2026.03 (2025.03 확인),2026-07-24,VERIFIED,
+DSC006,Rotatable Bonds,Descriptors.NumRotatableBonds(mol),rdkit.Chem.Descriptors,int,yes,회전가능 결합 수,Veber (경구 생체이용률),RDKit docs,2026.03 (2025.03 확인),2026-07-24,VERIFIED,
+DSC007,Aromatic Rings,Descriptors.NumAromaticRings(mol),rdkit.Chem.Descriptors,int,yes,방향족 고리 수,구조 특성,RDKit docs,2026.03 (2025.03 확인),2026-07-24,VERIFIED,
+DSC008,Molar Refractivity,Crippen MR via CalcCrippenDescriptors(mol)[1],rdkit.Chem.rdMolDescriptors,float,yes,몰 굴절률,일부 drug-likeness 규칙,RDKit docs,2026.03 (2025.03 확인),2026-07-24,VERIFIED,"CalcCrippenDescriptors는 (logP, MR) 2-tuple 반환"
+DSC009,Primary Amine fragment,fr_NH2 / SMARTS 교차검증,rdkit.Chem.Descriptors / Fragments,int,yes,1차 아민 존재,Maillard 배합금기(incompatibility_1to1.csv),RDKit docs,2026.03 (2025.03 확인),2026-07-24,VERIFIED,fr_ 카운트와 SMARTS 병용 권장

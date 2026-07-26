@@ -1,0 +1,23 @@
+excipient_name,target_functional_group,risk_level,failure_mechanism,alternative_excipient
+Lactose,Primary Amine,High,환원당(Reducing sugar) 불순물 또는 락토오스 자체가 아민기와 반응하여 Maillard 반응(갈변 및 불순물 형성) 유발,Mannitol
+Lactose,Secondary Amine,Medium,환원당과 아민기 간의 친핵성 첨가 반응으로 인해 장기 보관 시 안정성 저하 및 분해 유발,Sorbitol
+Microcrystalline Cellulose,Aldehyde-sensitive,Medium,셀룰로오스 제조 공정(산 가수분해) 중 잔류한 미량의 포름알데하이드가 약물 분해 유발,Dibasic Calcium Phosphate
+Starch,Aldehyde-sensitive,Medium,전분 보관 중 생성된 미량의 아세트알데하이드 불순물이 약물의 특정 기능기와 반응하여 변질 유발,Mannitol
+Polyethylene Glycol,Primary Amine,High,PEG 내에 존재하는 포름알데하이드 불순물이 아민기 약물과 친핵성 반응을 일으켜 Formyl 불순물 형성,고형 파라핀
+Polyethylene Glycol,Secondary Amine,High,PEG 제조 시 발생하는 미량의 알데하이드류 불순물이 약물의 아민 구조와 결합하여 유연물질 형성,왁스류
+Polyethylene Glycol,Oxidation-sensitive,High,합성 및 보관 중 자동산화로 생성된 과산화물(Peroxides) 불순물이 약물의 황(Sulfur)이나 아민 구조를 산화시킴,Peroxide-free 등급 첨가제
+Polysorbate 80,Oxidation-sensitive,High,계면활성제 노화 시 발생하는 Hydroperoxides 불순물이 약물의 페놀 및 아민 구조를 강하게 산화 분해함,항산화제(BHA/BHT) 추가
+Povidone,Oxidation-sensitive,High,중합 공정 촉진용 H2O2 잔류물로 인해 첨가제 내 과산화물 수치가 높아 약물의 산화 분해를 극도로 가속화함,Microcrystalline Cellulose
+Crospovidone,Oxidation-sensitive,High,붕해제 내 잔류 과산화물 불순물이 주성분의 라디칼 연쇄 반응을 촉발하여 가속 시험 시 안정성 탈락 유발,Croscarmellose Sodium
+Povidone,Aldehyde-sensitive,Medium,고분자 내 미량 존재하는 부티르알데하이드(Butyraldehyde) 불순물이 약물과 결합하여 유연물질 생성,카보머
+Magnesium Stearate,Acid-sensitive,Medium,활택제 내 미량 포함된 금속 이온(Mg2+)이 강산성 약물(Aspirin 등)의 이온화를 촉진하여 가수분해 분해 유발,Sodium Stearyl Fumarate
+Magnesium Stearate,Amines,Medium,활택제 유래 Mg2+ 이온이 약물의 아민이나 하이드록시기와 불용성 착물(Chelate)을 형성하여 흡수율 저하,Talc
+Polyethylene Glycol,Metal-sensitive,Medium,첨가제 정제 과정에서 잔류한 미량의 전이금속(Fe/Cu) 촉매 불순물이 약물의 라디칼 산화 반응을 촉매함,EDTA(킬레이트제) 추가
+Polysorbate 80,Metal-sensitive,Medium,합성 공정 유래 전이금속 불순물이 약물의 광학적/열적 분해 반응 속도를 기하급수적으로 높임,고정제 등급(Purified grade) 사용
+Polyethylene Glycol,Carboxylic acid,Medium,PEG의 말단 하이드록시기(-OH)와 약물의 카르복실산(-COOH)이 고온/고습에서 에스테르화 반응을 일으킴,마크로골 외 타 부형제
+Croscarmellose Sodium,Acid-sensitive,Medium,제조 공정 중 가교 반응을 위해 사용된 미량의 유기산 잔류물이 국소적 pH를 낮춰 약물의 산 분해 촉진,Crospovidone
+Hydroxypropyl Methylcellulose,Nitrate-sensitive,High,식물 유래 고분자에 함유된 미량의 아질산염/질산염 불순물이 약물의 2차 아민과 반응하여 발암성 니트로사민(NDSRIs) 형성,Low-nitrite 등급 HPMC
+Stearic acid,Secondary Amine,Medium,지질계 활택제 분해물 또는 잔류 산성 성분이 약물의 아민기와 Amide(아미드) 결합을 형성하여 유연물질로 전환,Talc
+Citric acid,Ester-containing,Medium,완충제로 쓰인 유기산이 약물의 에스테르 결합을 가수분해하거나 에스테르 교환 반응을 유발하여 구조를 변형시킴,인산염 완충계
+Gelatin,Aldehyde-containing,High,약물 내 알데하이드기가 젤라틴 단백질과 가교(Cross-linking) 반응을 일으켜 캡슐 껍질이 물에 녹지 않게 만듦,HPMC 캡슐
+Calcium Phosphate,Tetracyclines,High,칼슘 이온이 항생제(테트라사이클린계) 물질과 난용성 킬레이트를 형성하여 체내 흡수율을 극도로 저하함,Lactose

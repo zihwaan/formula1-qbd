@@ -1,0 +1,156 @@
+variable_name,data_type,unit,allowed_values,definition,measurement_method_or_source,missing_value_action,normalization_notes,version
+API_molar_absorptivity_low,Boolean,,,API molar absorptivity low,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+GI_stability_not_demonstrated,String/Number,,,GI stability not demonstrated,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+KF_side_reaction_or_water_release_bias,String/Number,,,KF side reaction or water release bias,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+absorbed_as_prodrug_unknown,Boolean,,,absorbed as prodrug unknown,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+accuracy_target,String/Number,,,accuracy target,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+acid_stage_release,String/Number,,,acid stage release,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+air_bubbles_affect_wetting_or_surface,String/Number,,,air bubbles affect wetting or surface,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+analytical_target_profile_missing,Boolean,,,analytical target profile missing,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+any_API_fails_M9_criteria,String/Number,,,any API fails M9 criteria,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+api_degradation_in_medium,String/Number,,,api degradation in medium,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+apparatus_2,String/Number,,,apparatus 2,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+apparatus_mechanical_qualification,String/Number,,,apparatus mechanical qualification,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+apparatus_medium_or_agitation_changed_without_comparability,String/Number,,,apparatus medium or agitation changed without comparability,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+approved_integration_control_missing,Boolean,,,approved integration control missing,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+bcs_class,String,,Class I|Class II|Class III|Class IV,BCS classification,BCS evidence review,Request_Data,Use canonical units/enums before rule evaluation,1.0
+bcs_class_missing,Boolean,,,bcs class missing,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+bile_salt_or_lipid_sensitivity_unknown,Boolean,,,bile salt or lipid sensitivity unknown,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+blank_after_high_sample,String/Number,,,blank after high sample,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+buffer_precipitation_or_instrument_incompatibility,String/Number,,,buffer precipitation or instrument incompatibility,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+buffer_stage_release_below_target,String/Number,,,buffer stage release below target,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+caco2_used,Boolean,,,caco2 used,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+caco2_validation_status,String/Number,,,caco2 validation status,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+calibration_model_not_supported,String/Number,,,calibration model not supported,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+capsule_crosslinking_confirmed,Boolean,,,capsule crosslinking confirmed,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+carryover_limit,Number,,,carryover limit,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+change_control_missing,Boolean,,,change control missing,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+cleaning_method_QL,Number,,,cleaning method QL,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+cocrystal_former_screen_positive,String/Number,,,cocrystal former screen positive,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+column_equilibration_inadequate,String/Number,,,column equilibration inadequate,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+column_lot_or_equivalent_column_failure,String/Number,,,column lot or equivalent column failure,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+complexation_constant_and_dose_are_feasible,Boolean,,,complexation constant and dose are feasible,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+conventional_release_meets_target,String/Number,,,conventional release meets target,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+correction_not_applied,String/Number,,,correction not applied,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+critical_pair_resolution,Number,Rs,,Chromatographic resolution of critical pair,T_SPECIFICITY,Request_Data,Use canonical units/enums before rule evaluation,1.0
+crystallization_onset_before_absorption_window,String/Number,,,crystallization onset before absorption window,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+cumulative_sample_volume_fraction,Number,,,cumulative sample volume fraction,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+data_processing_model_changed,String/Number,,,data processing model changed,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+degradation_too_low_or_secondary_degradation_dominant,String/Number,,,degradation too low or secondary degradation dominant,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+dense_particles_form_cone,String/Number,,,dense particles form cone,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+dilution_causes_supersaturation_collapse,String/Number,,,dilution causes supersaturation collapse,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+dissolution_assay_QL,Number,,,dissolution assay QL,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+dissolution_at_any_relevant_pH,String/Number,,,dissolution at any relevant pH,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+dissolution_medium_capacity,String/Number,,,dissolution medium capacity,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+dissolution_rate_limited,String/Number,,,dissolution rate limited,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+dosage_form,String/Number,,,dosage form,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+dosage_form_release,String/Number,,,dosage form release,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+dosage_unit_floats_or_sticks,String/Number,,,dosage unit floats or sticks,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+dose_fits_fill_volume,Number,,,dose fits fill volume,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+dose_or_strength_missing,Boolean,,,dose or strength missing,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+dose_proportional_PK_supported,String/Number,,,dose proportional PK supported,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+drug_unstable_in_solubility_medium,String/Number,,,drug unstable in solubility medium,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+early_release_exceeds_product_specific_limit,Number,,,early release exceeds product specific limit,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+efflux_ratio_high,Boolean,,,efflux ratio high,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+enzyme_use_not_justified,String/Number,,,enzyme use not justified,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+equivalence_justification_missing,Boolean,,,equivalence justification missing,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+evaporation_volume_loss_percent,Number,,,evaporation volume loss percent,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+excipient_absorption_risk_review_pass,Boolean,,,excipient absorption risk review pass,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+f2_CV_requirements_met,Boolean,,,f2 CV requirements met,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+f2_used_when_variability_or_sampling_requirements_not_met,Boolean,,,f2 used when variability or sampling requirements not met,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+filter_recovery,String/Number,,,filter recovery,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+filtered_recovery,String/Number,,,filtered recovery,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+fixed_dose_combination,String/Number,,,fixed dose combination,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+formulation_matrix_changed,String/Number,,,formulation matrix changed,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+fraction_absorbed_percent,Number,%,,Fraction of administered dose absorbed,T_BCS_PERM,Request_Data,Use canonical units/enums before rule evaluation,1.0
+free_form_detected_during_dissolution,String/Number,,,free form detected during dissolution,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+glass_forming_or_polymer_stabilization_feasible,Boolean,,,glass forming or polymer stabilization feasible,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+headspace_partition_matrix_mismatch,String/Number,,,headspace partition matrix mismatch,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+high_gastric_dissolution,String/Number,,,high gastric dissolution,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+high_permeability,String/Number,,,high permeability,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+high_permeability_claimed,String/Number,,,high permeability claimed,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+high_solubility,String/Number,,,high solubility,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+highest_dose_not_soluble_250mL,String/Number,,,highest dose not soluble 250mL,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+highest_single_therapeutic_dose_not_soluble_in_250mL_at_any_pH_1_2_to_6_8,String/Number,,,highest single therapeutic dose not soluble in 250mL at any pH 1 2 to 6 8,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+highest_single_therapeutic_dose_soluble_in_250mL_at_all_pH_1_2_to_6_8_37C,Boolean,,True|False,M9 high-solubility criterion result,T_BCS_SOL,Request_Data,Use canonical units/enums before rule evaluation,1.0
+highest_strength_soluble_250mL,String/Number,,,highest strength soluble 250mL,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+intermediate_precision,String/Number,,,intermediate precision,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+intestinal_pH_precipitation,String/Number,,,intestinal pH precipitation,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+intrinsic_solubility_low,Boolean,,,intrinsic solubility low,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+ionizable_API,String/Number,,,ionizable API,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+line_adsorption_unqualified,String/Number,,,line adsorption unqualified,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+lipid_solubility_sufficient,String/Number,,,lipid solubility sufficient,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+lipophilicity_or_bile_sensitivity_high,Boolean,,,lipophilicity or bile sensitivity high,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+local_pH_can_raise_solubility,String/Number,,,local pH can raise solubility,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+local_pH_solubilization,String/Number,,,local pH solubilization,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+low_permeability,String/Number,,,low permeability,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+low_solubility,String/Number,,,low solubility,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+lowest_required_vessel_concentration,String/Number,,,lowest required vessel concentration,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+manual_integration_performed,Boolean,,,manual integration performed,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+matrix_factor_outside_method_target,String/Number,,,matrix factor outside method target,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+mean_percent_dissolved_15min,Number,%,,Mean percent dissolved at 15 minutes,T_M9_DISS,Request_Data,Use canonical units/enums before rule evaluation,1.0
+mean_percent_dissolved_30min,Number,%,,Mean percent dissolved at 30 minutes,T_M9_DISS,Request_Data,Use canonical units/enums before rule evaluation,1.0
+mean_recovery_outside_validation_criterion,String/Number,,,mean recovery outside validation criterion,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+medium_or_placebo_interference,String/Number,,,medium or placebo interference,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+method_fails_to_distinguish_meaningful_formulation_or_process_changes,String/Number,,,method fails to distinguish meaningful formulation or process changes,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+method_impact_assessment_missing,Boolean,,,method impact assessment missing,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+method_limit,Number,,,method limit,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+method_not_selective,String/Number,,,method not selective,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+method_target,String/Number,,,method target,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+minor_noncritical_change_causes_large_method_failure_without_bioperformance_link,String/Number,,,minor noncritical change causes large method failure without bioperformance link,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+mobile_phase_age,Number,,,mobile phase age,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+narrow_therapeutic_index,String/Number,,,narrow therapeutic index,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+only_solubility_strategy_selected,String/Number,,,only solubility strategy selected,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+pH_not_measured_at_start_and_end,String/Number,,,pH not measured at start and end,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+permeability_evidence_requires_GI_stability,String/Number,,,permeability evidence requires GI stability,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+pharmaceutically_acceptable_salt_feasible,Boolean,,,pharmaceutically acceptable salt feasible,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+placebo_absorbance_fraction,Number,,,placebo absorbance fraction,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+placebo_response_at_API_retention_time,Number,,,placebo response at API retention time,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+poor_wetting,String/Number,,,poor wetting,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+precipitation_fast,String/Number,,,precipitation fast,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+prodrug,String/Number,,,prodrug,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+product_limit,Number,,,product limit,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+product_specific_limit,Number,,,product specific limit,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+product_target,String/Number,,,product target,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+quantitation_limit,Number,method concentration unit,,Validated quantitation limit,T_QL,Request_Data,Use canonical units/enums before rule evaluation,1.0
+realistic_parameter_change_causes_system_or_result_failure,String/Number,,,realistic parameter change causes system or result failure,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+reference_standard_correction_missing,Boolean,,,reference standard correction missing,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+relative_response_factor_differs_materially,String/Number,,,relative response factor differs materially,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+repeatability_RSD,Number,,,repeatability RSD,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+reporting_or_specification_threshold,String/Number,,,reporting or specification threshold,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+required_QL_not_met,Boolean,,,required QL not met,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+required_dose_load,String/Number,,,required dose load,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+residue_acceptance_limit,Number,,,residue acceptance limit,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+response_outside_detector_linear_range,String/Number,,,response outside detector linear range,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+result_change_over_hold_time,Number,,,result change over hold time,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+salt_form,String/Number,,,salt form,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+sample_not_homogeneous_at_aliquoting,String/Number,,,sample not homogeneous at aliquoting,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+sample_precipitation_or_haze,String/Number,,,sample precipitation or haze,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+sample_volume_correction_missing,Boolean,,,sample volume correction missing,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+sampling_to_quench_time,Number,,,sampling to quench time,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+small_pH_change_causes_critical_failure,String/Number,,,small pH change causes critical failure,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+solubility_profile_missing,Boolean,,,solubility profile missing,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+solution_recovery_declines_with_contact,String/Number,,,solution recovery declines with contact,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+specificity_limit,Number,,,specificity limit,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+spike_recovery,String/Number,,,spike recovery,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+stability_limit,Number,,,stability limit,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+stability_risk,String/Number,,,stability risk,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+standard_response_change,String/Number,,,standard response change,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+stereoisomer_or_isomer_control_required,String/Number,,,stereoisomer or isomer control required,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+strategy_selected_from_bcs_class_alone,String/Number,,,strategy selected from bcs class alone,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+supersaturation_generated,String/Number,,,supersaturation generated,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+surfactant_level_exceeds_justified_level,String/Number,,,surfactant level exceeds justified level,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+surfactant_level_insufficient_for_reproducible_wetting,String/Number,,,surfactant level insufficient for reproducible wetting,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+system_suitability_not_linked_to_critical_method_performance,String/Number,,,system suitability not linked to critical method performance,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+target,String/Number,,,target,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+target_not_distinguishable_from_interferences,String/Number,,,target not distinguishable from interferences,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+temperature_or_rpm_outside_validated_range,String/Number,,,temperature or rpm outside validated range,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+test_reference_salt_form_mismatch,String/Number,,,test reference salt form mismatch,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+transfer_acceptance_criteria_not_met,Boolean,,,transfer acceptance criteria not met,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+unit_count,Integer,count,,Number of individual dosage units,T_M9_DISS,Request_Data,Use canonical units/enums before rule evaluation,1.0
+validated_hold_time,Number,,,validated hold time,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+validated_limit,Number,,,validated limit,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+validated_range_does_not_cover_expected_results,String/Number,,,validated range does not cover expected results,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+validated_recovery_limit,Number,,,validated recovery limit,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+validation_criterion,String/Number,,,validation criterion,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0
+vessel_to_vessel_RSD,Number,,,vessel to vessel RSD,Product-specific data or referenced confirmation test,Request_Data,Use canonical units/enums before rule evaluation,1.0

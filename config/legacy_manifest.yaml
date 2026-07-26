@@ -1,0 +1,125 @@
+# ─────────────────────────────────────────────────────────────────────────
+# 규칙 카탈로그 (Rulebook Catalog)
+#
+# 이 파일 하나가 "각 규칙표(CSV)를 어떤 방식으로 검사에 연결할지"를 선언한다.
+#   - eval_type: quantitative → 숫자/집합으로 판단 → 결정론적 검사 함수(툴)
+#   - eval_type: qualitative  → 자연어로 판단      → 판단 에이전트(Judge)
+#   - applies_when: 이 규칙이 언제 발동하는지 (입력 조건식)
+#   - schema:       CSV 컬럼명을 검사 함수에 매핑
+#
+# 규칙표(CSV)와 여기 항목 한 개만 추가하면 검사 능력이 늘어난다. 백엔드 코드 변경 없음.
+# ─────────────────────────────────────────────────────────────────────────
+
+# [화학] API 작용기 × 부형제 1:1 배합 금기 (예: 아민기 + 락토오스 → Maillard 갈변)
+- id: incompatibility_1to1
+  file: database/legacy/incompatibility_rules.csv
+  layer: chemical
+  owner_agent: predictor
+  eval_type: quantitative
+  severity: hard_fail
+  applies_when: "true"
+  strategy: pairwise_membership
+  schema:
+    left_key: excipient_name
+    right_key: target_functional_group
+    reason_col: failure_mechanism
+    suggestion_col: alternative_excipient
+
+# [화학] 다성분 조합 금기 (예: 탄산수소나트륨 + 유기산 + 수분 → CO2 가스)
+- id: incompatibility_multi
+  file: database/legacy/incompatibility_multi.csv
+  layer: chemical
+  owner_agent: predictor
+  eval_type: quantitative
+  severity: hard_fail
+  applies_when: "true"
+  strategy: subset_forbidden
+  schema:
+    combo_col: target_ingredients
+    reason_col: failure_mechanism
+    suggestion_col: alternative_excipient
+
+# [공정] 직접타정 실패 조건 중 '숫자로 판단 가능한' 행만 (Carr Index>25 등)
+- id: process_quantitative
+  file: database/legacy/process_failure_rules.csv
+  layer: process
+  owner_agent: predictor
+  eval_type: quantitative
+  severity: soft_score
+  applies_when: "dosage_form == 'tablet'"
+  row_filter: "eval_type == 'quantitative'"
+  strategy: threshold
+  schema:
+    param_col: param
+    operator_col: operator
+    threshold_col: threshold
+    source_col: source
+    source: role_percent   # 공정 파라미터 기본 출처(활택제/붕해제 %) — 없으면 measured_param로 폴백
+    reason_col: failure_mechanism
+    suggestion_col: guideline
+
+# [공정] 직접타정 실패 조건 중 '말로 판단해야 하는' 행만 → 판단 에이전트
+- id: process_qualitative
+  file: database/legacy/process_failure_rules.csv
+  layer: process
+  owner_agent: predictor
+  eval_type: qualitative
+  severity: soft_score
+  applies_when: "dosage_form == 'tablet'"
+  row_filter: "eval_type == 'qualitative'"
+  judge:
+    persona: "제제 공정 전문가 (직접타정·과립 트러블슈팅)"
+    rubric_prompt: config/prompts/process_judge.txt
+    retrieval_namespace: process_knowledge
+    weight: 0.3
+    pass_threshold: 0.7
+
+# [생물약제학] BCS Class II/IV → 가용화 전략 필수
+- id: bcs_solubility
+  file: database/legacy/bcs_solubility_rules.csv
+  layer: biopharm
+  owner_agent: predictor
+  eval_type: quantitative
+  severity: hard_fail
+  applies_when: "bcs_class in ['II', 'IV']"
+  strategy: categorical_requirement
+  schema:
+    subject: bcs_class
+    class_col: bcs_class
+    required_role_col: required_role
+    options_col: allowed_options
+    reason_col: failure_mechanism
+    suggestion_col: suggestion
+
+# [규제] 소아 안전성 상한 (SLS 10mg, 정제 직경 8mm) — 소아 대상일 때만 발동
+- id: pediatric_safety
+  file: database/legacy/pediatric_safety_rules.csv
+  layer: regulatory
+  owner_agent: auditor
+  eval_type: quantitative
+  severity: hard_fail
+  applies_when: "is_pediatric"
+  strategy: threshold
+  schema:
+    param_col: param
+    operator_col: operator
+    threshold_col: threshold
+    source_col: source
+    reason_col: failure_mechanism
+    suggestion_col: suggestion
+
+# [규제] 포장 적합성 (흡습성 → PVC 블리스터 금지 등)
+- id: packaging_stability
+  file: database/legacy/packaging_stability_rules.csv
+  layer: regulatory
+  owner_agent: auditor
+  eval_type: quantitative
+  severity: hard_fail
+  applies_when: "true"
+  strategy: conditional_prohibition
+  schema:
+    target: packaging
+    flag_col: property_flag
+    forbidden_col: forbidden_packaging
+    reason_col: failure_mechanism
+    suggestion_col: suggestion

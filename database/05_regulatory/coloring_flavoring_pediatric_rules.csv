@@ -1,0 +1,11 @@
+rule_id,additive_type,substance,e_number,population,action,concern,leaflet_requirement,source_doc,source_version,retrieved_on,verification_status,notes
+CF001,azo_colorant,Tartrazine,E 102,all,LABEL_REQUIRED,아조색소 알레르기 반응 유발 가능,알레르기 반응 가능 기재,EMA_ANNEX,EMA/CHMP/302620/2017 Rev.2,2026-07-24,VERIFIED,소아 제형 특히 주의
+CF002,azo_colorant,Sunset yellow FCF,E 110,all,LABEL_REQUIRED,아조색소 알레르기,알레르기 반응 가능 기재,EMA_ANNEX,EMA/CHMP/302620/2017 Rev.2,2026-07-24,VERIFIED,
+CF003,azo_colorant,Azorubine/Carmoisine,E 122,all,LABEL_REQUIRED,아조색소 알레르기,알레르기 반응 가능 기재,EMA_ANNEX,EMA/CHMP/302620/2017 Rev.2,2026-07-24,VERIFIED,
+CF004,azo_colorant,Amaranth,E 123,all,LABEL_REQUIRED,아조색소 알레르기,알레르기 반응 가능 기재,EMA_ANNEX,EMA/CHMP/302620/2017 Rev.2,2026-07-24,VERIFIED,
+CF005,azo_colorant,Ponceau 4R,E 124,all,LABEL_REQUIRED,아조색소 알레르기,알레르기 반응 가능 기재,EMA_ANNEX,EMA/CHMP/302620/2017 Rev.2,2026-07-24,VERIFIED,
+CF006,azo_colorant,Brilliant black BN,E 151,all,LABEL_REQUIRED,아조색소 알레르기,알레르기 반응 가능 기재,EMA_ANNEX,EMA/CHMP/302620/2017 Rev.2,2026-07-24,VERIFIED,
+CF007,colorant,Titanium dioxide,E 171,all,ESCALATE_TO_HUMAN,EU 규제 지위 변동. 대상시장별 확인,해당시장 규정 확인,EMA_ANNEX,EMA/CHMP/302620/2017 Rev.2,2026-07-24,UNVERIFIED_CRITICAL,excipient_master EXC059와 동일 이슈
+CF008,sweetener,Aspartame,E 951,PKU_or_infant,HARD_FAIL,페닐알라닌 공급원. PKU 금기. 12주미만 데이터없음,PKU 경고 기재,EMA_ANNEX,EMA/CHMP/302620/2017 Rev.2,2026-07-24,VERIFIED,pediatric_safety PED001과 동일. 감미 관점
+CF009,flavoring,fragrance_with_allergens,,all,ESCALATE_TO_HUMAN,향료는 독점조성. 26종 알레르겐 포함 여부 공급사 사양서 필요,해당 알레르겐 기재,EMA_ANNEX,EMA/CHMP/302620/2017 Rev.2,2026-07-24,ESCALATION_REQUIRED,핵심: 향료 조성 미확인시 에이전트 단독판정 불가. 사람 확인 필수
+CF010,sweetener_polyol,Sorbitol/Maltitol/Xylitol,E 420/965/967,all,REVIEWER_FLAG,완하작용 및 HFI 주의(소르비톨),완하작용 가능 기재,EMA_ANNEX,EMA/CHMP/302620/2017 Rev.2,2026-07-24,VERIFIED,pediatric_safety와 교차

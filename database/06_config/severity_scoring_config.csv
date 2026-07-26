@@ -1,0 +1,11 @@
+config_key,config_value,applies_to,description,rationale,source_status
+consensus_model,B_quality_ranking,system,심사관 점수는 통과 후보의 순위 결정에만 사용. 안전 판정에 관여하지 않음,"규칙=거부권, AI=품질평가의 분리 원칙(슬라이드 10). 안전은 전적으로 룰북이 담당",design_decision
+score_affects_pass_fail,false,system,심사관 점수는 어떤 값이든 후보를 반려시키지 않음. 반려는 오직 Hard Fail로만 발생,B 모델의 핵심. 점수 하한 게이트 없음,design_decision
+aggregation_method,weighted_mean_summoned_only,consensus,소집된 심사관의 base_weight를 그 세션 내에서 재정규화(합=1)한 뒤 가중평균,동적 소집이므로 매 세션 심사관 구성이 다름. 미소집 심사관 가중치는 분모에서 제외,design_decision
+normalization_formula,w_i_norm = w_i / sum(w_summoned),consensus,예: 소아(0.30)+공정(0.25)만 소집되면 정규화 가중치는 0.545 / 0.455,고정 명단이 없으므로 절대 가중치 합이 1이 아님. 세션별 정규화 필수,design_decision
+tie_breaking,lower_variance_first,consensus,"가중평균 동점 시, 심사관 점수 분산이 낮은(합의도 높은) 후보를 우선",동일 평균이면 심사관 간 이견이 적은 쪽이 더 안정적이라는 판단,design_decision
+min_reviewers_for_ranking,2,consensus,"소집 심사관이 1명이면 순위 비교 의미가 약하므로, 후보 간 비교는 하되 연구자에게 저신뢰 플래그 전달",단일 심사관 점수로 후보를 서열화하는 것은 근거가 빈약,design_decision
+all_candidates_reported,true,output,최저 순위 후보도 점수·사유와 함께 연구자에게 보고. 버리지 않음,심사관이 낮게 준 이유가 룰북 갱신의 단서. B 모델에서 룰북 커버리지가 유일한 안전근거이므로 신호를 버리면 안 됨,design_decision
+low_score_to_rulebook_feedback,true,output,특정 도메인에서 반복적으로 저점이 나오면 반성 에이전트가 '룰북 누락 가능성'으로 기록,"B 모델의 안전판. 심사관이 안전을 직접 막지 못하는 대신, 저점 패턴을 룰북 보강 신호로 전환",design_decision
+user_adjustable_weights,true,output,사용자는 base_weight를 조정 가능. 단 이는 '순위 가중치'이며 안전 판정과 무관함을 UI에 명시,슬라이드 10의 '가중치 사용자 조정'을 순위 한정으로 명확화. 안전 조정으로 오해되면 안 됨,design_decision
+weight_calibration_plan,expert_consultation_finals,meta,현재 모든 base_weight는 팀 내부 잠정값. 본선에서 전문가 자문으로 보정 예정,가중치에는 규제 문서 같은 1차 출처가 없음. 슬라이드 15 '교수님 자문 반영'과 연결,design_decision

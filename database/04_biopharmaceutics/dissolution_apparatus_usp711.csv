@@ -1,0 +1,5 @@
+method_id,apparatus_number,apparatus_name,typical_use,common_speed_rpm,medium_volume_mL,temperature_C,bcs_class_hint,source_doc,source_version,retrieved_on,verification_status,notes
+MTH001,1,Basket (회전바스켓),"캡슐, 부유하는 정제, 붕해 시 침전물 생성 제형",50-100,500-1000,37 +/- 0.5,I;III,USP,<711> Revision Bulletin Official 2012-02-01,2026-07-24,VERIFIED,바스켓-바닥 간격 25+/-2 mm. 부유 우려 제형에 유리
+MTH002,2,Paddle (패들),일반 정제 (가장 널리 사용),50-75,500-1000,37 +/- 0.5,I;II;III,USP,<711> Revision Bulletin Official 2012-02-01,2026-07-24,VERIFIED,블레이드-바닥 간격 25+/-2 mm. 부유 정제는 싱커 사용
+MTH003,3,Reciprocating Cylinder (왕복실린더),"pH 변화 프로파일, 서방정",5-35 dpm,200-250,37 +/- 0.5,,USP,<711> Revision Bulletin Official 2012-02-01,2026-07-24,VERIFIED,JP 미채택. 여러 매질 순차 노출에 유리
+MTH004,4,Flow-Through Cell (플로우스루셀),"난용성 약물, 싱크 조건 유지 필요",4-16 mL/min,open-loop,37 +/- 0.5,II;IV,USP,<711> Revision Bulletin Official 2012-02-01,2026-07-24,VERIFIED,JP 미채택. 난용성(BCS II/IV) 약물에서 싱크 조건 확보에 유리

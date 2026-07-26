@@ -1,0 +1,8 @@
+criterion_id,applies_to,attribute,significant_change_definition,threshold,action,source_doc,source_section,source_version,retrieved_on,verification_status,notes
+SIG001,drug_substance,specification,규격 미충족,fail_specification,HARD_FAIL,ICH Q1A(R2),2.1.7.1,Step4 2003-02-06,2026-07-24,VERIFIED,원료의 유의변화는 '규격 미충족'으로 단순 정의
+SIG002,drug_product,assay,초기값 대비 함량 5% 변화 또는 역가 기준 미충족,5% change from initial,REVIEWER_FLAG,ICH Q1A(R2),2.2.7.1,Step4 2003-02-06,2026-07-24,VERIFIED,제품 유의변화 정의 1
+SIG003,drug_product,degradation_product,어떤 분해산물이든 허용기준 초과,any degradant exceeds criterion,HARD_FAIL,ICH Q1A(R2),2.2.7.1,Step4 2003-02-06,2026-07-24,VERIFIED,제품 유의변화 정의 2. Q3B 연계
+SIG004,drug_product,physical_attributes,외관·물리적특성·기능성시험 미충족(색/상분리/재현탁성/케이킹/경도/토출량),fail appearance/physical/functionality,REVIEWER_FLAG,ICH Q1A(R2),2.2.7.1,Step4 2003-02-06,2026-07-24,VERIFIED,제품 유의변화 정의 3. 가속조건에서 좌제연화/크림용융 등 일부 변화는 예상 가능
+SIG005,drug_product,pH,pH 허용기준 미충족,fail pH criterion,REVIEWER_FLAG,ICH Q1A(R2),2.2.7.1,Step4 2003-02-06,2026-07-24,VERIFIED,제품 유의변화 정의 4(제형에 따라)
+SIG006,drug_product,dissolution,12개 단위의 용출 허용기준 미충족,fail dissolution for 12 units,HARD_FAIL,ICH Q1A(R2),2.2.7.1,Step4 2003-02-06,2026-07-24,VERIFIED,제품 유의변화 정의 5(제형에 따라). dissolution_acceptance_usp711.csv 연계
+SIG007,drug_product,water_loss_semipermeable,반투과용기: 40C/NMT25%RH 3개월 상당 후 초기값 대비 5% 물손실,5% water loss,REVIEWER_FLAG,ICH Q1A(R2),2.2.7.3,Step4 2003-02-06,2026-07-24,VERIFIED,소용기(1mL이하)/단위용량은 5% 이상도 정당화 시 허용 가능

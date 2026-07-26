@@ -1,0 +1,3 @@
+rule_name,param,source,operator,threshold,unit,failure_mechanism,suggestion
+SLS 소아 상한,SLS,ingredient_mg,>,10,mg,소아(12세 미만) 기준 SLS 1일 허용 상한 10mg 초과,SLS를 8mg 이하로 감량
+정제 직경 소아 상한,tablet_diameter,measured_param,>,8,mm,소아 삼킴 곤란 위험 — 정제 직경 8mm 초과,정제 직경 축소 또는 미니정제/현탁제 전환

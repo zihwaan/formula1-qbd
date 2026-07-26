@@ -1,0 +1,3 @@
+bcs_class,required_role,allowed_options,failure_mechanism,suggestion
+II,solubilizer,"SLS,Cyclodextrin,Poloxamer,Solid Dispersion,Polysorbate 80",BCS Class II(난용성·고투과성)인데 가용화 전략 미적용 시 용출률 저하로 생체이용률 실패,가용화제(SLS/Cyclodextrin) 또는 고체분산체 도입
+IV,solubilizer,"SLS,Cyclodextrin,Poloxamer,Solid Dispersion,Polysorbate 80",BCS Class IV(난용성·저투과성)인데 가용화 전략 미적용 시 흡수 실패,가용화제 및 흡수촉진 전략 병행 필수

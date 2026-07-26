@@ -1,0 +1,12 @@
+pandas
+pyyaml
+pydantic>=2
+rdkit
+langgraph
+langchain-core
+anthropic
+fastapi
+uvicorn[standard]
+sse-starlette
+rank-bm25
+pytest

@@ -1,0 +1,4 @@
+rule_id,context,bcs_class,dissolution_class,criterion,threshold_pct,time_min,media,comparison_requirement,action,source_doc,source_version,retrieved_on,verification_status,notes
+BWV001,biowaiver,I,rapid,test와 reference 모두 30분 내 85% 이상 용출,85,30,"pH 1.2, 4.5, 6.8",test/reference f2 유사성 (또는 둘 다 85%/15분이면 f2 면제),REVIEWER_FLAG,ICH M9,Step4 2019-11-16,2026-07-24,VERIFIED,Class I은 rapid로 충분. bcs_strategy_rules.csv BST001과 연계
+BWV002,biowaiver,III,very_rapid,test와 reference 모두 15분 내 85% 이상 용출,85,15,"pH 1.2, 4.5, 6.8",둘 다 15분내 85%면 f2 불필요; 아니면 f2 유사성 필요,REVIEWER_FLAG,ICH M9,Step4 2019-11-16,2026-07-24,VERIFIED,Class III는 very rapid 요구(더 엄격). BST003과 연계
+BWV003,biowaiver_profile_similarity,I;III,,f2 유사인자로 프로파일 유사성 판정,50,,"pH 1.2, 4.5, 6.8",f2 값 50-100이면 유사,REVIEWER_FLAG,ICH M9,Step4 2019-11-16,2026-07-24,VERIFIED,f2 = 50*log{[1+(1/n)*sum(Rt-Tt)^2]^-0.5 *100}. 두 제품 모두 15분내 85% 이상이면 f2 계산 불필요

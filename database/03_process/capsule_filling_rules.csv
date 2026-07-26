@@ -1,0 +1,7 @@
+rule_id,parameter,stage,operator,threshold_value,unit,target_range,fail_mode,action,requires_experiment,predictable_at_design,rationale,evidence_type,evidence_strength,source_citation,retrieved_on,verification_status,notes
+CAP001,dosage_form_capsule,design_screen,==,capsule,form,N/A,캡슐 선택시 발동,ALLOW,no,yes,정제 대신 캡슐 선택. 타정 어려운 원료·저용량·액상충전 등,textbook,moderate,제제 일반,2026-07-24,VERIFIED_SECONDARY,캡슐은 타정 곤란 원료의 대안
+CAP002,powder_flowability,pre_fill,<=,20,%,Carr's <=20,유동 불량 -> 충전 중량 편차,REVIEWER_FLAG,no,yes,캡슐 충전도 분말 유동성 필요. powder_flow_scale 재적용,peer_reviewed_practice,strong,USP <1174> 연계,2026-07-24,VERIFIED,충전 균일성에 유동성 직결. 설계단계 예측 가능
+CAP003,bulk_density_fill_volume,pre_fill,,,g/mL,캡슐 크기별,밀도-부피 불일치 -> 충전 불가/과충전,REVIEWER_FLAG,yes,partial,겉보기밀도와 캡슐 크기(충전부피) 매칭 필요,textbook,moderate,제제 일반,2026-07-24,VERIFIED_SECONDARY,분말 부피가 캡슐 크기에 맞아야. 캡슐 크기 0-5 선택
+CAP004,capsule_size,design,,,size(0-5),용량·밀도별,크기 부적정,REVIEWER_FLAG,yes,partial,충전 중량과 겉보기밀도로 캡슐 크기 결정 (000~5),textbook,moderate,제제 일반,2026-07-24,VERIFIED_SECONDARY,크기 클수록 연하 곤란(소아·고령 주의)
+CAP005,weight_variation,post_fill,,,,USP <905>,충전 중량 편차,HARD_FAIL,yes,no,캡슐 충전 중량 균일성. 약전 규격,pharmacopeial,strong,USP <905> Uniformity of Dosage Units (원문 미대조),2026-07-24,VERIFIED_SECONDARY,실측 필요. 약전 기준
+CAP006,shell_api_compatibility,design_screen,,,,젤라틴 vs HPMC,쉘-내용물 상호작용,REVIEWER_FLAG,no,yes,젤라틴 쉘은 알데히드·환원당과 가교(cross-linking) 위험. HPMC 쉘 대안,peer_reviewed_practice,moderate,제제 일반; 젤라틴 가교,2026-07-24,VERIFIED_SECONDARY,중요: 젤라틴은 환원당/알데히드와 가교되어 용출 저하. incompatibility와 유사 기전. excipient_master 쉘 항목 연계
