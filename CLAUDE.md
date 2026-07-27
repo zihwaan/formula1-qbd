@@ -24,7 +24,57 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
 Everything runs **without an API key** — LLM nodes fall back to deterministic stand-ins so
-demos never break. Set `ANTHROPIC_API_KEY` to enable the real Claude path.
+demos never break. Set `GROQ_API_KEY` (free tier) or `ANTHROPIC_API_KEY` to enable a real LLM path.
+
+## Deployment — this repo is served live at zihwan.com/formula1
+
+This clone lives inside the home-server repo at `~/zihwan/formula1` but keeps **its own git
+history** (origin is `github.com/zihwaan/formula1-qbd`); the hub repo does not track it.
+It runs as an OrbStack k8s deployment. Editing a file changes nothing live until you rebuild:
+
+```bash
+cd ~/zihwan/formula1 && docker build -t formula1:latest . && kubectl rollout restart deployment/formula1
+kubectl rollout status deployment/formula1 --timeout=180s
+curl -s -o /dev/null -w '%{http_code}\n' https://zihwan.com/formula1/
+```
+
+FastAPI serves both the API and the no-build SPA, so one image covers front and back.
+Full home-server context (proxy layout, secrets, traps) is in `~/zihwan/CLAUDE.md`.
+
+Three hosting concerns are baked into `web/server.py` — don't undo them:
+
+- **`BASE_PATH` env** (`/formula1` in k8s, empty locally). The hub proxy strips the prefix, so
+  FastAPI routes stay rooted at `/`; the `/` handler injects `<base href>` + `window.__BASE__`
+  and `app.js` builds every fetch/EventSource URL through `api()`. Local `uvicorn` on :8000 with
+  no `BASE_PATH` behaves exactly as before.
+- **Content-hashed asset URLs** (`_asset_version`). Filenames aren't hashed (no build step) and
+  Cloudflare caches `.js`/`.css` for 4h when the origin sends no `Cache-Control` — without this,
+  a redeploy keeps serving the old script.
+- **Public-endpoint limits.** `MAX_ACTIVE_RUNS=3` (429 past that) and `MAX_STORED_RUNS=40`
+  (oldest evicted). `RUNS` is an in-process dict, so this is what keeps a 24/7 public pod bounded;
+  it's also why the image runs `--workers 1` (a second worker can't see another's run).
+
+## LLM providers — `formula/agents/client.py` wraps both
+
+`parse_structured` / `stream_text` are the only touchpoints; agents never know the provider.
+`FORMULA1_LLM_PROVIDER` = `auto` (default) | `anthropic` | `groq` | `none`. The pod pins `groq`.
+
+The Groq path differs from Anthropic in ways that caused real failures:
+
+- **`max_tokens` counts against the per-minute token limit (TPM).** A 2-token prompt with
+  `max_tokens: 8192` returns **413** on the 8,000-TPM tier. `_groq_payload` therefore shrinks
+  `max_tokens` to fit `GROQ_TPM[model]` and trims the prompt's middle if even that won't fit.
+- **Each model has its own TPM bucket**, so on 429 the chain moves to the next model immediately
+  rather than sleeping; only a full lap through the chain waits. Measured limits are in `GROQ_TPM`
+  (`x-ratelimit-limit-tokens` header) — llama-3.3-70b has the most headroom, hence it's first.
+- **Structured output is `json_object` + schema in the system prompt**, not strict `json_schema`
+  (which rejects the `$ref`/`anyOf` shapes Pydantic emits), with a validation-error retry hint.
+- **gpt-oss reasoning tokens come out of the completion budget** → `reasoning_effort` is pinned
+  `low`, otherwise reasoning eats the cap and `content` arrives empty.
+
+A full LLM-backed run does not fit in one minute of free-tier tokens, so later judges may fall
+back to deterministic stand-ins mid-run. That is the designed degradation, and the UI labels it
+(`source: deterministic-fallback` + a warning event) — don't "fix" it by hiding the warning.
 
 ## Architecture — the manifest is the linchpin
 
@@ -62,7 +112,28 @@ The whole system is **data-driven, not code-driven**. Rules live in CSVs; a sing
 - **`formula/chem/`** — RDKit input pipeline. `build_profile(api_name|smiles)` → `ApiProfile` (descriptors, SMARTS structural flags, advisory estimates, 2D SVG). Salts are stripped before SMARTS matching; `fr_*` counts cross-check every pattern. **Solubility/permeability estimates are `confidence=low` and must never set `bcs_class`** — the manifest gates `bcs_classification` behind measured values.
 - **`formula/orchestrator/`** — LangGraph `StateGraph` (`graph.py`), shared state with a reset-aware `accumulate` reducer (`state.py`; return `None` to clear a fan-out list between reflection rounds), and the `TraceEvent` bus (`events.py`). Every node emits events; the web UI consumes only that stream.
 - **`formula/agents/`** — Claude nodes. All use structured output (`messages.parse`) and **all have deterministic fallbacks**; `consensus.py` is pure Python driven by `severity_scoring_config.csv` (B model: judge scores rank, never block).
-- **`web/`** — FastAPI + SSE + a no-build SPA. `/api/rules/{rule_id}` powers the evidence drill-down that shows the originating CSV row and its SOURCES document.
+- **`web/`** — FastAPI + SSE + a no-build SPA. `/api/rules/{rule_id}` powers the evidence drill-down that shows the originating CSV row and its SOURCES document. `static/explainer.{js,css}` is the 8-step visual walkthrough of the README (auto-opens on first visit, reopened from the masthead, deep-linkable via `?guide=N`); its content mirrors README.md chapters, so **update it when the design story changes** — it's what a first-time visitor reads instead of the README.
+
+### Front-end rules (learned the hard way — don't regress these)
+
+The dashboard follows the **zihwan.com design language**: grayscale chrome + Pretendard, tokens
+mirroring `~/zihwan/wealthmate/frontend/src/tokens.css`, light/dark via `data-theme` with the
+theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one service applies to all).
+
+- **Colour is reserved for rule verdicts.** `--status-good/warn/serious/critical` mark
+  통과/주의/이관/반려 only. Agent kinds (결정론/LLM/심사관) are categorical, so they're separated by
+  grey level **plus line style** (solid/dashed/dotted) — that keeps them colour-blind safe and is
+  why the graph and the explainer use the same three border styles.
+- **`[hidden]` is force-declared `display:none !important` in `styles.css`.** Both overlays set
+  `display:grid`, and an author `display` beats the UA `[hidden]` rule — so the guide *and* the
+  rule modal were permanently on screen and the whole dashboard was unclickable. Never drop
+  that rule, and never gate an overlay on a class alone.
+- **`.guide-shell` pins `grid-template-rows: minmax(0, 100%)` and its children set `min-height: 0`.**
+  Without it the implicit `auto` row grows past the shell, the rail gets clipped off-screen, and
+  `.guide-body`'s internal scrolling stops working.
+- Korean copy sets `word-break: keep-all`; the default breaks mid-word and strands single syllables.
+- Verify with a real browser, not curl: `scratchpad/verify.mjs` (playwright-core) drives
+  open/close/ESC/backdrop, the rule modal, theme persistence, mobile, and console errors.
 
 ### Supporting pieces
 

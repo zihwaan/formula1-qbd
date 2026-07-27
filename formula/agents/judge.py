@@ -137,5 +137,5 @@ def _fallback(flagged: List[Verdict]) -> JudgeOutput:
     return JudgeOutput(
         score=round(0.75 - penalty, 3),
         rationale=f"[결정론 폴백] LLM 미사용. 룰북 지적 {len(flagged)}건을 감점 요인으로 반영한 기본 점수.",
-        suggestion="실제 심사 소견을 얻으려면 ANTHROPIC_API_KEY를 설정하고 재실행할 것.",
+        suggestion="실제 심사 소견을 얻으려면 GROQ_API_KEY(또는 ANTHROPIC_API_KEY)를 설정하고 재실행할 것.",
     )

@@ -3,6 +3,11 @@
 const $ = (id) => document.getElementById(id);
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+/* 서브경로 배포(zihwan.com/formula1) 대응 — 서버가 index.html에 주입한다.
+   단독 실행이면 빈 문자열이라 예전과 똑같이 /api/... 로 나간다. */
+const BASE = window.__BASE__ || "";
+const api = (path) => `${BASE}${path}`;
+
 let runId = null;
 let source = null;
 const candidates = new Map();   // candidate_id → {recipe, verdicts[], judges[], gate}
@@ -26,9 +31,10 @@ const NODE_H = 46;
 
 function buildGraph() {
   const svg = $("graph");
+  // 화살촉 색은 CSS 토큰(.arrowhead)에 맡긴다 — 라이트/다크 전환에 따라 같이 바뀌어야 한다.
   svg.innerHTML = `<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
       markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2a3240"/></marker></defs>`;
+      <path d="M 0 0 L 10 5 L 0 10 z" class="arrowhead"/></marker></defs>`;
 
   const byId = Object.fromEntries(NODES.map((n) => [n.id, n]));
   for (const [from, to] of EDGES) {
@@ -291,9 +297,12 @@ function renderWetlab(report) {
 }
 
 /* ── 근거 드릴다운 ──────────────────────────────────────────────── */
+let modalOpener = null;
+
 async function showRule(ruleId) {
   if (!ruleId) return;
-  const res = await fetch(`/api/rules/${encodeURIComponent(ruleId)}`);
+  modalOpener = document.activeElement;
+  const res = await fetch(api(`/api/rules/${encodeURIComponent(ruleId)}`));
   const body = $("modal-body");
   if (!res.ok) {
     body.innerHTML = `<h3>${ruleId}</h3><div class="src">원본 행을 찾지 못했습니다.</div>`;
@@ -306,9 +315,21 @@ async function showRule(ruleId) {
         .map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("")}</table>`;
   }
   $("modal").hidden = false;
+  document.body.style.overflow = "hidden";
+  $("modal-close").focus();
 }
-$("modal-close").onclick = () => ($("modal").hidden = true);
-$("modal").onclick = (e) => { if (e.target.id === "modal") $("modal").hidden = true; };
+
+function closeRule() {
+  $("modal").hidden = true;
+  document.body.style.overflow = "";
+  if (modalOpener && document.contains(modalOpener)) modalOpener.focus();
+  modalOpener = null;
+}
+$("modal-close").onclick = closeRule;
+$("modal").onclick = (e) => { if (e.target.id === "modal") closeRule(); };
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("modal").hidden) closeRule();
+});
 
 /* ── 실행 ───────────────────────────────────────────────────────── */
 function connect(path) {
@@ -328,12 +349,12 @@ $("run").onclick = async () => {
   $("consensus").hidden = true; $("replay").disabled = true;
   resetGraph();
   $("run").disabled = true;
-  const res = await fetch("/api/runs", {
+  const res = await fetch(api("/api/runs"), {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ request: $("request").value, smiles: $("smiles").value || null }),
   });
   runId = (await res.json()).run_id;
-  connect(`/api/runs/${runId}/stream`);
+  connect(api(`/api/runs/${runId}/stream`));
   $("run").disabled = false;
 };
 
@@ -342,12 +363,12 @@ $("replay").onclick = () => {
   candidates.clear(); tokenBuffers.clear();
   $("trace").innerHTML = ""; $("cands").innerHTML = "";
   $("consensus").hidden = true; resetGraph();
-  connect(`/api/runs/${runId}/replay`);
+  connect(api(`/api/runs/${runId}/replay`));
 };
 
 $("wl-submit").onclick = async () => {
   if (!runId) return;
-  const res = await fetch(`/api/runs/${runId}/wetlab`, {
+  const res = await fetch(api(`/api/runs/${runId}/wetlab`), {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       measurements: {
@@ -360,14 +381,27 @@ $("wl-submit").onclick = async () => {
   renderWetlab(await res.json());
 };
 
+/* ── 테마 ───────────────────────────────────────────────────────────
+   키는 머니메이트·브리핑과 공유('mm:theme'). 저장값이 없으면 시스템 설정을 따른다. */
+$("btn-theme").onclick = () => {
+  const root = document.documentElement;
+  const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const current = root.dataset.theme || (systemDark ? "dark" : "light");
+  const next = current === "dark" ? "light" : "dark";
+  root.dataset.theme = next;
+  try { localStorage.setItem("mm:theme", next); } catch (e) { /* 사생활 모드 — 무시 */ }
+};
+
 /* ── 초기화 ─────────────────────────────────────────────────────── */
 (async function init() {
   buildGraph();
-  const meta = await (await fetch("/api/meta")).json();
+  const meta = await (await fetch(api("/api/meta"))).json();
   const r = meta.rulebook;
   $("pill-rules").textContent =
     `룰북 ${r.total} (정량 ${r.quantitative} · 정성 ${r.qualitative} · 참조 ${r.reference})`;
   $("pill-rules").className = "pill ok";
-  $("pill-llm").textContent = meta.llm_available ? "LLM 연결됨" : "LLM 미연결 — 결정론 폴백";
+  $("pill-llm").textContent = meta.llm_available
+    ? `LLM ${meta.llm_model || "연결됨"}`
+    : "LLM 미연결 — 결정론 폴백";
   $("pill-llm").className = "pill " + (meta.llm_available ? "ok" : "warn");
 })();

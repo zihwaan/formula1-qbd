@@ -3,93 +3,137 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--BASE-->
   <title>Formula 1 — QbD 제형 설계 검증 엔진</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="static/styles.css">
+  <link rel="stylesheet" href="static/explainer.css">
+  <script>
+    /* 테마를 그리기 전에 적용해 첫 프레임 깜빡임을 막는다.
+       키는 머니메이트·브리핑과 공유('mm:theme') — 한 서비스에서 바꾸면 전체 반영. */
+    try {
+      const saved = localStorage.getItem("mm:theme");
+      if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+    } catch (e) { /* 사생활 모드 — 시스템 설정을 따른다 */ }
+  </script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo">F1</span>
-      <div>
-        <h1>Formula 1</h1>
-        <p>AI가 처방을 제안하고, 결정론적 규칙이 검증한다</p>
+  <nav class="masthead">
+    <div class="masthead-inner">
+      <a href="/" class="brand"><span class="back">←</span> 지환닷컴 <span class="sep">/</span> Formula 1</a>
+      <div class="masthead-actions">
+        <span class="pill" id="pill-rules">룰북 —</span>
+        <span class="pill" id="pill-llm">LLM —</span>
+        <button id="guide-open" class="btn btn-ghost" type="button">시스템 설명</button>
+        <button class="btn-icon" id="btn-theme" type="button" title="라이트/다크 전환" aria-label="라이트/다크 전환">◐</button>
       </div>
     </div>
-    <div class="meta" id="meta">
-      <span class="pill" id="pill-rules">룰북 —</span>
-      <span class="pill" id="pill-llm">LLM —</span>
-    </div>
-  </header>
+  </nav>
 
-  <section class="composer">
-    <input id="request" type="text" autocomplete="off"
-           value="소아용 바나나향 아세트아미노펜 정제를 설계해줘"
-           placeholder="설계 요구를 자연어로 입력 (예: 소아용 해열제 정제)">
-    <input id="smiles" type="text" autocomplete="off" placeholder="SMILES (선택)">
-    <button id="run">설계 실행</button>
-    <button id="replay" class="ghost" disabled>재생</button>
-  </section>
+  <div class="page">
+    <header class="hero">
+      <h1>Formula 1</h1>
+      <p>AI가 처방을 제안하고, 결정론적 규칙이 검증한다 — 실패를 미리 겪어보는 제형 설계 엔진</p>
+    </header>
 
-  <main class="grid">
-    <!-- ── 좌: 분자 / 스펙 ─────────────────────────────────────────── -->
-    <aside class="panel" id="panel-chem">
-      <h2>API 물리화학 <small>RDKit</small></h2>
-      <div id="chem-empty" class="empty">설계를 실행하면 구조와 descriptor가 표시됩니다.</div>
-      <div id="chem-body" hidden>
-        <div class="mol" id="mol-svg"></div>
-        <div class="kv" id="mol-id"></div>
-        <h3>구조 플래그</h3>
-        <div class="flags" id="mol-flags"></div>
-        <h3>Descriptor</h3>
-        <table class="desc" id="mol-desc"></table>
-        <h3>물성 추정</h3>
-        <div id="mol-est"></div>
-        <div id="mol-warn"></div>
-      </div>
-    </aside>
-
-    <!-- ── 중앙: 에이전트 그래프 + 트레이스 ──────────────────────────── -->
-    <section class="center">
-      <div class="panel graph-panel">
-        <h2>에이전트 흐름 <small>노드가 실행되면 점등 · 심사관은 조건에 맞을 때만 소집</small></h2>
-        <svg id="graph" viewBox="0 0 980 300" preserveAspectRatio="xMidYMid meet"></svg>
-        <div class="legend">
-          <span><i class="sw det"></i>결정론 (오차 0%)</span>
-          <span><i class="sw llm"></i>LLM 판단</span>
-          <span><i class="sw jud"></i>동적 소집 심사관</span>
-        </div>
-      </div>
-      <div class="panel trace-panel">
-        <h2>실행 트레이스 <small>규칙 발동을 클릭하면 원본 CSV 행과 출처를 봅니다</small></h2>
-        <div id="trace" class="trace"></div>
-      </div>
+    <section class="composer">
+      <input id="request" type="text" autocomplete="off"
+             value="소아용 바나나향 아세트아미노펜 정제를 설계해줘"
+             placeholder="설계 요구를 자연어로 입력 (예: 소아용 해열제 정제)">
+      <input id="smiles" type="text" autocomplete="off" placeholder="SMILES (선택)">
+      <button id="run">설계 실행</button>
+      <button id="replay" class="ghost" disabled>재생</button>
     </section>
 
-    <!-- ── 우: 후보 / 합의 / wet-lab ────────────────────────────────── -->
-    <aside class="panel" id="panel-cands">
-      <h2>후보 처방 <small id="cand-count"></small></h2>
-      <div id="cands" class="cands">
-        <div class="empty">아직 생성된 후보가 없습니다.</div>
-      </div>
-      <div id="consensus" class="consensus" hidden></div>
-      <details class="wetlab">
-        <summary>실험 결과 재입력 (closed loop)</summary>
-        <label>용출 30분 (%)<input id="wl-diss" type="number" value="45"></label>
-        <label>경도 (N)<input id="wl-hard" type="number" value="55"></label>
-        <label>총 불순물 (%)<input id="wl-imp" type="number" step="0.1" value="0.2"></label>
-        <button id="wl-submit" class="ghost">해석 요청</button>
-        <div id="wl-out"></div>
-      </details>
-    </aside>
-  </main>
+    <main class="grid">
+      <!-- ── 좌: 분자 / 스펙 ─────────────────────────────────────────── -->
+      <aside class="panel" id="panel-chem">
+        <h2>API 물리화학 <small>RDKit</small></h2>
+        <div id="chem-empty" class="empty">설계를 실행하면 구조와 descriptor가 표시됩니다.</div>
+        <div id="chem-body" hidden>
+          <div class="mol" id="mol-svg"></div>
+          <div class="kv" id="mol-id"></div>
+          <h3>구조 플래그</h3>
+          <div class="flags" id="mol-flags"></div>
+          <h3>Descriptor</h3>
+          <table class="desc" id="mol-desc"></table>
+          <h3>물성 추정</h3>
+          <div id="mol-est"></div>
+          <div id="mol-warn"></div>
+        </div>
+      </aside>
 
+      <!-- ── 중앙: 에이전트 그래프 + 트레이스 ──────────────────────────── -->
+      <section class="center">
+        <div class="panel graph-panel">
+          <h2>에이전트 흐름 <small>노드가 실행되면 점등 · 심사관은 조건에 맞을 때만 소집</small></h2>
+          <svg id="graph" viewBox="0 0 980 300" preserveAspectRatio="xMidYMid meet"></svg>
+          <div class="legend">
+            <span><i class="sw det"></i>결정론 (오차 0%)</span>
+            <span><i class="sw llm"></i>LLM 판단</span>
+            <span><i class="sw jud"></i>동적 소집 심사관</span>
+          </div>
+        </div>
+        <div class="panel trace-panel">
+          <h2>실행 트레이스 <small>규칙 발동을 클릭하면 원본 CSV 행과 출처를 봅니다</small></h2>
+          <div id="trace" class="trace"></div>
+        </div>
+      </section>
+
+      <!-- ── 우: 후보 / 합의 / wet-lab ────────────────────────────────── -->
+      <aside class="panel" id="panel-cands">
+        <h2>후보 처방 <small id="cand-count"></small></h2>
+        <div id="cands" class="cands">
+          <div class="empty">아직 생성된 후보가 없습니다.</div>
+        </div>
+        <div id="consensus" class="consensus" hidden></div>
+        <details class="wetlab">
+          <summary>실험 결과 재입력 (closed loop)</summary>
+          <label>용출 30분 (%)<input id="wl-diss" type="number" value="45"></label>
+          <label>경도 (N)<input id="wl-hard" type="number" value="55"></label>
+          <label>총 불순물 (%)<input id="wl-imp" type="number" step="0.1" value="0.2"></label>
+          <button id="wl-submit" class="ghost">해석 요청</button>
+          <div id="wl-out"></div>
+        </details>
+      </aside>
+    </main>
+  </div>
+
+  <!-- 규칙 근거 드릴다운 -->
   <div id="modal" class="modal" hidden>
-    <div class="modal-card">
-      <button class="close" id="modal-close">✕</button>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="규칙 근거">
+      <button class="close" id="modal-close" type="button" aria-label="닫기">✕</button>
       <div id="modal-body"></div>
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <!-- 시스템 설명 오버레이 (explainer.js가 내용을 채운다) -->
+  <div id="guide" class="guide" hidden>
+    <div class="guide-shell" role="dialog" aria-modal="true" aria-label="Formula 1 시스템 설명">
+      <nav class="guide-rail">
+        <div class="guide-rail-head">
+          <strong>어떻게 동작하나</strong>
+          <small id="guide-count"></small>
+        </div>
+        <ol id="guide-nav"></ol>
+        <button id="guide-close-rail" class="guide-skip" type="button">닫고 직접 실행하기 →</button>
+      </nav>
+      <div class="guide-main">
+        <button class="guide-x" id="guide-close" type="button" aria-label="닫기">✕</button>
+        <div class="guide-body" id="guide-body"></div>
+        <footer class="guide-foot">
+          <div class="guide-dots" id="guide-dots"></div>
+          <div class="guide-nav-btns">
+            <button id="guide-prev" class="ghost" type="button">← 이전</button>
+            <button id="guide-next" type="button">다음 →</button>
+          </div>
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <script src="static/explainer.js"></script>
+  <script src="static/app.js"></script>
 </body>
 </html>

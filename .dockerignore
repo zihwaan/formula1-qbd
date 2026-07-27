@@ -1,0 +1,12 @@
+.git
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.DS_Store
+.env
+.env.*
+추가자료/
+*.docx
+docs/
+database/legacy/*.md

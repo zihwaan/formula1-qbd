@@ -14,17 +14,21 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import os
+import re
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from formula.agents.client import credentials_available
+from formula.agents.client import credentials_available, provider, provider_label
 from formula.checkers.registry import RulebookRegistry
 from formula.chem.profile import build_profile
 from formula.contracts import EventKind, TraceEvent, WetLabResult
@@ -35,11 +39,23 @@ from formula.orchestrator.runner import Run
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = Path(__file__).resolve().parent / "static"
 
+# 리버스 프록시 뒤 서브경로로 서빙할 때의 접두부 (예: "/formula1").
+# 프록시가 접두부를 떼고 넘기므로 FastAPI 라우트는 그대로 두고, HTML에만 base를 주입한다.
+# 빈 값이면 단독 실행(http://localhost:8000)과 완전히 동일하게 동작한다.
+_prefix = os.environ.get("BASE_PATH", "").strip().strip("/")
+BASE_PATH = f"/{_prefix}" if _prefix else ""
+
+# 공개 배포용 상한. 24시간 도는 서버라 인메모리 저장소가 무한히 자라면 안 되고,
+# 동시 실행이 몰리면 무료 티어 rate limit을 그대로 태워 버린다.
+MAX_STORED_RUNS = 40
+MAX_ACTIVE_RUNS = 3
+
 app = FastAPI(title="Formula 1 — QbD 제형 설계 검증 엔진")
 
 # 실행 중/완료된 run 보관 (단일 프로세스 데모용 인메모리 저장소)
-RUNS: Dict[str, Run] = {}
+RUNS: "OrderedDict[str, Run]" = OrderedDict()
 QUEUES: Dict[str, List[asyncio.Queue]] = {}
+ACTIVE: set = set()
 
 _registry: Optional[RulebookRegistry] = None
 
@@ -75,16 +91,29 @@ class WetLabRequest(BaseModel):
 # ---------------------------------------------------------------------------
 @app.post("/api/runs")
 async def create_run(payload: RunRequest) -> Dict[str, str]:
+    # 공개 엔드포인트라 동시 실행을 제한한다 — 무료 티어 rate limit과 파드 메모리 보호.
+    if len(ACTIVE) >= MAX_ACTIVE_RUNS:
+        raise HTTPException(429, f"동시 실행 {MAX_ACTIVE_RUNS}건 초과 — 잠시 후 다시 시도하세요")
+
     execution = Run(ROOT, payload.request, smiles=payload.smiles)
     RUNS[execution.run_id] = execution
     QUEUES[execution.run_id] = []
+    ACTIVE.add(execution.run_id)
+
+    # 오래된 run은 버린다(재생 기능은 최근 것만 지원). 24시간 도는 서버라 필요하다.
+    while len(RUNS) > MAX_STORED_RUNS:
+        stale_id, _ = RUNS.popitem(last=False)
+        QUEUES.pop(stale_id, None)
 
     async def drive() -> None:
-        async for event in execution.stream():
+        try:
+            async for event in execution.stream():
+                for queue in QUEUES.get(execution.run_id, []):
+                    queue.put_nowait(event)
+        finally:
+            ACTIVE.discard(execution.run_id)
             for queue in QUEUES.get(execution.run_id, []):
-                queue.put_nowait(event)
-        for queue in QUEUES.get(execution.run_id, []):
-            queue.put_nowait(None)
+                queue.put_nowait(None)
 
     asyncio.create_task(drive())
     return {"run_id": execution.run_id}
@@ -226,15 +255,57 @@ async def meta() -> Dict[str, Any]:
                     for e in reg.entries],
         "reviewers": reviewers,
         "llm_available": credentials_available(),
+        "llm_provider": provider(),
+        "llm_model": provider_label(),
     }
 
 
 # ---------------------------------------------------------------------------
 # 정적 파일 (빌드 스텝 없는 SPA)
 # ---------------------------------------------------------------------------
+def _asset_version(name: str) -> str:
+    """정적 파일 내용의 짧은 해시. 배포마다 URL이 바뀌어 캐시가 자동으로 갈린다."""
+    path = STATIC / name
+    if not path.exists():
+        return "0"
+    return hashlib.sha1(path.read_bytes()).hexdigest()[:8]
+
+
 @app.get("/")
-async def index() -> FileResponse:
-    return FileResponse(STATIC / "index.html")
+async def index() -> HTMLResponse:
+    """서브경로 배포를 위해 `<base>`와 `window.__BASE__`를 주입해 내려준다.
+
+    BASE_PATH가 비어 있으면 원본 HTML과 동일하다(로컬 단독 실행 그대로).
+
+    또한 `static/app.js` 같은 참조에 내용 해시(`?v=`)를 붙인다. 이 SPA는 빌드 스텝이 없어
+    파일명에 해시가 없고, 공개 경로 앞단의 Cloudflare가 `.js`/`.css`를 기본 4시간 캐시한다
+    (origin이 Cache-Control을 안 보내면 `max-age=14400`). 해시를 붙이지 않으면 재배포 후에도
+    한동안 옛 스크립트가 서빙된다 — 실제로 겪은 문제다.
+    """
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    injected = (
+        f'<base href="{BASE_PATH}/">\n'
+        f'  <script>window.__BASE__ = "{BASE_PATH}";</script>'
+    )
+    html = html.replace("<!--BASE-->", injected)
+    html = re.sub(
+        r'(href|src)="static/([^"?]+)"',
+        lambda m: f'{m.group(1)}="static/{m.group(2)}?v={_asset_version(m.group(2))}"',
+        html,
+    )
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache, must-revalidate"})
 
 
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
+class RevalidatingStatic(StaticFiles):
+    """정적 응답에 `no-cache`를 달아 중간 캐시가 항상 재검증하게 한다.
+
+    `?v=` 해시가 이미 캐시를 갈라 주지만, 해시 없이 직접 열린 URL이 4시간 굳는 일을 막는다.
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+
+app.mount("/static", RevalidatingStatic(directory=STATIC), name="static")
