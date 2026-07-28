@@ -29,10 +29,12 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
+from collections import deque
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
+from typing import Any, Callable, Deque, Dict, List, Optional, Tuple, Type, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -57,6 +59,8 @@ GROQ_MAX_TOKENS = 1200
 GROQ_TPM_MARGIN = 400      # 토큰 추정 오차 흡수용 여유
 GROQ_MIN_COMPLETION = 700  # 이보다 적게 남으면 프롬프트를 줄인다
 GROQ_TIMEOUT = 150.0
+# 예산이 빌 때까지 기다릴 최대 시간. 이걸 넘기면 LLMUnavailable → 결정론 폴백.
+GROQ_WAIT_BUDGET = 75.0
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -199,6 +203,62 @@ def _httpx():
     return httpx
 
 
+class _TokenBudget:
+    """모델별 분당 토큰(TPM)을 **클라이언트에서 직접 회계한다.**
+
+    왜 필요한가: LangGraph가 심사관·설계자를 병렬 팬아웃하므로 여러 스레드가 동시에
+    Groq를 때린다. 서버 쪽 한도에 부딪히면 429가 돌아오고 호출부는 결정론 폴백으로
+    내려가 **가짜 점수가 화면에 남는다.** 429를 맞고 포기하는 대신, 여기서 순번을
+    기다렸다가 예산이 있는 모델로 보내면 실제 LLM 판단을 받을 수 있다.
+
+    모델마다 버킷이 독립이므로(합계 26,000 TPM) 세 개를 번갈아 쓰면 처리량이 는다.
+    노드는 스레드에서 돌기 때문에 이벤트 루프를 막지 않는다.
+    """
+
+    def __init__(self) -> None:
+        self._spent: Dict[str, Deque[Tuple[float, int]]] = {m: deque() for m in GROQ_TPM}
+        self._lock = threading.Lock()
+
+    def _remaining(self, model: str, now: float) -> int:
+        window = self._spent[model]
+        while window and now - window[0][0] > 60.0:
+            window.popleft()
+        used = sum(tokens for _, tokens in window)
+        return GROQ_TPM[model] - GROQ_TPM_MARGIN - used
+
+    def acquire(self, need: Dict[str, int], deadline: float) -> Optional[str]:
+        """`need[model]` 만큼 예산이 있는 모델을 잡아 이름을 돌려준다.
+
+        전부 막혀 있으면 창이 열릴 때까지 짧게 기다렸다 다시 본다. deadline을 넘기면 None.
+        """
+        while True:
+            now = time.monotonic()
+            with self._lock:
+                # 남은 예산이 가장 많은 모델부터 — 큰 버킷을 우선 쓰면 대기가 줄어든다.
+                for model in sorted(need, key=lambda m: -self._remaining(m, now)):
+                    if self._remaining(model, now) >= need[model]:
+                        self._spent[model].append((now, need[model]))
+                        return model
+            if now >= deadline:
+                return None
+            time.sleep(0.4)
+
+    def settle(self, model: str, reserved: int, actual: Optional[int]) -> None:
+        """실제 사용량이 오면 예약분을 그것으로 정정한다(과다 예약이 다음 호출을 막지 않게)."""
+        if actual is None or actual >= reserved:
+            return
+        with self._lock:
+            window = self._spent[model]
+            for i in range(len(window) - 1, -1, -1):
+                stamp, tokens = window[i]
+                if tokens == reserved:
+                    window[i] = (stamp, actual)
+                    return
+
+
+_BUDGET = _TokenBudget()
+
+
 def _estimate_tokens(text: str) -> int:
     """토큰 수 보수적 추정. 한글은 글자당 약 1토큰, ASCII는 3.5자당 1토큰으로 잡는다.
 
@@ -225,8 +285,12 @@ def _trim_to_tokens(text: str, budget: int) -> str:
 
 
 def _groq_payload(model: str, system: str, user: str, effort: str,
-                  max_tokens: int, stream: bool) -> Dict[str, Any]:
-    """TPM 예산 안에 들어가도록 max_tokens를 깎고, 그래도 넘치면 프롬프트를 줄인다."""
+                  max_tokens: int, stream: bool) -> Tuple[Dict[str, Any], int]:
+    """(요청 본문, 예약 토큰)을 만든다.
+
+    TPM 한도에는 `max_tokens`도 포함되므로 모델 예산 안에 들어가게 깎고,
+    그래도 넘치면 프롬프트 가운데(RAG 근거)를 덜어낸다.
+    """
     budget = GROQ_TPM.get(model, 6000) - GROQ_TPM_MARGIN
     prompt_tokens = _estimate_tokens(system) + _estimate_tokens(user)
 
@@ -250,49 +314,88 @@ def _groq_payload(model: str, system: str, user: str, effort: str,
         # gpt-oss의 추론 토큰은 completion에서 나간다. 기본(고노력)으로 두면 추론이 예산을
         # 다 먹고 content가 비어 오므로 항상 low로 고정한다.
         payload["reasoning_effort"] = "low"
-    return payload
+    return payload, prompt_tokens + allowed
+
+
+def _reserve_for(system: str, user: str, effort: str, max_tokens: int, stream: bool):
+    """모델별 예약 토큰 계산기 — _groq_with_fallback 이 예산 배정에 쓴다."""
+    return lambda model: _groq_payload(model, system, user, effort, max_tokens, stream)[1]
 
 
 def _groq_headers() -> Dict[str, str]:
     return {"Authorization": f"Bearer {_groq_key()}", "Content-Type": "application/json"}
 
 
-def _groq_call(payload: Dict[str, Any]) -> str:
-    """비스트리밍 호출 1회. HTTP 오류는 그대로 올려 상위에서 폴백을 판단하게 한다."""
+def _groq_call(payload: Dict[str, Any]) -> Tuple[str, Optional[int]]:
+    """비스트리밍 호출 1회. (본문, 실제 사용 토큰)을 돌려준다."""
     httpx = _httpx()
     response = httpx.post(GROQ_URL, headers=_groq_headers(), json=payload, timeout=GROQ_TIMEOUT)
     response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"] or ""
+    data = response.json()
+    used = (data.get("usage") or {}).get("total_tokens")
+    return data["choices"][0]["message"]["content"] or "", used
 
 
-def _groq_with_fallback(call: Callable[[str], Any]) -> Any:
-    """모델 체인을 돌며 call(model)을 시도한다.
+def _friendly(error: Exception) -> str:
+    """사용자 화면에 나갈 사유 문구. 원시 HTTP 본문·URL을 그대로 노출하지 않는다."""
+    httpx = _httpx()
+    if isinstance(error, httpx.HTTPStatusError):
+        status = error.response.status_code
+        if status in (429, 413):
+            return "무료 티어 분당 토큰 한도 도달"
+        if status in (401, 403):
+            return "LLM 자격증명 거부됨"
+        if status >= 500:
+            return "LLM 제공자 서버 오류"
+        return f"LLM 호출 거부됨({status})"
+    if isinstance(error, ValidationError):
+        return "구조화 출력이 스키마를 만족하지 못함"
+    if isinstance(error, (httpx.TimeoutException, httpx.TransportError)):
+        return "LLM 응답 시간 초과"
+    return "LLM 호출 실패"
 
-    핵심: **모델마다 TPM 버킷이 따로다.** 한 모델이 429면 기다리는 게 아니라 곧바로 다음
-    모델로 넘기는 편이 훨씬 빠르다(분당 총 헤드룸 = 세 모델 합). 체인을 한 바퀴 다 돌아
-    전부 막혔을 때만 잠깐 쉬고 두 번째 바퀴를 돈다. 그래도 안 되면 LLMUnavailable →
-    호출부가 결정론 폴백으로 내려가고 화면은 계속 진행된다.
+
+def _groq_with_fallback(need: Callable[[str], int], call: Callable[[str], Any]) -> Any:
+    """예산이 있는 모델을 배정받아 call(model)을 실행한다.
+
+    429를 맞고 폴백하는 대신 **_TokenBudget에서 순번을 기다린다** — 화면에 가짜 점수가
+    남지 않게 하려는 것이 목적이다. 그럼에도 실패하면(자격증명·스키마·타임아웃) 사유를
+    사람이 읽을 수 있는 문구로 정규화해 올린다.
     """
     httpx = _httpx()
+    deadline = time.monotonic() + GROQ_WAIT_BUDGET
     last_error: Optional[Exception] = None
-    for round_index in range(2):
-        if round_index:
-            time.sleep(5)  # 체인 전체가 한도에 걸렸다 — 버킷이 조금 회복될 시간만 준다
-        for model in GROQ_MODELS:
-            try:
-                return call(model)
-            except httpx.HTTPStatusError as exc:
-                last_error = exc
-                status = exc.response.status_code
-                if status in (429, 413) or status >= 500:
-                    continue  # 다른 TPM 버킷으로 즉시 이동
-                raise LLMUnavailable(f"Groq 호출 실패({status}): {exc}") from exc
-            except ValidationError as exc:
-                last_error = exc  # 스키마 위반 → 힌트를 붙여 다음 모델로
-            except Exception as exc:
-                last_error = exc
-                break
-    raise LLMUnavailable(f"Groq 호출 실패: {last_error}")
+    blocked: set = set()
+
+    for _ in range(len(GROQ_MODELS) + 1):
+        budget = {m: need(m) for m in GROQ_MODELS if m not in blocked}
+        if not budget:
+            break
+        model = _BUDGET.acquire(budget, deadline)
+        if model is None:
+            raise LLMUnavailable("무료 티어 분당 토큰 한도 — 대기 시간 초과")
+        try:
+            return call(model)
+        except httpx.HTTPStatusError as exc:
+            last_error = exc
+            status = exc.response.status_code
+            if status in (429, 413):
+                # 우리 회계보다 서버가 빡빡했다 — 이 모델은 이번 호출에서 제외하고 다음으로.
+                blocked.add(model)
+                continue
+            if status >= 500:
+                blocked.add(model)
+                continue
+            raise LLMUnavailable(_friendly(exc)) from exc
+        except ValidationError as exc:
+            last_error = exc      # 스키마 위반 → 힌트를 붙여 다른 모델로 한 번 더
+            blocked.add(model)
+            continue
+        except Exception as exc:
+            last_error = exc
+            raise LLMUnavailable(_friendly(exc)) from exc
+
+    raise LLMUnavailable(_friendly(last_error) if last_error else "LLM 호출 실패")
 
 
 def _schema_instruction(output_format: Type[T]) -> str:
@@ -324,9 +427,10 @@ def _groq_parse(output_format: Type[T], system_prefix: str, user: str,
 
     def attempt(model: str) -> T:
         nonlocal hint
-        payload = _groq_payload(model, system, user + hint, effort, max_tokens, stream=False)
+        payload, reserved = _groq_payload(model, system, user + hint, effort, max_tokens, stream=False)
         payload["response_format"] = {"type": "json_object"}
-        raw = _groq_call(payload)
+        raw, used = _groq_call(payload)
+        _BUDGET.settle(model, reserved, used)
         try:
             return output_format.model_validate_json(_strip_fence(raw))
         except ValidationError as exc:
@@ -334,7 +438,8 @@ def _groq_parse(output_format: Type[T], system_prefix: str, user: str,
             hint = f"\n\n## 직전 출력이 스키마를 위반했다 — 고쳐서 다시 출력하라\n{exc}"
             raise
 
-    return _groq_with_fallback(attempt)
+    return _groq_with_fallback(
+        _reserve_for(system, user, effort, max_tokens, False), attempt)
 
 
 def _groq_stream(system_prefix: str, user: str, on_delta: Optional[Callable[[str], None]],
@@ -343,7 +448,7 @@ def _groq_stream(system_prefix: str, user: str, on_delta: Optional[Callable[[str
 
     def attempt(model: str) -> str:
         httpx = _httpx()
-        payload = _groq_payload(model, system, user, effort, max_tokens, stream=True)
+        payload, _reserved = _groq_payload(model, system, user, effort, max_tokens, stream=True)
         chunks: List[str] = []
         with httpx.stream("POST", GROQ_URL, headers=_groq_headers(),
                           json=payload, timeout=GROQ_TIMEOUT) as response:
@@ -368,7 +473,8 @@ def _groq_stream(system_prefix: str, user: str, on_delta: Optional[Callable[[str
                     on_delta(text)
         return "".join(chunks)
 
-    return _groq_with_fallback(attempt)
+    return _groq_with_fallback(
+        _reserve_for(system, user, effort, max_tokens, True), attempt)
 
 
 # ---------------------------------------------------------------------------

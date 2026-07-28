@@ -64,17 +64,25 @@ The Groq path differs from Anthropic in ways that caused real failures:
 - **`max_tokens` counts against the per-minute token limit (TPM).** A 2-token prompt with
   `max_tokens: 8192` returns **413** on the 8,000-TPM tier. `_groq_payload` therefore shrinks
   `max_tokens` to fit `GROQ_TPM[model]` and trims the prompt's middle if even that won't fit.
-- **Each model has its own TPM bucket**, so on 429 the chain moves to the next model immediately
-  rather than sleeping; only a full lap through the chain waits. Measured limits are in `GROQ_TPM`
-  (`x-ratelimit-limit-tokens` header) — llama-3.3-70b has the most headroom, hence it's first.
+- **`_TokenBudget` meters TPM client-side — this is what keeps stand-in scores off the screen.**
+  LangGraph fans generators and judges out in parallel, so without metering they hit Groq at once,
+  collect 429s, and every judge falls back to a fabricated score that still renders as an opinion.
+  The budget makes callers *queue* for a model with headroom (buckets are per-model, ~26k TPM
+  combined) instead of failing. Measured: 4/4 judges fake before, 0 after — including two
+  concurrent runs. Cost is latency: a full run is ~60s, not 11s. **Don't "speed it up" by removing
+  the wait** — that trades real judgements for fake ones.
+- Reserved tokens are reconciled with `usage.total_tokens` (`settle`) so over-reservation doesn't
+  starve the next call. `GROQ_WAIT_BUDGET` caps how long a caller waits before giving up.
+- The judge's score-extraction call must not resend the whole evaluation prompt — that doubled
+  token spend was the main reason the budget ran out mid-run.
 - **Structured output is `json_object` + schema in the system prompt**, not strict `json_schema`
   (which rejects the `$ref`/`anyOf` shapes Pydantic emits), with a validation-error retry hint.
 - **gpt-oss reasoning tokens come out of the completion budget** → `reasoning_effort` is pinned
   `low`, otherwise reasoning eats the cap and `content` arrives empty.
 
-A full LLM-backed run does not fit in one minute of free-tier tokens, so later judges may fall
-back to deterministic stand-ins mid-run. That is the designed degradation, and the UI labels it
-(`source: deterministic-fallback` + a warning event) — don't "fix" it by hiding the warning.
+Deterministic stand-ins still exist for the no-key case, but they must never masquerade as real
+judgements: the UI tags them (`.judge-note.stand-in` + "규칙 기반 대체 점수 · LLM 미사용") and the
+run summary says how many nodes used them. Keep both signals if you touch that path.
 
 ## Architecture — the manifest is the linchpin
 
@@ -132,8 +140,19 @@ theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one ser
   Without it the implicit `auto` row grows past the shell, the rail gets clipped off-screen, and
   `.guide-body`'s internal scrolling stops working.
 - Korean copy sets `word-break: keep-all`; the default breaks mid-word and strands single syllables.
-- Verify with a real browser, not curl: `scratchpad/verify.mjs` (playwright-core) drives
-  open/close/ESC/backdrop, the rule modal, theme persistence, mobile, and console errors.
+- **Everything rendered is untrusted** — ingredient names and rationales come from an LLM, table
+  rows from CSVs, the request from the user. `app.js` has an `esc()` helper and every `${}` inside
+  an `innerHTML` template must go through it. A browser test injects `<img onerror>` through five
+  render paths (`addTrace`, `renderConsensus`, `renderWetlab`, `renderCandidates`, `renderChem`)
+  and asserts zero executions.
+- **The run button is a lock, not decoration.** `setRunning()` owns button state, the elapsed
+  counter, and replay availability; without it users fire overlapping runs and burn the token
+  budget. Failures from `POST /api/runs` (429 from the hub limiter, 5xx) surface in `#notice`.
+- **A dropped SSE stream must not lose the run.** `stream_run` replays `bus.history` to any new
+  subscriber, so `connect()` retries up to 3 times, clearing the view first and letting the replay
+  rebuild it. Observed live: a QUIC-layer disconnect used to strand the user on a half-finished run.
+- Verify with a real browser, not curl: `scratchpad/verify.mjs` (33 interaction checks) and
+  `scratchpad/audit.mjs` (XSS injection, double-run, stand-in exposure, a11y, 9 viewport widths).
 
 ### Supporting pieces
 

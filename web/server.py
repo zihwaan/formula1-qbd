@@ -70,20 +70,22 @@ def registry() -> RulebookRegistry:
 # ---------------------------------------------------------------------------
 # 요청 모델
 # ---------------------------------------------------------------------------
+# 공개 엔드포인트라 길이를 묶는다. 자연어 요구가 수십 KB일 이유가 없고,
+# 그대로 LLM 프롬프트에 들어가므로 토큰 예산과 비용에 직결된다.
 class RunRequest(BaseModel):
-    request: str = Field(description="자연어 설계 요구")
-    smiles: Optional[str] = None
+    request: str = Field(min_length=1, max_length=2000, description="자연어 설계 요구")
+    smiles: Optional[str] = Field(default=None, max_length=500)
 
 
 class ChemRequest(BaseModel):
-    api_name: str = ""
-    smiles: Optional[str] = None
+    api_name: str = Field(default="", max_length=200)
+    smiles: Optional[str] = Field(default=None, max_length=500)
 
 
 class WetLabRequest(BaseModel):
-    candidate_id: str = ""
+    candidate_id: str = Field(default="", max_length=100)
     measurements: Dict[str, float] = Field(default_factory=dict)
-    notes: str = ""
+    notes: str = Field(default="", max_length=2000)
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +296,12 @@ async def index() -> HTMLResponse:
         html,
     )
     return HTMLResponse(html, headers={"Cache-Control": "no-cache, must-revalidate"})
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> FileResponse:
+    """브라우저가 항상 찾는 경로 — 없으면 콘솔에 404가 남는다."""
+    return FileResponse(STATIC / "favicon.svg", media_type="image/svg+xml")
 
 
 class RevalidatingStatic(StaticFiles):

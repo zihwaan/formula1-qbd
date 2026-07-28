@@ -102,9 +102,14 @@ API {spec.api_name} · 대상 {spec.target_patient} · 제형 {spec.dosage_form}
                                 system_suffix=system_suffix, effort="medium")
         from formula.agents.client import parse_structured
 
+        # 점수 정리 호출에는 평가 맥락 전체를 다시 보내지 않는다. 방금 쓴 소견에 판단 근거가
+        # 이미 들어 있고, 프롬프트를 반복하면 토큰이 두 배로 든다(무료 티어에서 이 낭비가
+        # 분당 한도를 태워 심사관이 폴백으로 떨어지는 원인이었다).
         output = parse_structured(
             JudgeOutput, SYSTEM_BASE,
-            f"{user}\n\n## 당신이 방금 작성한 심사 소견\n{narration}\n\n이 소견을 점수로 정리하라.",
+            f"## 평가 대상\n{recipe.candidate_id} · {recipe.strategy} · {recipe.process}\n\n"
+            f"## 당신이 방금 작성한 심사 소견\n{narration}\n\n"
+            "이 소견을 스키마에 맞춰 점수로 정리하라. rationale에는 소견의 핵심을 옮긴다.",
             system_suffix=system_suffix, effort="low",
         )
         source = "llm"

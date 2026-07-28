@@ -1,0 +1,6 @@
+<!-- Formula 1 파비콘 — 지환닷컴 톤(검정 판 + 흰 글자)에 맞춘 단색 마크 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Formula 1">
+  <rect width="64" height="64" rx="14" fill="#0a0a0a"/>
+  <text x="32" y="44" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="34" font-weight="800" letter-spacing="-2" fill="#f5f5f5">F1</text>
+</svg>

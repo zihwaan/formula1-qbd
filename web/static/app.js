@@ -8,6 +8,28 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const BASE = window.__BASE__ || "";
 const api = (path) => `${BASE}${path}`;
 
+/* 화면에 들어오는 값은 전부 남이 만든 것이다 — LLM이 지은 성분명·심사 소견,
+   약대생 팀이 채운 CSV 행, 사용자가 입력한 요구 문장. 이스케이프 없이 innerHTML에
+   넣으면 그대로 실행된다. 문자열 보간에는 반드시 esc()를 통과시킨다. */
+const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+}[ch]));
+
+/* 사용자에게 상태·오류를 알리는 단일 통로. aria-live라 스크린리더도 읽는다. */
+let noticeTimer = null;
+function notice(message, kind = "info", persist = false) {
+  const box = $("notice");
+  box.textContent = message;
+  box.className = `notice ${kind}`;
+  box.hidden = false;
+  clearTimeout(noticeTimer);
+  if (!persist) noticeTimer = setTimeout(() => { box.hidden = true; }, 7000);
+}
+function clearNotice() {
+  clearTimeout(noticeTimer);
+  $("notice").hidden = true;
+}
+
 let runId = null;
 let source = null;
 const candidates = new Map();   // candidate_id → {recipe, verdicts[], judges[], gate}
@@ -111,7 +133,7 @@ function resetGraph() {
 function addTrace(seq, node, msg, cls = "", ruleId = null) {
   const row = document.createElement("div");
   row.className = `ev ${cls}` + (ruleId ? " clickable" : "");
-  row.innerHTML = `<span class="seq">${seq}</span><span class="node">${node}</span>
+  row.innerHTML = `<span class="seq">${esc(seq)}</span><span class="node">${esc(node)}</span>
                    <span class="msg"></span>`;
   row.querySelector(".msg").textContent = msg;
   if (ruleId) row.onclick = () => showRule(ruleId);
@@ -182,7 +204,12 @@ function handle(kind, ev) {
     case "judge.verdict": {
       setNode(`judge-${p.reviewer_id}`, "done");
       const entry = candidates.get(p.rulebook_id);
-      if (entry) entry.judges.push(p);
+      if (entry) {
+        // 반성 루프로 같은 후보가 다시 심사되면 소견이 쌓인다 — 심사관당 최신 1건만 남긴다.
+        const at = entry.judges.findIndex((j) => j.reviewer_id === p.reviewer_id);
+        if (at >= 0) entry.judges[at] = p;
+        else entry.judges.push(p);
+      }
       addTrace(ev.seq, ev.node, `점수 ${p.score} — ${p.rationale.slice(0, 80)}`);
       renderCandidates();
       break;
@@ -197,15 +224,17 @@ function handle(kind, ev) {
       break;
 
     case "warning":
-      addTrace(ev.seq, ev.node, p.reason + (p.fallback ? " → 결정론 폴백" : ""), "warn");
+      addTrace(ev.seq, ev.node, p.reason + (p.fallback ? " → 규칙 기반 대체" : ""), "warn");
+      if (p.fallback) degraded.add(ev.node);
       break;
     case "error":
       addTrace(ev.seq, ev.node, `오류: ${p.error}`, "hard_fail");
+      notice(`실행 중 오류가 발생했습니다 — ${p.error}`, "error", true);
       break;
     case "wetlab": renderWetlab(p); break;
     case "run.end":
       addTrace(ev.seq, "run", `완료 · status=${p.status} · winner=${p.winner || "없음"}`);
-      $("replay").disabled = false;
+      finishRun(p);
       break;
   }
 }
@@ -220,17 +249,17 @@ function renderChem(p) {
     : `${p.api_name} — SMILES 미상`;
 
   $("mol-flags").innerHTML = (p.flags || []).map((f) =>
-    `<span class="flag ${f.present ? "on" : ""}">${f.flag_name}</span>`).join("");
+    `<span class="flag ${f.present ? "on" : ""}">${esc(f.flag_name)}</span>`).join("");
 
   $("mol-desc").innerHTML = Object.entries(p.descriptors || {}).map(([k, v]) =>
-    `<tr><td>${k}</td><td>${Number(v).toFixed(2)}</td></tr>`).join("");
+    `<tr><td>${esc(k)}</td><td>${Number(v).toFixed(2)}</td></tr>`).join("");
 
   $("mol-est").innerHTML = (p.estimates || []).map((e) =>
-    `<div class="est"><b>${e.property}</b> = ${e.value}
-     <span class="${e.confidence === "low" ? "lo" : ""}">[${e.confidence}]</span></div>`).join("");
+    `<div class="est"><b>${esc(e.property)}</b> = ${esc(e.value)}
+     <span class="${e.confidence === "low" ? "lo" : ""}">[${esc(e.confidence)}]</span></div>`).join("");
 
   $("mol-warn").innerHTML = (p.warnings || []).length
-    ? `<div class="warn">⚠ ${p.warnings.join("<br>⚠ ")}</div>` : "";
+    ? `<div class="warn">⚠ ${p.warnings.map(esc).join("<br>⚠ ")}</div>` : "";
 }
 
 function renderCandidates() {
@@ -243,15 +272,15 @@ function renderCandidates() {
     const card = document.createElement("div");
     card.className = "card " + (gate ? (gate.passed ? "pass" : "fail") : "");
     const ings = entry.recipe.ingredients
-      .map((i) => `${i.name} ${i.amount_mg ?? "-"}mg`).join(" · ");
+      .map((i) => `${esc(i.name)} ${esc(i.amount_mg ?? "-")}mg`).join(" · ");
     const chips = entry.verdicts.map((v) =>
-      `<span class="chip ${v.status}" data-rule="${v.rule_id}">${v.rule_id}</span>`).join("");
+      `<span class="chip ${esc(v.status)}" data-rule="${esc(v.rule_id)}">${esc(v.rule_id)}</span>`).join("");
     const judges = entry.judges.map((j) =>
-      `<div class="judge-note"><b>${j.persona}</b> ${j.score} — ${j.rationale}</div>`).join("");
+      `<div class="judge-note ${j.source === "deterministic-fallback" ? "stand-in" : ""}"><b>${esc(j.persona)}</b> ${esc(j.score)}${j.source === "deterministic-fallback" ? ' <span class="stand-in-tag">규칙 기반 대체 점수 · LLM 미사용</span>' : ""} — ${esc(j.rationale)}</div>`).join("");
     card.innerHTML = `
-      <h4>${id}<span class="tag">${entry.recipe.strategy} · ${entry.recipe.process || ""}</span></h4>
+      <h4>${esc(id)}<span class="tag">${esc(entry.recipe.strategy)} · ${esc(entry.recipe.process || "")}</span></h4>
       <div class="ing">${ings}</div>
-      <div class="ing">포장: ${entry.recipe.packaging || "-"}</div>
+      <div class="ing">포장: ${esc(entry.recipe.packaging || "-")}</div>
       <div class="chips">${chips}</div>${judges}`;
     card.querySelectorAll(".chip").forEach((chip) => {
       chip.onclick = () => showRule(chip.dataset.rule);
@@ -264,14 +293,14 @@ function renderConsensus(p) {
   const el = $("consensus");
   el.hidden = false;
   const rows = (p.ranked || []).map((r) =>
-    `<div>${r.rank ? `#${r.rank} ` : "— "}<b>${r.candidate_id}</b>
-      점수 ${r.weighted_score ?? "-"} · 분산 ${r.variance ?? "-"} · 심사관 ${r.reviewers}
+    `<div>${r.rank ? `#${esc(r.rank)} ` : "— "}<b>${esc(r.candidate_id)}</b>
+      점수 ${esc(r.weighted_score ?? "-")} · 분산 ${esc(r.variance ?? "-")} · 심사관 ${esc(r.reviewers)}
       ${r.low_confidence ? " <span class='tag'>저신뢰</span>" : ""}
       ${r.eligible ? "" : " <span class='tag'>반려</span>"}</div>`).join("");
-  el.innerHTML = `<h3>합의 (${p.model})</h3>
-    <div class="win">선정: ${p.winner || "없음"}</div>${rows}
+  el.innerHTML = `<h3>합의 (${esc(p.model)})</h3>
+    <div class="win">선정: ${esc(p.winner || "없음")}</div>${rows}
     <div class="tag" style="margin-top:6px">심사관 점수는 순위 결정 전용 — 반려 권한 없음</div>
-    ${(p.rulebook_feedback || []).map((f) => `<div class="warn">${f}</div>`).join("")}`;
+    ${(p.rulebook_feedback || []).map((f) => `<div class="warn">${esc(f)}</div>`).join("")}`;
 }
 
 const tokenBuffers = new Map();
@@ -280,7 +309,7 @@ function streamToken(candidateId, reviewerId, delta) {
   if (!tokenBuffers.has(key)) {
     const row = document.createElement("div");
     row.className = "ev";
-    row.innerHTML = `<span class="seq">…</span><span class="node">${reviewerId}</span>
+    row.innerHTML = `<span class="seq">…</span><span class="node">${esc(reviewerId)}</span>
                      <span class="msg tok"></span>`;
     $("trace").appendChild(row);
     tokenBuffers.set(key, row.querySelector(".msg"));
@@ -291,9 +320,9 @@ function streamToken(candidateId, reviewerId, delta) {
 }
 
 function renderWetlab(report) {
-  $("wl-out").innerHTML = `<b>${report.summary}</b>` +
+  $("wl-out").innerHTML = `<b>${esc(report.summary)}</b>` +
     report.findings.filter((f) => f.off_target).map((f) =>
-      `<div class="warn">${f.metric}: ${f.interpretation}<br>→ ${f.suggested_revision}</div>`).join("");
+      `<div class="warn">${esc(f.metric)}: ${esc(f.interpretation)}<br>→ ${esc(f.suggested_revision)}</div>`).join("");
 }
 
 /* ── 근거 드릴다운 ──────────────────────────────────────────────── */
@@ -305,14 +334,14 @@ async function showRule(ruleId) {
   const res = await fetch(api(`/api/rules/${encodeURIComponent(ruleId)}`));
   const body = $("modal-body");
   if (!res.ok) {
-    body.innerHTML = `<h3>${ruleId}</h3><div class="src">원본 행을 찾지 못했습니다.</div>`;
+    body.innerHTML = `<h3>${esc(ruleId)}</h3><div class="src">원본 행을 찾지 못했습니다.</div>`;
   } else {
     const d = await res.json();
-    body.innerHTML = `<h3>${d.rule_id} · ${d.rulebook_id}</h3>
-      <div class="src">${d.file} · 전략 ${d.strategy} · polarity ${d.polarity}
-        ${d.sources_doc ? `<br>출처 문서: ${d.sources_doc}` : ""}</div>
+    body.innerHTML = `<h3>${esc(d.rule_id)} · ${esc(d.rulebook_id)}</h3>
+      <div class="src">${esc(d.file)} · 전략 ${esc(d.strategy)} · polarity ${esc(d.polarity)}
+        ${d.sources_doc ? `<br>출처 문서: ${esc(d.sources_doc)}` : ""}</div>
       <table>${Object.entries(d.row).filter(([, v]) => v !== "")
-        .map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("")}</table>`;
+        .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table>`;
   }
   $("modal").hidden = false;
   document.body.style.overflow = "hidden";
@@ -332,53 +361,184 @@ document.addEventListener("keydown", (e) => {
 });
 
 /* ── 실행 ───────────────────────────────────────────────────────── */
-function connect(path) {
+let running = false;
+const degraded = new Set();   // 이번 실행에서 규칙 기반 대체로 내려간 노드
+
+/* 스트림이 끊겨도 실행을 잃지 않는다.
+   서버는 재구독하는 클라이언트에게 이벤트 이력을 처음부터 다시 흘려 주므로
+   (`stream_run`의 bus.history 재생), 화면을 비우고 다시 붙으면 상태가 그대로 복원된다.
+   실제로 라이브에서 네트워크 계층 오류(QUIC)로 스트림이 끊기는 것을 관측했다. */
+const MAX_RECONNECT = 3;
+let streamClosedCleanly = false;
+let reconnects = 0;
+let reconnectTimer = null;
+
+function connect(path, { isReconnect = false } = {}) {
   if (source) source.close();
+  clearTimeout(reconnectTimer);
+  if (!isReconnect) { reconnects = 0; }
+  streamClosedCleanly = false;
+
   source = new EventSource(path);
   const kinds = ["run.start", "run.end", "node.enter", "node.exit", "chem.profile",
     "spec.ready", "candidate", "rule.fired", "verdict", "judge.summoned", "judge.token",
     "judge.verdict", "consensus", "reflect", "warning", "error", "wetlab"];
-  kinds.forEach((kind) => source.addEventListener(kind, (e) => handle(kind, JSON.parse(e.data))));
-  source.addEventListener("run.closed", () => source.close());
-  source.onerror = () => source.close();
+  kinds.forEach((kind) => source.addEventListener(kind, (e) => {
+    let payload;
+    try {
+      payload = JSON.parse(e.data);
+    } catch (err) {
+      return;   // 끊긴 연결에서 잘려 온 프레임 — 조용히 버린다(재연결이 복구한다)
+    }
+    handle(kind, payload);
+  }));
+
+  source.addEventListener("run.closed", () => {
+    streamClosedCleanly = true;
+    source.close();
+    if (running) finishRun(null);        // run.end 없이 닫힌 경우에도 버튼을 되살린다
+  });
+
+  source.onerror = () => {
+    source.close();
+    if (streamClosedCleanly || !running) return;
+    if (reconnects < MAX_RECONNECT) {
+      reconnects += 1;
+      runStatusNote = `연결이 끊겨 재연결 중… (${reconnects}/${MAX_RECONNECT}) · 실행은 서버에서 계속됩니다`;
+      renderRunStatus();
+      reconnectTimer = setTimeout(() => {
+        resetView();                     // 이력이 처음부터 재생되므로 화면을 비우고 받는다
+        connect(path, { isReconnect: true });
+      }, 1500);
+    } else {
+      finishRun(null);
+      notice("실시간 연결이 반복해서 끊겼습니다. 새로고침 후 다시 실행해 주세요.", "error", true);
+    }
+  };
+}
+
+/* 무료 티어 토큰 예산 때문에 한 번의 설계가 1분 안팎 걸린다. 그동안 화면이 멈춘 것처럼
+   보이지 않도록 경과 시간을 계속 갱신한다(트레이스도 흐르지만 대기 구간이 있다).
+   재연결 같은 부가 상태는 이 한 줄에 같이 실어 서로 덮어쓰지 않게 한다. */
+let elapsedTimer = null;
+let runStartedAt = 0;
+let runStatusNote = "";
+
+function renderRunStatus() {
+  const s = Math.floor((Date.now() - runStartedAt) / 1000);
+  const base = `설계 실행 중… ${s}초 · 에이전트가 순차로 판단하는 동안 트레이스가 흐릅니다`;
+  notice(runStatusNote ? `${base}\n${runStatusNote}` : base,
+    runStatusNote ? "warn" : "info", true);
+}
+function startElapsed() {
+  runStartedAt = Date.now();
+  runStatusNote = "";
+  renderRunStatus();
+  elapsedTimer = setInterval(renderRunStatus, 1000);
+}
+function stopElapsed() {
+  clearInterval(elapsedTimer);
+  elapsedTimer = null;
+  runStatusNote = "";
+}
+
+function setRunning(on) {
+  running = on;
+  $("run").disabled = on;
+  $("run").textContent = on ? "실행 중…" : "설계 실행";
+  $("run").setAttribute("aria-busy", String(on));
+  $("replay").disabled = on || !runId;
+  if (on) startElapsed();
+  else stopElapsed();
+}
+
+function finishRun(summary) {
+  if (!running) return;
+  setRunning(false);
+  if (summary && summary.status === "error") {
+    notice("실행이 오류로 끝났습니다. 트레이스를 확인해 주세요.", "error", true);
+  } else if (degraded.size) {
+    // 가짜 점수를 조용히 넘기지 않는다 — 무엇이 LLM 없이 계산됐는지 분명히 알린다.
+    notice(`무료 티어 한도로 ${degraded.size}개 노드가 LLM 대신 규칙 기반 대체값을 썼습니다. `
+      + "해당 심사 소견에는 표시가 붙어 있습니다.", "warn");
+  } else {
+    clearNotice();
+  }
+}
+
+function resetView() {
+  candidates.clear(); tokenBuffers.clear(); degraded.clear();
+  $("trace").innerHTML = ""; $("cands").innerHTML = "";
+  $("consensus").hidden = true;
+  $("cand-count").textContent = "";
+  resetGraph();
 }
 
 $("run").onclick = async () => {
-  candidates.clear(); tokenBuffers.clear();
-  $("trace").innerHTML = ""; $("cands").innerHTML = "";
-  $("consensus").hidden = true; $("replay").disabled = true;
-  resetGraph();
-  $("run").disabled = true;
-  const res = await fetch(api("/api/runs"), {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ request: $("request").value, smiles: $("smiles").value || null }),
-  });
-  runId = (await res.json()).run_id;
-  connect(api(`/api/runs/${runId}/stream`));
-  $("run").disabled = false;
+  if (running) return;
+  const request = $("request").value.trim();
+  if (!request) {
+    notice("설계 요구를 입력해 주세요.", "warn");
+    $("request").focus();
+    return;
+  }
+  resetView();
+  clearNotice();
+  setRunning(true);
+  try {
+    const res = await fetch(api("/api/runs"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ request, smiles: $("smiles").value.trim() || null }),
+    });
+    if (!res.ok) {
+      // 429는 허브/파드의 동시 실행 제한. 사용자가 뭘 해야 하는지까지 말해 준다.
+      const detail = await res.json().catch(() => ({}));
+      throw new Error(res.status === 429
+        ? (detail.detail || "지금 실행이 몰려 있습니다. 잠시 후 다시 시도해 주세요.")
+        : `서버가 요청을 거부했습니다 (${res.status})`);
+    }
+    const data = await res.json();
+    if (!data.run_id) throw new Error("서버 응답에 run_id가 없습니다");
+    runId = data.run_id;
+    connect(api(`/api/runs/${runId}/stream`));
+  } catch (err) {
+    setRunning(false);
+    notice(err.message || "실행을 시작하지 못했습니다.", "error", true);
+  }
 };
 
 $("replay").onclick = () => {
-  if (!runId) return;
-  candidates.clear(); tokenBuffers.clear();
-  $("trace").innerHTML = ""; $("cands").innerHTML = "";
-  $("consensus").hidden = true; resetGraph();
+  if (!runId || running) return;
+  resetView();
+  setRunning(true);
   connect(api(`/api/runs/${runId}/replay`));
 };
 
 $("wl-submit").onclick = async () => {
-  if (!runId) return;
-  const res = await fetch(api(`/api/runs/${runId}/wetlab`), {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      measurements: {
-        dissolution_30min_percent: Number($("wl-diss").value),
-        tablet_hardness_N: Number($("wl-hard").value),
-        impurity_total_percent: Number($("wl-imp").value),
-      },
-    }),
-  });
-  renderWetlab(await res.json());
+  if (!runId) {
+    notice("먼저 설계를 실행한 뒤 실험 결과를 입력해 주세요.", "warn");
+    return;
+  }
+  const btn = $("wl-submit");
+  btn.disabled = true;
+  try {
+    const res = await fetch(api(`/api/runs/${runId}/wetlab`), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        measurements: {
+          dissolution_30min_percent: Number($("wl-diss").value),
+          tablet_hardness_N: Number($("wl-hard").value),
+          impurity_total_percent: Number($("wl-imp").value),
+        },
+      }),
+    });
+    if (!res.ok) throw new Error(`해석 요청이 실패했습니다 (${res.status})`);
+    renderWetlab(await res.json());
+  } catch (err) {
+    notice(err.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
 };
 
 /* ── 테마 ───────────────────────────────────────────────────────────
@@ -395,13 +555,26 @@ $("btn-theme").onclick = () => {
 /* ── 초기화 ─────────────────────────────────────────────────────── */
 (async function init() {
   buildGraph();
-  const meta = await (await fetch(api("/api/meta"))).json();
-  const r = meta.rulebook;
-  $("pill-rules").textContent =
-    `룰북 ${r.total} (정량 ${r.quantitative} · 정성 ${r.qualitative} · 참조 ${r.reference})`;
-  $("pill-rules").className = "pill ok";
-  $("pill-llm").textContent = meta.llm_available
-    ? `LLM ${meta.llm_model || "연결됨"}`
-    : "LLM 미연결 — 결정론 폴백";
-  $("pill-llm").className = "pill " + (meta.llm_available ? "ok" : "warn");
+  setRunning(false);
+  try {
+    const res = await fetch(api("/api/meta"));
+    if (!res.ok) throw new Error(`상태 조회 실패 (${res.status})`);
+    const meta = await res.json();
+    const r = meta.rulebook;
+    $("pill-rules").textContent =
+      `룰북 ${r.total} (정량 ${r.quantitative} · 정성 ${r.qualitative} · 참조 ${r.reference})`;
+    $("pill-rules").className = "pill ok";
+    $("pill-llm").textContent = meta.llm_available
+      ? `LLM ${meta.llm_model || "연결됨"}`
+      : "LLM 미연결 — 규칙 기반 대체";
+    $("pill-llm").className = "pill " + (meta.llm_available ? "ok" : "warn");
+  } catch (err) {
+    // 백엔드가 안 뜬 상태를 빈 화면으로 두지 않는다.
+    $("pill-rules").textContent = "룰북 조회 실패";
+    $("pill-rules").className = "pill warn";
+    $("pill-llm").textContent = "상태 미상";
+    $("pill-llm").className = "pill warn";
+    notice("백엔드에 연결하지 못했습니다. 잠시 후 새로고침해 주세요.", "error", true);
+    $("run").disabled = true;
+  }
 })();
