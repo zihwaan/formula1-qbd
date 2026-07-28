@@ -88,6 +88,10 @@ class FormulationSpec(BaseModel):
     measured_params: Dict[str, float] = Field(default_factory=dict)
     # 그 외 플래그 (hygroscopic, low_melting_point 등)
     properties: Dict[str, Any] = Field(default_factory=dict)
+    # 반드시 처방에 넣어야 하는 부형제 (기존 생산라인·단가·공급 계약 등 현장 제약).
+    # 설계 에이전트는 이걸 회피할 수 없고, 위반 여부는 룰북이 판정한다 —
+    # 검증 계층이 무엇을 잡아내는지가 여기서 드러난다.
+    required_excipients: List[str] = Field(default_factory=list)
     # RDKit 계층이 채운 프로파일 (있으면 근거 추적에 쓴다)
     api_profile: Optional[ApiProfile] = None
 
@@ -379,7 +383,7 @@ class TraceEvent(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Closed-loop: Wet-lab 실험 결과 재입력 → 결과 해석 & 피드백
+# Lab-in-the-loop: 실험 결과 판독 → 규격 판정 → 다음 실험 지시
 #
 # 검증을 통과한 처방이 실제 wet-lab에서 실험되고, 그 측정 데이터(용출률·경도·불순물
 # 등)가 다시 시스템으로 들어온다. 이 계층은 결정론적으로 목표 대비 gap을 해석하고,

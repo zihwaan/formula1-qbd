@@ -7,7 +7,7 @@
   GET  /api/runs/{id}             실행 요약
   POST /api/chem/preview          SMILES/API명 → descriptor·구조플래그·2D SVG (RDKit 단독 데모)
   GET  /api/rules/{rule_id}       규칙 원본 CSV 행 + 출처 (근거 드릴다운)
-  POST /api/runs/{id}/wetlab      실험 결과 재입력 → FeedbackReport
+  POST /api/runs/{id}/wetlab      자연어 실험 결과 → 판독·판정·다음 실험 지시 (lab-in-the-loop)
   GET  /api/meta                  룰북·심사관·LLM 가용성 등 시스템 상태
 """
 
@@ -33,6 +33,7 @@ from formula.checkers.registry import RulebookRegistry
 from formula.chem.profile import build_profile
 from formula.contracts import EventKind, TraceEvent, WetLabResult
 from formula.feedback.interpreter import WetLabInterpreter
+from formula.feedback.labloop import direct_next, read_notes
 from formula.orchestrator.events import event_to_sse
 from formula.orchestrator.runner import Run
 
@@ -75,6 +76,8 @@ def registry() -> RulebookRegistry:
 class RunRequest(BaseModel):
     request: str = Field(min_length=1, max_length=2000, description="자연어 설계 요구")
     smiles: Optional[str] = Field(default=None, max_length=500)
+    # 현장 제약으로 반드시 써야 하는 부형제. 설계자는 회피할 수 없고 룰북이 판정한다.
+    required_excipients: List[str] = Field(default_factory=list, max_length=8)
 
 
 class ChemRequest(BaseModel):
@@ -97,7 +100,8 @@ async def create_run(payload: RunRequest) -> Dict[str, str]:
     if len(ACTIVE) >= MAX_ACTIVE_RUNS:
         raise HTTPException(429, f"동시 실행 {MAX_ACTIVE_RUNS}건 초과 — 잠시 후 다시 시도하세요")
 
-    execution = Run(ROOT, payload.request, smiles=payload.smiles)
+    execution = Run(ROOT, payload.request, smiles=payload.smiles,
+                    required_excipients=payload.required_excipients)
     RUNS[execution.run_id] = execution
     QUEUES[execution.run_id] = []
     ACTIVE.add(execution.run_id)
@@ -218,24 +222,49 @@ def _sources_for(rule_file: str) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# Wet-lab closed loop
+# Lab-in-the-loop (판독 → 판정 → 다음 실험 지시)
 # ---------------------------------------------------------------------------
 @app.post("/api/runs/{run_id}/wetlab")
 async def submit_wetlab(run_id: str, payload: WetLabRequest) -> Dict[str, Any]:
+    """Lab-in-the-loop 한 바퀴: 자연어 판독 → 결정론 판정 → 다음 실험 지시.
+
+    `notes`에 실험 노트를 자연어로 넣으면 거기서 측정값을 뽑아내고, 폼으로 넣은
+    `measurements`가 있으면 그 값이 판독값을 덮는다(사람이 명시한 값이 우선).
+    """
     rules = ROOT / "database" / "legacy" / "wetlab_feedback_rules.csv"
     if not rules.exists():
         raise HTTPException(500, "wetlab_feedback_rules.csv 없음")
+
+    # 1) 판독 (LLM) — 문장에 적힌 수치만 옮긴다
+    read = await asyncio.to_thread(read_notes, payload.notes, ROOT)
+    measurements = {**read.measurements, **payload.measurements}
+    if not measurements:
+        raise HTTPException(
+            422,
+            "실험 결과에서 측정값을 읽지 못했습니다. "
+            "예: '용출 30분 62%, 경도 38N, 불순물 0.9%' 처럼 지표와 수치를 함께 적어 주세요.",
+        )
+
+    # 2) 판정 (규칙) — 같은 데이터면 항상 같은 해석
     interpreter = WetLabInterpreter(rules)
     report = interpreter.interpret(
         WetLabResult(candidate_id=payload.candidate_id or run_id,
-                     measurements=payload.measurements, notes=payload.notes)
+                     measurements=measurements, notes=payload.notes)
     )
+
+    # 3) 지시 (LLM + 확인시험 마스터 66종) — 후보 밖의 시험은 발명하지 못한다
+    directive = await asyncio.to_thread(direct_next, report, ROOT, read.observations)
+
+    result: Dict[str, Any] = {
+        **report.model_dump(),
+        "read": read.model_dump(),
+        "directive": directive,
+    }
     execution = RUNS.get(run_id)
     if execution is not None:
-        execution.bus.publish(TraceEvent(run_id=run_id, node="wetlab",
-                                         kind=EventKind.WETLAB,
-                                         payload=report.model_dump()))
-    return report.model_dump()
+        execution.bus.publish(TraceEvent(run_id=run_id, node="labloop",
+                                         kind=EventKind.WETLAB, payload=result))
+    return result
 
 
 # ---------------------------------------------------------------------------

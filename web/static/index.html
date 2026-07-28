@@ -49,8 +49,18 @@
              placeholder="설계 요구를 자연어로 입력 (예: 소아용 해열제 정제)">
       <label class="sr-only" for="smiles">SMILES (선택)</label>
       <input id="smiles" type="text" autocomplete="off" placeholder="SMILES (선택)">
+      <label class="sr-only" for="pinned">반드시 포함할 부형제</label>
+      <input id="pinned" type="text" autocomplete="off"
+             placeholder="반드시 포함할 부형제 (쉼표, 선택)">
       <button id="run">설계 실행</button>
       <button id="replay" class="ghost" disabled>재생</button>
+    </section>
+
+    <!-- 시연용 시나리오 — 각각 다른 경로를 실제로 밟는다(측정해서 고른 조합) -->
+    <section class="presets" aria-label="시연 시나리오">
+      <span class="presets-label">시연 시나리오</span>
+      <div id="presets" class="preset-chips"></div>
+      <p id="preset-note" class="preset-note"></p>
     </section>
 
     <main class="grid">
@@ -95,12 +105,23 @@
           <div class="empty">아직 생성된 후보가 없습니다.</div>
         </div>
         <div id="consensus" class="consensus" hidden></div>
-        <details class="wetlab">
-          <summary>실험 결과 재입력 (closed loop)</summary>
-          <label>용출 30분 (%)<input id="wl-diss" type="number" value="45"></label>
-          <label>경도 (N)<input id="wl-hard" type="number" value="55"></label>
-          <label>총 불순물 (%)<input id="wl-imp" type="number" step="0.1" value="0.2"></label>
-          <button id="wl-submit" class="ghost">해석 요청</button>
+
+        <!-- ── Lab-in-the-loop ────────────────────────────────────────
+             AI가 결과를 판독·해석하고 **다음 실험을 지시**한다.
+             사람은 벤치에서 그 실험을 수행하고 결과를 다시 넣는다. -->
+        <details class="labloop" id="labloop">
+          <summary>Lab-in-the-loop — 실험 결과를 넣으면 다음 실험을 지시합니다</summary>
+          <p class="labloop-help">
+            수행한 실험 결과를 <b>자연어로</b> 적어 주세요. AI가 수치를 판독하고,
+            규칙이 규격 이탈을 판정한 뒤, 확인시험 마스터에서 <b>다음에 할 실험</b>을 고릅니다.
+          </p>
+          <label class="sr-only" for="wl-notes">실험 노트</label>
+          <textarea id="wl-notes" rows="4"
+            placeholder="예) 30분 용출 62%로 목표 미달. 경도는 38N이고 마손도 1.2%. 6개월 가속에서 총 불순물 0.9%까지 올랐고 정제 표면이 약간 갈변했다."></textarea>
+          <div class="labloop-actions">
+            <button id="wl-submit">결과 해석 + 다음 실험 지시</button>
+            <button id="wl-example" class="ghost" type="button">예시 넣기</button>
+          </div>
           <div id="wl-out"></div>
         </details>
       </aside>

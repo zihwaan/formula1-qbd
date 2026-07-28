@@ -312,6 +312,57 @@
     },
 
     {
+      nav: "만든 뒤: 다음 실험 지시",
+      kicker: "Lab-in-the-loop",
+      title: "AI가 결과를 읽고, 다음 실험을 지시한다",
+      lead: `여기까지가 <b>만들기 전</b>의 절반이다. 나머지 절반은 실제로 만든 뒤에 온다.
+             연구원이 실험 결과를 자연어로 적어 넣으면, AI가 수치를 판독하고 규칙이 규격 이탈을
+             판정한 뒤, <b>다음에 무슨 실험을 해야 하는지 AI가 지시한다.</b> 사람은 판단의 병목이
+             아니라 벤치에서 그 실험을 수행하는 쪽으로 들어온다 —
+             <b>lab-in-the-loop</b> 구조다.`,
+      art: `
+        <div class="f1-arch f1-seq">
+          <div class="f1-io">연구원이 쓴 실험 노트 (자연어)</div>
+          <div class="f1-flowmark">▼</div>
+          <div class="f1-tier">
+            <header><span>① 판독</span><span>LLM</span></header>
+            <div class="f1-box f1-llm"><b>문장에서 측정값만 옮긴다</b>
+              <span>"30분 용출 62%, 경도 38N, 불순물 0.9%, 표면 갈변"
+                → dissolution=62 · hardness=38 · impurity=0.9 + 관찰 1건.
+                <b>없는 값은 지어내지 않는다</b> — 못 읽은 표현은 못 읽었다고 표시한다.</span></div>
+          </div>
+          <div class="f1-flowmark">▼</div>
+          <div class="f1-tier">
+            <header><span>② 판정</span><span>결정론 규칙</span></header>
+            <div class="f1-box f1-det"><b>규격 이탈 계산 — 같은 데이터면 같은 결과</b>
+              <span>용출 62% &lt; 80% 이탈 · 경도 38N &lt; 40N 이탈 …
+                규칙표가 이탈마다 원인 해석과 재설계 방향을 함께 갖고 있다.</span></div>
+          </div>
+          <div class="f1-flowmark">▼</div>
+          <div class="f1-tier">
+            <header><span>③ 지시</span><span>LLM + 확인시험 마스터 66종</span></header>
+            <div class="f1-cols c2">
+              <div class="f1-box f1-llm"><b>가설</b>
+                <span>이번 결과를 설명하는 인과를 세운다</span></div>
+              <div class="f1-box f1-det"><b>후보는 실제 66종뿐</b>
+                <span>AI는 그 안에서 고를 뿐 시험을 발명하지 못한다.
+                  목록 밖 test_id는 화면에 나가기 전에 버려진다.</span></div>
+            </div>
+            <div class="f1-sub">
+              <div class="f1-pill-sm">1 · T_DISS_PROFILE — 용출 프로파일 <b>근거 FDA</b></div>
+              <div class="f1-pill-sm">2 · T_M9_DISS — 비교용출 <b>근거 ICH M9 3.2</b></div>
+              <div class="f1-pill-sm">3 · T_FORCED — 강제분해 <b>근거 ICH Q14/Q2</b></div>
+            </div>
+          </div>
+          <div class="f1-flowmark">▼</div>
+          <div class="f1-io win">사람이 벤치에서 수행 → 결과를 다시 넣는다 (루프)</div>
+        </div>`,
+      note: `설계 루프와 <b>역할 분담이 똑같다.</b> 창의(판독·가설·시험 선정)는 AI가, 판정(규격 이탈)은
+             규칙이 맡는다. 그리고 지시의 후보를 실제 확인시험 마스터로 묶어 두었기 때문에,
+             모든 "다음 실험"에는 ICH·USP·FDA 출처가 붙는다 — 지어낸 실험을 지시할 수 없다.`,
+    },
+
+    {
       nav: "근거 없는 규칙은 안 돈다",
       kicker: "차별점",
       title: "출처를 못 찾은 규칙은, 실행되지 않는다",
@@ -348,9 +399,10 @@
   /* 마지막 단계 끝에 붙는 실행 유도 — 설명이 끝나면 바로 화면을 쓰게 만든다. */
   const CTA = `
     <div class="f1-cta">
-      <p><b>이제 직접 돌려 보세요.</b> 왼쪽에 분자 구조와 descriptor, 가운데에 에이전트 그래프와
-        실행 트레이스, 오른쪽에 후보 처방과 합의 결과가 실시간으로 그려집니다.<br>
-        트레이스의 규칙 발동을 클릭하면 <b>원본 CSV 행과 출처 문헌</b>이 열립니다.</p>
+      <p><b>이제 직접 돌려 보세요.</b> 입력줄 아래 <b>시연 시나리오</b> 버튼이 각각 다른 경로를
+        밟습니다 — 규칙이 제약을 반려하는 경우, 인구군에 따라 심사관이 바뀌는 경우 등.<br>
+        트레이스의 규칙 발동을 클릭하면 <b>원본 CSV 행과 출처 문헌</b>이 열리고,
+        오른쪽 <b>Lab-in-the-loop</b>에 실험 결과를 자연어로 넣으면 다음 실험을 지시합니다.</p>
       <button type="button" id="guide-finish">설명 닫고 실행하기 →</button>
     </div>`;
 
@@ -360,7 +412,7 @@
   const visited = new Set();
 
   function buildRail() {
-    el("guide-count").textContent = `${STEPS.length}단계 · 약 3분`;
+    el("guide-count").textContent = `${STEPS.length}단계 · 약 4분`;
     el("guide-nav").innerHTML = STEPS.map((s, i) => `<li data-i="${i}">${s.nav}</li>`).join("");
     el("guide-dots").innerHTML = STEPS.map((_, i) => `<i data-i="${i}"></i>`).join("");
     document.querySelectorAll("#guide-nav li, #guide-dots i").forEach((node) => {

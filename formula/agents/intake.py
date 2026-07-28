@@ -45,6 +45,7 @@ def translate(
     base_dir: Path,
     smiles: Optional[str] = None,
     node: str = "intake",
+    required_excipients: Optional[List[str]] = None,
 ) -> FormulationSpec:
     """자연어 요구를 스펙으로 옮기고 RDKit 프로파일을 붙인다."""
     emit(node, EventKind.NODE_ENTER, request=request)
@@ -62,6 +63,8 @@ def translate(
         target_patient=parsed.target_patient,
         dosage_form=parsed.dosage_form,
         properties=dict(parsed.properties),
+        # 사용자가 못 박은 현장 제약. LLM이 해석해 바꿀 수 없는 값이라 그대로 싣는다.
+        required_excipients=[e.strip() for e in (required_excipients or []) if e.strip()],
     )
 
     profile = build_profile(spec.api_name, smiles=smiles, base_dir=base_dir, measured=spec.measured_params)

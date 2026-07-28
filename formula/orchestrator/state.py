@@ -58,6 +58,7 @@ class FormulationState(TypedDict, total=False):
     run_id: str
     request: str  # 사용자의 자연어 요구
     smiles: Optional[str]
+    required_excipients: List[str]  # 현장 제약으로 반드시 넣어야 하는 부형제
 
     # P0 — 입력 번역 & 물성
     spec: Optional[FormulationSpec]
@@ -80,7 +81,7 @@ class FormulationState(TypedDict, total=False):
     reflection_directive: str
     reject_reasons: List[str]
 
-    # P7 — wet-lab closed loop
+    # P7 — lab-in-the-loop (실험 결과 → 다음 실험 지시)
     wetlab: Optional[FeedbackReport]
 
     # 종료 상태
@@ -88,11 +89,13 @@ class FormulationState(TypedDict, total=False):
     final_candidate: Optional[str]
 
 
-def new_state(request: str, smiles: Optional[str] = None, run_id: Optional[str] = None) -> FormulationState:
+def new_state(request: str, smiles: Optional[str] = None, run_id: Optional[str] = None,
+              required_excipients: Optional[List[str]] = None) -> FormulationState:
     return FormulationState(
         run_id=run_id or uuid.uuid4().hex[:12],
         request=request,
         smiles=smiles,
+        required_excipients=list(required_excipients or []),
         spec=None,
         api_profile=None,
         strategies=[],

@@ -18,7 +18,7 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/pytest                                  # 54 tests — run this first when changing the core
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
-.venv/bin/python scripts/feedback_demo.py         # wet-lab closed loop
+.venv/bin/python scripts/feedback_demo.py         # lab-in-the-loop (결과 해석)
 .venv/bin/uvicorn web.server:app --port 8000      # dashboard at http://localhost:8000
 .venv/bin/python scripts/import_rulebook.py       # re-import rulebook zips from 추가자료/
 ```
@@ -158,8 +158,41 @@ theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one ser
 
 - **`formula/contracts.py`** — all shared Pydantic models (the stable interface between the pharmacy-student data team and the backend). Key types: `FormulationSpec` (translated input: API, functional groups, BCS class, target patient, measured params, property flags), `Recipe` (candidate: ingredients with role/amount, process, packaging), `Verdict` (deterministic result: `PASS`/`HARD_FAIL`/`SOFT_FLAG`), `RulebookEntry`, `JudgeSpec`. If CSV columns change, fix the manifest `schema` — these contracts stay stable.
 - **`formula/checkers/applies_when.py`** — evaluates `applies_when` / `row_filter` expressions via a **restricted `eval`** (`__builtins__` stripped, only a whitelisted context of spec fields + property flags exposed). These expressions are *trusted manifest-author input*, not user input. On expression error it fails closed (rule does not fire).
-- **`formula/feedback/interpreter.py`** (`WetLabInterpreter`) — the **closed-loop** layer (human-in-the-loop). After a recipe passes verification and is actually made in the lab, a researcher re-inputs measured results (`WetLabResult`: dissolution, hardness, impurity, …). The interpreter compares each metric against target specs from `database/wetlab_feedback_rules.csv` and returns a `FeedbackReport` (per-metric off-target findings + cause interpretation + suggested revision, feeding the reflection/redesign loop). Same deterministic philosophy as the checkers: same experiment data → same interpretation. Each CSV row states an *off-target (failure) condition* (`metric <op> target`), mirroring the `threshold` strategy convention. Currently scope is interpretation only; protocol generation and the LLM reflection loop are not yet built. Demo: `scripts/feedback_demo.py`.
+- **`formula/feedback/`** — the **lab-in-the-loop** layer: AI reads the result data, the rulebook judges it, and AI **directs the next experiment**; the human runs that experiment at the bench and feeds results back (the paradigm FutureHouse/Oxford/Fordham's *Robin* put forward). Three stages with three different owners, mirroring the design loop's split:
+  1. `labloop.read_notes()` — **LLM** turns a free-text lab note into measurements. It may only transcribe numbers that appear in the text; a regex reader takes over with no key.
+  2. `interpreter.WetLabInterpreter` — **deterministic**, unchanged. Compares each metric to `database/legacy/wetlab_feedback_rules.csv` and returns a `FeedbackReport` (off-target findings + cause + suggested revision). Same data → same verdict.
+  3. `labloop.direct_next()` — **LLM constrained by data.** Picks the next experiments *only from the 66 real rows of* `database/reference/confirmation_test_master.csv`, so every directive carries its ICH/USP citation. Any `test_id` outside that pool is discarded before it reaches the UI — the model cannot invent a test. This closes the roadmap item "확인시험 마스터(66종)를 wet-lab 루프에 연결".
+  `POST /api/runs/{id}/wetlab` runs all three and returns `{findings, read, directive}`. Form-supplied `measurements` override the LLM's reading — a human-stated number always wins.
 - **`docs/architecture_image_prompt.md`** — detailed prompts for AI-generating the full horizontal system architecture diagram (not code).
+
+## Design-intent audit (2026-07-28) — gaps found by measuring, and what changed
+
+Claims in README/this file were checked against what the code actually does. Numbers now measured:
+**30 canonical CSVs** in `database/` (27 rule tables + 3 config) wired as **29 manifest entries**,
+**exactly 8** strategy functions (all used), **6** layers, **25** distinct `trigger_priority` values.
+README said "우선순위 8단계", which matched nothing — corrected to "13단계 그룹" (the levels its own
+§5.4 diagram lists). Three defects were real and are fixed; keep them fixed:
+
+- **Half the jury could never be summoned.** `reviewer_registry.csv` has 6 reviewers, but
+  `target_population` was hardcoded to `"pediatric" if is_pediatric else "adult"`, so REV006
+  (고령자, condition `target_population=='geriatric'`) was unreachable, and nothing anywhere
+  produced `regulatory_narrative_needed` (REV004) or `novel_combination_not_in_rulebook` (REV005) —
+  those expressions raised NameError and failed closed. Now `population_of()` derives the real
+  population, and `_summon_signals()` computes the two flags from gate output plus the excipient
+  master. Verified: "고령자용 메트포르민" now summons REV006.
+- **The signature reject → reflect → pass story did not reproduce on the live LLM path.** Measured
+  across five scenarios: zero hard-fails, zero reflection loops. The generator prompt tells the LLM
+  to avoid known incompatibilities, so the rulebook had nothing to catch — the verification layer's
+  value was invisible in exactly the demo it exists for. `FormulationSpec.required_excipients`
+  (UI: "반드시 포함할 부형제") now pins field constraints the designer may not route around, which is
+  also a real industrial constraint. With lactose pinned, INC002 fires.
+- **An unsatisfiable constraint used to burn all 5 reflection loops and end with no winner.** The
+  `infeasible` terminal node now detects that a rejection names a pinned ingredient and concludes
+  immediately (4s instead of ~3min) with the blocking rule and the rulebook's alternative. That is
+  the answer a researcher needs — "이 제약으로는 통과가 없다" — not a silent give-up.
+
+Demo presets in `app.js` (`PRESETS`) were each executed and chosen for the path they actually
+take; if you edit one, re-run it and confirm the claimed path still fires.
 
 ## Conventions specific to this repo
 

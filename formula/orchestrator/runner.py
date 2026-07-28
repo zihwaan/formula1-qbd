@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 from formula.checkers.registry import RulebookRegistry
 from formula.contracts import EventKind, TraceEvent
@@ -21,9 +21,10 @@ class Run:
     """한 번의 설계 실행. 이벤트 이력을 보관해 재생(replay)에 쓴다."""
 
     def __init__(self, base_dir: Path, request: str, smiles: Optional[str] = None,
-                 run_id: Optional[str] = None):
+                 run_id: Optional[str] = None, required_excipients: Optional[List[str]] = None):
         self.base_dir = Path(base_dir)
-        self.state = new_state(request, smiles=smiles, run_id=run_id)
+        self.state = new_state(request, smiles=smiles, run_id=run_id,
+                               required_excipients=required_excipients)
         self.run_id: str = self.state["run_id"]
         self.bus = EventBus(self.run_id)
         self.final: Dict[str, Any] = {}

@@ -350,20 +350,93 @@ table.desc td:last-child { text-align: right; font-family: var(--font-mono); col
 .est .lo { color: var(--status-warn); }
 .warn { font-size: 11px; color: var(--status-warn); margin-top: 9px; line-height: 1.55; }
 
-/* ── wet-lab ──────────────────────────────────────────────────────── */
-.wetlab { margin-top: 14px; font-size: 12px; }
-.wetlab summary { cursor: pointer; color: var(--ink-muted); padding: 7px 0; }
-.wetlab summary:hover { color: var(--ink-1); }
-.wetlab label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 7px 0; color: var(--ink-2); }
-.wetlab input {
-  width: 96px; padding: 6px 9px; border-radius: var(--radius-s);
-  border: 1px solid var(--border); background: var(--page); color: var(--ink-1); font-family: inherit;
+/* ── 시연 시나리오 ────────────────────────────────────────────────── */
+.presets { margin-top: 12px; }
+.presets-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-muted); font-weight: 700;
 }
-.wetlab button {
-  margin-top: 8px; padding: 8px 16px; border-radius: var(--radius-pill);
-  border: 1px solid var(--border); background: transparent; color: var(--ink-1); font-weight: 600; font-size: 12px;
+.preset-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+.preset {
+  padding: 7px 14px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 600;
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-2);
 }
-#wl-out { margin-top: 10px; font-size: 11.5px; color: var(--ink-muted); }
+.preset:hover { border-color: var(--ink-2); color: var(--ink-1); }
+.preset.on { background: var(--accent-fixed); color: var(--on-accent-fixed); border-color: transparent; }
+.preset-note {
+  margin: 9px 0 0; font-size: 12px; line-height: 1.7; color: var(--ink-2);
+  word-break: keep-all; max-width: 100ch;
+}
+.preset-note:empty { display: none; }
+
+/* ── Lab-in-the-loop ──────────────────────────────────────────────── */
+.labloop { margin-top: 14px; font-size: 12px; }
+.labloop > summary {
+  cursor: pointer; color: var(--ink-1); padding: 9px 0; font-weight: 650; font-size: 12.5px;
+}
+.labloop > summary:hover { color: var(--ink-2); }
+.labloop-help { margin: 4px 0 10px; font-size: 11.5px; line-height: 1.65; color: var(--ink-muted); word-break: keep-all; }
+.labloop-help b { color: var(--ink-2); }
+.labloop textarea {
+  width: 100%; padding: 10px 12px; border-radius: var(--radius-s); resize: vertical;
+  border: 1px solid var(--border); background: var(--page); color: var(--ink-1);
+  font-family: inherit; font-size: 12.5px; line-height: 1.6;
+}
+.labloop textarea:focus { outline: none; border-color: var(--ink-1); }
+.labloop-actions { display: flex; gap: 8px; margin-top: 9px; flex-wrap: wrap; }
+.labloop-actions button {
+  padding: 9px 16px; border-radius: var(--radius-pill); border: 1px solid transparent;
+  background: var(--accent-fixed); color: var(--on-accent-fixed); font-weight: 650; font-size: 12px;
+}
+.labloop-actions button.ghost { background: transparent; border-color: var(--border); color: var(--ink-1); }
+.labloop-actions button.ghost:hover { background: var(--grid); }
+
+#wl-out { margin-top: 14px; font-size: 11.5px; color: var(--ink-2); }
+#wl-out h4 {
+  font-size: 11px; margin: 16px 0 7px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--ink-muted); font-weight: 700;
+}
+#wl-out h4:first-child { margin-top: 0; }
+#wl-out h4 small { text-transform: none; letter-spacing: 0; }
+table.ll-read { width: 100%; border-collapse: collapse; font-size: 11px; }
+table.ll-read td { padding: 3px 0; font-family: var(--font-mono); color: var(--ink-2); }
+table.ll-read td:last-child { text-align: right; color: var(--ink-1); font-weight: 600; }
+.ll-obs { margin-top: 6px; font-size: 11px; color: var(--ink-muted); }
+.ll-summary {
+  padding: 9px 11px; border-radius: var(--radius-s); font-size: 11.5px; line-height: 1.6;
+  border: 1px solid var(--border); background: var(--page);
+}
+.ll-summary.off { border-color: color-mix(in srgb, var(--status-warn) 50%, var(--border)); }
+.ll-summary.ok { border-color: color-mix(in srgb, var(--status-good) 50%, var(--border)); }
+.ll-finding {
+  margin-top: 8px; padding-left: 10px; border-left: 2px solid var(--status-warn);
+  font-size: 11px; line-height: 1.6; color: var(--ink-muted);
+}
+.ll-finding b { color: var(--ink-1); }
+.ll-fix { color: var(--ink-2); margin-top: 3px; }
+.ll-hypo {
+  padding: 9px 11px; border-radius: var(--radius-s); background: var(--page);
+  border: 1px dashed var(--border); font-size: 11.5px; line-height: 1.65; margin-bottom: 9px;
+}
+.ll-exp {
+  border: 1px solid var(--border); border-radius: var(--radius-s);
+  padding: 10px 12px; margin-bottom: 8px; background: var(--page);
+}
+.ll-exp-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.ll-exp-head b { font-size: 12px; color: var(--ink-1); }
+.ll-order {
+  width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-fixed); color: var(--on-accent-fixed);
+  font-size: 10px; font-weight: 800; flex: 0 0 auto;
+}
+.ll-id {
+  font-family: var(--font-mono); font-size: 10px; color: var(--ink-muted);
+  background: var(--grid); padding: 1px 6px; border-radius: 4px;
+}
+.ll-why { margin-top: 6px; font-size: 11.5px; line-height: 1.6; color: var(--ink-2); word-break: keep-all; }
+.ll-spec { margin-top: 4px; font-size: 10.5px; color: var(--ink-muted); line-height: 1.55; }
+.ll-src { margin-top: 6px; font-size: 10.5px; }
+.ll-src a { color: var(--ink-1); text-decoration: underline; }
 
 /* ── 규칙 근거 모달 ───────────────────────────────────────────────── */
 .modal {

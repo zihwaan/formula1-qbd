@@ -53,6 +53,27 @@ def _context(spec: FormulationSpec, base_dir: Path) -> str:
     return store.context_for(query, k=6)
 
 
+def _constraint_block(spec: FormulationSpec, directive: str) -> str:
+    """현장 제약과 개선 지시를 프롬프트 말미에 붙인다.
+
+    **필수 성분은 회피 대상이 아니다.** 기존 생산라인·단가·공급 계약 때문에 반드시 써야 하는
+    부형제가 있으면 그대로 넣고, 그것이 금기에 걸리는지는 룰북이 판정한다. 설계자가 알아서
+    피해 버리면 검증 계층이 무엇을 잡아내는지 화면에 드러나지 않는다(이 시스템의 요지).
+    """
+    parts: List[str] = []
+    if spec.required_excipients:
+        listed = ", ".join(spec.required_excipients)
+        parts.append(
+            "## 반드시 포함할 성분 (현장 제약 — 대체 금지)\n"
+            f"{listed}\n"
+            "이 성분은 회피하거나 다른 것으로 바꾸지 말고 반드시 처방에 넣는다. "
+            "금기 위험이 의심되더라도 판정은 룰북이 하므로, 당신은 제약을 지킨 처방을 제출한다."
+        )
+    if directive:
+        parts.append(f"## 직전 반려에 대한 개선 지시\n{directive}")
+    return "\n\n" + "\n\n".join(parts) + "\n" if parts else "\n"
+
+
 def generate(
     spec: FormulationSpec,
     strategy: str,
@@ -85,9 +106,7 @@ API descriptor: {descriptor_text}
 
 ## 참고 근거 (부형제 마스터 · 배합금기 출처)
 {_context(spec, base_dir)}
-
-{('## 직전 반려에 대한 개선 지시\\n' + directive) if directive else ''}
-
+{_constraint_block(spec, directive)}
 위 전략에 맞는 처방 1건을 설계하라. candidate_id는 "{candidate_id}", strategy는 "{strategy}"로 둔다."""
 
     try:
@@ -130,6 +149,12 @@ def _fallback(spec: FormulationSpec, strategy: str, candidate_id: str, directive
     if strategy == "SOLUBILIZATION":
         ingredients.append(Ingredient(name="Poloxamer 188", role="surfactant_wetting",
                                       amount_mg=6, percent=2.0))
+
+    # 현장 제약으로 못 박은 성분은 폴백에서도 반드시 넣는다(회피하지 않는다).
+    present = {i.name.lower() for i in ingredients}
+    for name in spec.required_excipients:
+        if name.lower() not in present:
+            ingredients.append(Ingredient(name=name, role="excipient", amount_mg=20, percent=6.7))
 
     return Recipe(
         api_name=spec.api_name,

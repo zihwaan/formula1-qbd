@@ -242,6 +242,8 @@ class RulebookRegistry:
         두 출처를 합친다: reviewer_registry.csv(정본 명단) + 매니페스트의 qualitative 항목.
         """
         scope = spec_context(spec, derived)
+        scope.setdefault("regulatory_narrative_needed", False)
+        scope.setdefault("novel_combination_not_in_rulebook", False)
         judges = self._registry_judges(scope)
         seen = {j.reviewer_id for j in judges if j.reviewer_id}
         for entry in self.entries:
@@ -253,6 +255,28 @@ class RulebookRegistry:
                 continue
             judges.append(entry.judge)
         return judges
+
+    # ------------------------------------------------------------------
+    def known_excipients(self) -> set:
+        """부형제 마스터가 아는 성분명(소문자). 룰북 밖 조합을 판별하는 데 쓴다."""
+        if getattr(self, "_known_excipients", None) is not None:
+            return self._known_excipients
+
+        names: set = set()
+        for relative in ("database/00_master/excipient_master.csv",
+                         "database/reference/excipient_master_iid.csv"):
+            path = self.base_dir / relative
+            if not path.exists():
+                continue
+            try:
+                frame = pd.read_csv(path, dtype=str, keep_default_na=False).fillna("")
+            except Exception:
+                continue
+            for column in ("excipient_name", "excipient", "name", "ingredient_name"):
+                if column in frame.columns:
+                    names |= {str(v).strip().lower() for v in frame[column] if str(v).strip()}
+        self._known_excipients = names
+        return names
 
     # ------------------------------------------------------------------
     def summary(self) -> Dict[str, int]:

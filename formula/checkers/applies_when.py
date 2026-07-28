@@ -52,6 +52,22 @@ def normalize_expression(expr: str) -> str:
     return out
 
 
+def population_of(target_patient: str) -> str:
+    """`target_patient` → 심사관 소집 조건이 쓰는 인구군 어휘.
+
+    이전에는 `"pediatric" if is_pediatric else "adult"` 로 두 값만 냈다. 그래서
+    `reviewer_registry.csv`에 등록된 **고령자 안전 심사관(REV006, 조건
+    `target_population=='geriatric'`)이 구조적으로 소집될 수 없었다** — 명단에는 있는데
+    영원히 호출되지 않는 상태였다. 인구군은 명단이 쓰는 어휘 그대로 산출해야 한다.
+    """
+    value = (target_patient or "").strip().lower()
+    if any(token in value for token in ("pediatric", "child", "infant", "neonat", "소아", "어린이")):
+        return "pediatric"
+    if any(token in value for token in ("geriatric", "elderly", "고령", "노인")):
+        return "geriatric"
+    return "adult"
+
+
 def spec_context(
     spec: FormulationSpec,
     derived: Optional[Dict[str, Any]] = None,
@@ -65,7 +81,7 @@ def spec_context(
         "api_name": spec.api_name,
         "bcs_class": spec.bcs_class,
         "target_patient": spec.target_patient,
-        "target_population": "pediatric" if spec.is_pediatric else "adult",
+        "target_population": population_of(spec.target_patient),
         "dosage_form": spec.dosage_form,
         "is_pediatric": spec.is_pediatric,
         "api_functional_groups": list(spec.api_functional_groups),

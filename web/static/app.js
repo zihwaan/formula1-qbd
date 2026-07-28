@@ -319,10 +319,52 @@ function streamToken(candidateId, reviewerId, delta) {
   $("trace").scrollTop = $("trace").scrollHeight;
 }
 
+/* Lab-in-the-loop 결과 — 판독(LLM) → 판정(규칙) → 지시(LLM + 확인시험 마스터).
+   세 단계를 화면에서도 분리해 보여준다: 무엇을 읽었는지 / 규칙이 뭘 잡았는지 / 다음에 뭘 할지. */
 function renderWetlab(report) {
-  $("wl-out").innerHTML = `<b>${esc(report.summary)}</b>` +
-    report.findings.filter((f) => f.off_target).map((f) =>
-      `<div class="warn">${esc(f.metric)}: ${esc(f.interpretation)}<br>→ ${esc(f.suggested_revision)}</div>`).join("");
+  const read = report.read || {};
+  const directive = report.directive || {};
+  const off = (report.findings || []).filter((f) => f.off_target);
+
+  const measured = Object.entries(read.measurements || {});
+  const readBlock = measured.length
+    ? `<h4>1 · 판독한 측정값 <small>문장에 적힌 수치만</small></h4>
+       <table class="ll-read">${measured.map(([k, v]) =>
+         `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table>
+       ${(read.observations || []).length
+         ? `<div class="ll-obs">관찰: ${(read.observations || []).map(esc).join(" · ")}</div>` : ""}
+       ${(read.unreadable || []).length
+         ? `<div class="warn">판독 못한 표현: ${(read.unreadable || []).map(esc).join(" / ")}</div>` : ""}`
+    : "";
+
+  const verdictBlock = `<h4>2 · 규격 판정 <small>결정론 · 같은 데이터면 같은 결과</small></h4>
+    <div class="ll-summary ${off.length ? "off" : "ok"}">${esc(report.summary)}</div>
+    ${off.map((f) => `<div class="ll-finding">
+        <b>${esc(f.metric)}</b> ${esc(f.measured)} (목표 ${esc(f.operator)}${esc(f.target)})
+        <div>${esc(f.interpretation)}</div>
+        <div class="ll-fix">→ ${esc(f.suggested_revision)}</div>
+      </div>`).join("")}`;
+
+  const experiments = directive.experiments || [];
+  const directiveBlock = experiments.length
+    ? `<h4>3 · 다음 실험 지시 <small>확인시험 마스터 ${esc(directive.master_size || "")}종에서 선정</small></h4>
+       ${directive.hypothesis ? `<div class="ll-hypo"><b>가설</b> ${esc(directive.hypothesis)}</div>` : ""}
+       ${experiments.map((e, i) => `<div class="ll-exp">
+          <div class="ll-exp-head"><span class="ll-order">${i + 1}</span>
+            <b>${esc(e.test_name)}</b><code class="ll-id">${esc(e.test_id)}</code></div>
+          <div class="ll-why">${esc(e.why)}</div>
+          <div class="ll-spec">방법: ${esc(e.test_design)}</div>
+          <div class="ll-spec">측정: ${esc(e.output_variable)}${e.unit ? ` (${esc(e.unit)})` : ""}
+            · 판정: ${esc(e.acceptance_logic)}</div>
+          ${e.source_reference ? `<div class="ll-src">근거 ${e.source_url
+            ? `<a href="${esc(e.source_url)}" target="_blank" rel="noopener">${esc(e.source_reference)}</a>`
+            : esc(e.source_reference)}</div>` : ""}
+        </div>`).join("")}
+       ${directive.source === "deterministic-fallback"
+         ? '<div class="warn">이 지시는 LLM 없이 규칙으로 선정됐습니다 (카테고리 매칭).</div>' : ""}`
+    : '<div class="warn">다음 실험을 특정하지 못했습니다.</div>';
+
+  $("wl-out").innerHTML = readBlock + verdictBlock + directiveBlock;
 }
 
 /* ── 근거 드릴다운 ──────────────────────────────────────────────── */
@@ -488,7 +530,11 @@ $("run").onclick = async () => {
   try {
     const res = await fetch(api("/api/runs"), {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ request, smiles: $("smiles").value.trim() || null }),
+      body: JSON.stringify({
+        request,
+        smiles: $("smiles").value.trim() || null,
+        required_excipients: $("pinned").value.split(",").map((s) => s.trim()).filter(Boolean),
+      }),
     });
     if (!res.ok) {
       // 429는 허브/파드의 동시 실행 제한. 사용자가 뭘 해야 하는지까지 말해 준다.
@@ -514,32 +560,98 @@ $("replay").onclick = () => {
   connect(api(`/api/runs/${runId}/replay`));
 };
 
+const WL_EXAMPLE = "30분 용출 62%로 목표에 못 미쳤다. 정제 경도는 38N, 마손도 1.2%. "
+  + "6개월 가속 조건에서 총 불순물이 0.9%까지 올랐고 정제 표면이 약간 갈변했다.";
+
+$("wl-example").onclick = () => {
+  $("wl-notes").value = WL_EXAMPLE;
+  $("wl-notes").focus();
+};
+
 $("wl-submit").onclick = async () => {
   if (!runId) {
     notice("먼저 설계를 실행한 뒤 실험 결과를 입력해 주세요.", "warn");
     return;
   }
+  const notes = $("wl-notes").value.trim();
+  if (!notes) {
+    notice("수행한 실험 결과를 자연어로 적어 주세요.", "warn");
+    $("wl-notes").focus();
+    return;
+  }
   const btn = $("wl-submit");
   btn.disabled = true;
+  btn.textContent = "해석 중…";
   try {
     const res = await fetch(api(`/api/runs/${runId}/wetlab`), {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        measurements: {
-          dissolution_30min_percent: Number($("wl-diss").value),
-          tablet_hardness_N: Number($("wl-hard").value),
-          impurity_total_percent: Number($("wl-imp").value),
-        },
-      }),
+      body: JSON.stringify({ notes }),
     });
-    if (!res.ok) throw new Error(`해석 요청이 실패했습니다 (${res.status})`);
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      throw new Error(detail.detail || `해석 요청이 실패했습니다 (${res.status})`);
+    }
     renderWetlab(await res.json());
   } catch (err) {
-    notice(err.message, "error");
+    notice(err.message, "error", true);
   } finally {
     btn.disabled = false;
+    btn.textContent = "결과 해석 + 다음 실험 지시";
   }
 };
+
+/* ── 시연 시나리오 ───────────────────────────────────────────────────
+   각 항목은 실제로 돌려서 어떤 경로를 밟는지 측정한 뒤 고른 것이다.
+   "무엇을 보여주는 예시인가"를 함께 적어 시연 중 설명이 필요 없게 한다. */
+const PRESETS = [
+  {
+    label: "규칙이 제약을 반려",
+    request: "소아용 플루옥세틴 정제를 설계해줘",
+    pinned: "Lactose monohydrate",
+    note: "현장 제약으로 유당을 못 박았습니다. 설계자는 제약을 지키고, 룰북이 INC002"
+        + "(2차 아민 + 유당 → Maillard 반응)로 막습니다. 재설계로 풀리지 않는 충돌이라"
+        + " 시스템은 루프를 돌리지 않고 “이 제약으로는 통과가 없다”는 결론과 대체 부형제를 냅니다.",
+  },
+  {
+    label: "소아 안전 심사관 소집",
+    request: "소아용 바나나향 아세트아미노펜 정제를 설계해줘",
+    pinned: "",
+    note: "대상이 소아라서 소아 안전 심사관(REV001)이 그 자리에서 생성됩니다. 가용화"
+        + " 심사관은 조건에 맞지 않아 아예 만들어지지 않습니다 — 고정 명단이 없다는 증거입니다."
+        + " 아세트아미노펜은 아미드라 유당 금기에 걸리지 않는 것도 함께 보입니다.",
+  },
+  {
+    label: "고령자 심사관 소집",
+    request: "고령자용 메트포르민 정제를 설계해줘",
+    pinned: "",
+    note: "같은 요청에서 인구군만 바뀌면 소집되는 전문가도 바뀝니다 —"
+        + " 고령자 안전 심사관(REV006)이 들어오고 소아 심사관은 빠집니다.",
+  },
+  {
+    label: "가용화 심사관 + 포장 규칙",
+    request: "흡습성이 강한 원료를 쓰는 정제를 설계해줘. 장용 코팅이 필요해",
+    pinned: "",
+    note: "코팅 요구가 가용화 전략 심사관(REV002)을 소집하고, 흡습성 플래그가 포장"
+        + " 적합성 규칙을 발동시킵니다. 조건에 따라 검사와 심사가 함께 달라집니다.",
+  },
+];
+
+function buildPresets() {
+  const box = $("presets");
+  box.innerHTML = PRESETS.map((p, i) =>
+    `<button type="button" class="preset" data-i="${i}">${esc(p.label)}</button>`).join("");
+  box.querySelectorAll(".preset").forEach((btn) => {
+    btn.onclick = () => {
+      const preset = PRESETS[Number(btn.dataset.i)];
+      $("request").value = preset.request;
+      $("pinned").value = preset.pinned;
+      $("preset-note").textContent = preset.note;
+      box.querySelectorAll(".preset").forEach((b) => b.classList.remove("on"));
+      btn.classList.add("on");
+      $("run").focus();
+    };
+  });
+}
 
 /* ── 테마 ───────────────────────────────────────────────────────────
    키는 머니메이트·브리핑과 공유('mm:theme'). 저장값이 없으면 시스템 설정을 따른다. */
@@ -555,6 +667,7 @@ $("btn-theme").onclick = () => {
 /* ── 초기화 ─────────────────────────────────────────────────────── */
 (async function init() {
   buildGraph();
+  buildPresets();
   setRunning(false);
   try {
     const res = await fetch(api("/api/meta"));

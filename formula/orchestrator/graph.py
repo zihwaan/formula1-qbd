@@ -26,12 +26,67 @@ from formula.orchestrator.events import emit
 from formula.orchestrator.state import MAX_REFLECTION_LOOPS, FormulationState
 
 
+def _summon_signals(registry: RulebookRegistry, passed: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """심사관 소집 조건에 쓰이는 두 신호를 게이트 결과에서 계산한다.
+
+    - `regulatory_narrative_needed` — 규제 계층에서 서술형 판단이 필요한 지적이 남았는가.
+      ESCALATE(사람 이관)나 regulatory 계층의 SOFT_FLAG가 그 신호다. 숫자로 못 끊은 규제
+      판단이 남았다는 뜻이므로 규제 취지 심사관(REV004)이 볼 몫이다.
+    - `novel_combination_not_in_rulebook` — 처방에 부형제 마스터가 모르는 성분이 있는가.
+      룰북이 판정 근거를 갖지 못한 조합이라, 문헌 조사 심사관(REV005)에게 넘긴다.
+    """
+    signals = {"regulatory_narrative_needed": False,
+               "novel_combination_not_in_rulebook": False}
+    if not passed:
+        return signals
+
+    for result in passed:
+        for verdict in result.get("verdicts", []):
+            status = getattr(verdict, "status", None)
+            layer = (getattr(verdict, "layer", "") or "").lower()
+            value = getattr(status, "value", status)
+            if value == "escalate" or (value == "soft_flag" and layer == "regulatory"):
+                signals["regulatory_narrative_needed"] = True
+
+    known = registry.known_excipients()
+    if known:
+        for result in passed:
+            recipe = result.get("recipe")
+            names = getattr(recipe, "ingredient_names", None)
+            if not callable(names):
+                continue
+            for name in names():
+                normalized = name.strip().lower()
+                if normalized and normalized not in known:
+                    signals["novel_combination_not_in_rulebook"] = True
+                    break
+    return signals
+
+
+def _required_conflict(state: Dict[str, Any], failures: List[Any]) -> bool:
+    """반려 사유가 사용자가 못 박은 성분을 직접 지목하는가.
+
+    재설계 지시가 "그 성분을 빼라"로 수렴하는데 제약이 "반드시 넣어라"이면 루프는 영원히
+    돌기만 한다. 첫 반려에서 바로 이 충돌을 알아채고 결론을 내야 한다.
+    """
+    spec = state.get("spec")
+    pinned = [p.strip() for p in (getattr(spec, "required_excipients", []) or []) if p.strip()]
+    if not pinned or not failures:
+        return False
+    haystack = " ".join(
+        f"{v.reason or ''} {v.suggestion or ''} {(v.evidence or {})}" for v in failures
+    ).lower()
+    # 첫 단어로 비교한다 — "Lactose monohydrate" 제약과 규칙 사유의 "lactose"가 맞물리게.
+    return any(p.split()[0].lower() in haystack for p in pinned)
+
+
 def build_graph(base_dir: Path, registry: RulebookRegistry):
     """그래프를 조립해 컴파일한다. base_dir/registry는 클로저로 노드에 주입한다."""
 
     # ── P0 · 입력 번역 + RDKit 물성 ────────────────────────────────────
     def node_intake(state: FormulationState) -> Dict[str, Any]:
-        spec = intake.translate(state["request"], base_dir, smiles=state.get("smiles"))
+        spec = intake.translate(state["request"], base_dir, smiles=state.get("smiles"),
+                                required_excipients=state.get("required_excipients"))
         return {"spec": spec, "api_profile": spec.api_profile}
 
     # ── P1 · 공정 경로 분기 (결정론) ───────────────────────────────────
@@ -107,6 +162,13 @@ def build_graph(base_dir: Path, registry: RulebookRegistry):
         if any(r["passed"] for r in results):
             return "summon"
         failures = [v for r in results for v in r["verdicts"] if v.failed]
+
+        # 사용자가 못 박은 성분 자체가 반려 사유라면 재설계로 풀릴 문제가 아니다.
+        # 반성 루프를 5회 돌려 소진시키는 대신, 제약이 불가능하다는 결론을 바로 낸다 —
+        # 연구원이 알아야 할 답은 "다시 설계했다"가 아니라 "이 제약으로는 통과가 없다"다.
+        if _required_conflict(state, failures):
+            return "infeasible"
+
         if reflect.should_escalate(failures):
             return "escalate"
         if state.get("reflection_count", 0) >= MAX_REFLECTION_LOOPS:
@@ -117,7 +179,14 @@ def build_graph(base_dir: Path, registry: RulebookRegistry):
     def node_summon(state: FormulationState) -> Dict[str, Any]:
         emit("summon", EventKind.NODE_ENTER)
         passed = [r for r in state.get("results", []) if r["passed"]]
-        derived = passed[0]["derived"] if passed else {}
+        derived = dict(passed[0]["derived"]) if passed else {}
+
+        # 명단의 소집 조건 중 두 개(`regulatory_narrative_needed`,
+        # `novel_combination_not_in_rulebook`)는 어느 계층도 산출하지 않아서
+        # REV004·REV005가 **구조적으로 소집될 수 없었다.** 게이트 결과와 부형제 마스터에서
+        # 실제로 계산해 넣는다 — 조건을 없애는 게 아니라 근거를 만들어 주는 방향.
+        derived.update(_summon_signals(registry, passed))
+
         judges = registry.active_judges(state["spec"], derived)
         emit("summon", EventKind.NODE_EXIT,
              summoned=[{"reviewer_id": j.reviewer_id, "persona": j.persona,
@@ -180,6 +249,37 @@ def build_graph(base_dir: Path, registry: RulebookRegistry):
              reject_reasons=state.get("reject_reasons", []))
         return {"status": "exhausted"}
 
+    def node_infeasible(state: FormulationState) -> Dict[str, Any]:
+        """못 박은 제약이 검증된 규칙과 충돌 — 재설계로 해결되지 않는다는 결론.
+
+        이건 실패 보고가 아니라 **판정**이다: 어떤 제약이 어떤 규칙과 왜 충돌하는지와
+        규칙표가 제시하는 대체 부형제를 함께 내보낸다. 연구원은 제약을 풀지, 대체를
+        승인할지 결정하면 된다.
+        """
+        results = state.get("results", [])
+        failures = [v for r in results for v in r["verdicts"] if v.failed]
+        pinned = list(getattr(state.get("spec"), "required_excipients", []) or [])
+        blocking = [
+            {
+                "rule_id": v.rule_id,
+                "rulebook_id": v.rulebook_id,
+                "reason": v.reason,
+                "suggestion": v.suggestion,
+                "citation": v.citation,
+            }
+            for v in failures
+            if any(p.split()[0].lower() in (v.reason or "").lower() for p in pinned if p.strip())
+        ]
+        emit("infeasible", EventKind.WARNING,
+             reason=f"고정 제약({', '.join(pinned)})이 검증된 규칙과 충돌 — "
+                    "이 제약을 유지하는 한 통과하는 처방이 없다",
+             required_excipients=pinned,
+             blocking=blocking or [
+                 {"rule_id": v.rule_id, "reason": v.reason, "suggestion": v.suggestion}
+                 for v in failures
+             ])
+        return {"status": "infeasible"}
+
     # ── 그래프 조립 ────────────────────────────────────────────────────
     graph = StateGraph(FormulationState)
     for name, fn in [
@@ -187,6 +287,7 @@ def build_graph(base_dir: Path, registry: RulebookRegistry):
         ("gate", node_gate), ("summon", node_summon), ("judge", node_judge),
         ("consensus", node_consensus), ("reflect", node_reflect),
         ("escalate", node_escalate), ("exhausted", node_exhausted),
+        ("infeasible", node_infeasible),
     ]:
         graph.add_node(name, fn)
 
@@ -195,12 +296,13 @@ def build_graph(base_dir: Path, registry: RulebookRegistry):
     graph.add_conditional_edges("route", fan_out_generators, ["generate"])
     graph.add_edge("generate", "gate")
     graph.add_conditional_edges("gate", route_after_gate,
-                                ["summon", "reflect", "escalate", "exhausted"])
+                                ["summon", "reflect", "escalate", "exhausted", "infeasible"])
     graph.add_conditional_edges("summon", fan_out_judges, ["judge", "consensus"])
     graph.add_edge("judge", "consensus")
     graph.add_conditional_edges("reflect", fan_out_generators, ["generate"])
     graph.add_edge("consensus", END)
     graph.add_edge("escalate", END)
     graph.add_edge("exhausted", END)
+    graph.add_edge("infeasible", END)
 
     return graph.compile()

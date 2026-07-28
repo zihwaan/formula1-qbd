@@ -355,7 +355,8 @@ def _friendly(error: Exception) -> str:
     return "LLM 호출 실패"
 
 
-def _groq_with_fallback(need: Callable[[str], int], call: Callable[[str], Any]) -> Any:
+def _groq_with_fallback(need: Callable[[str], int], call: Callable[[str], Any],
+                        wait_budget: Optional[float] = None) -> Any:
     """예산이 있는 모델을 배정받아 call(model)을 실행한다.
 
     429를 맞고 폴백하는 대신 **_TokenBudget에서 순번을 기다린다** — 화면에 가짜 점수가
@@ -363,7 +364,7 @@ def _groq_with_fallback(need: Callable[[str], int], call: Callable[[str], Any]) 
     사람이 읽을 수 있는 문구로 정규화해 올린다.
     """
     httpx = _httpx()
-    deadline = time.monotonic() + GROQ_WAIT_BUDGET
+    deadline = time.monotonic() + (wait_budget or GROQ_WAIT_BUDGET)
     last_error: Optional[Exception] = None
     blocked: set = set()
 
@@ -420,7 +421,8 @@ def _strip_fence(text: str) -> str:
 
 
 def _groq_parse(output_format: Type[T], system_prefix: str, user: str,
-                system_suffix: str, effort: str, max_tokens: int) -> T:
+                system_suffix: str, effort: str, max_tokens: int,
+                wait_budget: Optional[float] = None) -> T:
     system = (system_prefix + ("\n\n" + system_suffix if system_suffix else "")
               + _schema_instruction(output_format))
     hint = ""
@@ -439,7 +441,7 @@ def _groq_parse(output_format: Type[T], system_prefix: str, user: str,
             raise
 
     return _groq_with_fallback(
-        _reserve_for(system, user, effort, max_tokens, False), attempt)
+        _reserve_for(system, user, effort, max_tokens, False), attempt, wait_budget)
 
 
 def _groq_stream(system_prefix: str, user: str, on_delta: Optional[Callable[[str], None]],
@@ -487,13 +489,19 @@ def parse_structured(
     system_suffix: str = "",
     effort: str = "high",
     max_tokens: int = MAX_TOKENS,
+    wait_budget: Optional[float] = None,
 ) -> T:
-    """스키마에 맞는 구조화 출력을 받는다. 실패는 전부 LLMUnavailable로 정규화한다."""
+    """스키마에 맞는 구조화 출력을 받는다. 실패는 전부 LLMUnavailable로 정규화한다.
+
+    `wait_budget`: 무료 티어 토큰 예산을 기다릴 최대 초. 사용자가 직접 누른 짧은 요청
+    (lab-in-the-loop 판독·지시)은 조금 더 기다려서라도 실제 LLM 결과를 받는 편이 낫다.
+    """
     name = provider()
     if name == "anthropic":
         return _anthropic_parse(output_format, system_prefix, user, system_suffix, effort, max_tokens)
     if name == "groq":
-        return _groq_parse(output_format, system_prefix, user, system_suffix, effort, max_tokens)
+        return _groq_parse(output_format, system_prefix, user, system_suffix, effort,
+                           max_tokens, wait_budget)
     raise LLMUnavailable("LLM 자격증명 없음 (ANTHROPIC_API_KEY / GROQ_API_KEY 미설정)")
 
 
