@@ -117,6 +117,7 @@ The whole system is **data-driven, not code-driven**. Rules live in CSVs; a sing
 
 ### The other layers
 
+- **`formula/chem/smarts_probe.py`** — exposes the SMARTS layer to the UI (`GET/POST /api/chem/smarts`). Incompatibility verdicts all start from a SMARTS match, so a user must be able to check "is that pattern really in this molecule?" themselves. Salts are stripped to the parent before matching, same convention as the judging layer, and both counts are reported when they differ. Pattern presets come from `structural_flags_smarts.csv` **together with each pattern's `triggers_rule`** — that link is the point, not the match count.
 - **`formula/chem/`** — RDKit input pipeline. `build_profile(api_name|smiles)` → `ApiProfile` (descriptors, SMARTS structural flags, advisory estimates, 2D SVG). Salts are stripped before SMARTS matching; `fr_*` counts cross-check every pattern. **Solubility/permeability estimates are `confidence=low` and must never set `bcs_class`** — the manifest gates `bcs_classification` behind measured values.
 - **`formula/orchestrator/`** — LangGraph `StateGraph` (`graph.py`), shared state with a reset-aware `accumulate` reducer (`state.py`; return `None` to clear a fan-out list between reflection rounds), and the `TraceEvent` bus (`events.py`). Every node emits events; the web UI consumes only that stream.
 - **`formula/agents/`** — Claude nodes. All use structured output (`messages.parse`) and **all have deterministic fallbacks**; `consensus.py` is pure Python driven by `severity_scoring_config.csv` (B model: judge scores rank, never block).
@@ -191,8 +192,31 @@ README said "우선순위 8단계", which matched nothing — corrected to "13�
   immediately (4s instead of ~3min) with the blocking rule and the rulebook's alternative. That is
   the answer a researcher needs — "이 제약으로는 통과가 없다" — not a silent give-up.
 
-Demo presets in `app.js` (`PRESETS`) were each executed and chosen for the path they actually
-take; if you edit one, re-run it and confirm the claimed path still fires.
+## Demo scenarios and the narration panel
+
+`app.js` holds two coupled pieces that exist so a viewer can *see the architecture* rather than
+read about it. Keep them in sync with the graph — they are the demo.
+
+- **`SCENARIOS`** — three cards that **run on click** (no separate 실행 press). Each one was
+  executed and kept for the path it actually takes: `guardrail` (pinned lactose → INC002 →
+  `infeasible` verdict, ~5s), `team` (pediatric → REV001 summoned, others not), `labloop`
+  (light design run, then auto-fills the lab note and submits, chaining into lab-in-the-loop).
+  If you change a request string, **re-run it** and confirm the claimed path still fires — a
+  scenario that doesn't demonstrate what its card promises is worse than no scenario.
+  `labloop`'s request is deliberately cheap (`성인용 이부프로펜`): its point is the wet-lab half, and
+  a request that summons 3–4 judges spends the whole free-tier budget on the design phase
+  (judges × candidates × 2 calls), which pushes the directive onto the rule-based path.
+- **`narrateEvent()` → `narrate()`** — turns the event stream into ordered commentary. Every card
+  carries the **owning layer** (`P3 · 룰북 결정론`, `P5 · 심사 LLM`, …) and a **`왜 중요한가`** line
+  explaining why that layer exists. That pairing is the point: graph lighting alone doesn't tell
+  anyone why a deterministic gate sits between two LLM stages. When you add a node to the graph,
+  add its narration beat too.
+- **Right-size `max_tokens` per call; do not raise the wait budget.** A reservation counts against
+  the per-minute limit for a full 60s, so an oversized one starves later calls. Measured on the
+  pediatric scenario (2 judges): raising `GROQ_WAIT_BUDGET` to 110s made it *worse* — 240s with
+  4 stand-in scores. Reverting to 75s and instead capping the judge's calls to their real need
+  (narration 600, score 400) plus settling streaming reservations against actual usage gave
+  **123s with 0 stand-ins**. If stand-ins reappear, look for a call reserving more than it uses.
 
 ## Conventions specific to this repo
 

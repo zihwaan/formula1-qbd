@@ -145,6 +145,7 @@ function addTrace(seq, node, msg, cls = "", ruleId = null) {
 /* ── 이벤트 → 화면 ──────────────────────────────────────────────── */
 function handle(kind, ev) {
   const p = ev.payload || {};
+  narrateEvent(kind, ev, p);
   switch (kind) {
     case "run.start":
       addTrace(ev.seq, "run", `실행 시작 · ${p.request}`);
@@ -241,6 +242,8 @@ function handle(kind, ev) {
 
 /* ── 렌더러 ─────────────────────────────────────────────────────── */
 function renderChem(p) {
+  // SMARTS 검사가 별도 입력 없이 바로 쓸 수 있게 이번 실행의 분자를 기억한다.
+  lastSmiles = p.parent_smiles || p.smiles || "";
   $("chem-empty").hidden = true;
   $("chem-body").hidden = false;
   $("mol-svg").innerHTML = p.svg || '<div class="empty">구조 없음</div>';
@@ -506,17 +509,19 @@ function finishRun(summary) {
   } else {
     clearNotice();
   }
+  continueScenario();
 }
 
 function resetView() {
   candidates.clear(); tokenBuffers.clear(); degraded.clear();
+  resetNarration();
   $("trace").innerHTML = ""; $("cands").innerHTML = "";
   $("consensus").hidden = true;
   $("cand-count").textContent = "";
   resetGraph();
 }
 
-$("run").onclick = async () => {
+async function startRun() {
   if (running) return;
   const request = $("request").value.trim();
   if (!request) {
@@ -551,7 +556,9 @@ $("run").onclick = async () => {
     setRunning(false);
     notice(err.message || "실행을 시작하지 못했습니다.", "error", true);
   }
-};
+}
+
+$("run").onclick = () => { activeScenario = null; startRun(); };
 
 $("replay").onclick = () => {
   if (!runId || running) return;
@@ -600,58 +607,324 @@ $("wl-submit").onclick = async () => {
   }
 };
 
+/* ── 아키텍처 해설 ───────────────────────────────────────────────────
+   실행 이벤트를 받아 "지금 어느 계층이 무엇을 왜 하는지"를 순서대로 쌓는다.
+   그래프 점등만으로는 구조가 안 읽히므로, 각 단계에 담당 계층과 그 계층이 존재하는
+   이유(=이 구조의 장점)를 붙인다. 실행되는 동안 이 패널이 곧 아키텍처 설명이 된다. */
+let narrationCount = 0;
+const narrationSeen = new Set();
+
+function narrate(key, { layer, kind, title, body, once = true }) {
+  if (once) {
+    if (narrationSeen.has(key)) return;
+    narrationSeen.add(key);
+  }
+  const box = $("narration");
+  if (!narrationCount) box.innerHTML = "";
+  narrationCount += 1;
+
+  const card = document.createElement("div");
+  card.className = `nr ${kind || ""}`;
+  card.innerHTML = `
+    <div class="nr-head">
+      <span class="nr-n">${narrationCount}</span>
+      <b>${esc(title)}</b>
+      <span class="nr-layer ${esc(kind || "")}">${esc(layer)}</span>
+    </div>
+    <div class="nr-body">${body}</div>`;
+  box.appendChild(card);
+  box.scrollTop = box.scrollHeight;
+}
+
+function resetNarration() {
+  narrationCount = 0;
+  narrationSeen.clear();
+  $("narration").innerHTML =
+    '<div class="empty">시나리오를 누르거나 설계를 실행하면 단계별 해설이 여기에 흐릅니다.</div>';
+}
+
+/* 이벤트 → 해설. 한 실행에서 각 단계는 한 번만 말한다(토큰 스트림처럼 반복되는 것 제외). */
+function narrateEvent(kind, ev, p) {
+  switch (kind) {
+    case "chem.profile": {
+      const on = (p.flags || []).filter((f) => f.present).map((f) => f.flag_name);
+      narrate("chem", {
+        layer: "입구 · RDKit 결정론", kind: "det",
+        title: "분자식에서 시작한다",
+        body: `<code>${esc(p.smiles || p.api_name)}</code> 에서 descriptor를 계산하고 구조 플래그를
+          검출했습니다 — <b>${on.length ? esc(on.join(", ")) : "검출 없음"}</b>.
+          <span class="nr-why">왜 중요한가: 유당이 위험한지는 “아민기가 있는가”에 달려 있습니다.
+          이걸 사람이 손으로 적으면 틀립니다(이 프로젝트의 초기 데모가 실제로 그렇게 틀렸습니다).
+          그래서 판정의 입력을 사람이 아니라 계산이 만듭니다.</span>`,
+      });
+      break;
+    }
+    case "node.exit":
+      if (p.strategies) {
+        narrate("route", {
+          layer: "P1 · 결정론", kind: "det",
+          title: "공정 경로를 먼저 좁힌다",
+          body: `경쟁 전략: <b>${esc((p.strategies || []).join(", "))}</b>.
+            <span class="nr-why">왜 중요한가: “직접타정 규칙”은 직접타정이 선택된 뒤에야 의미가
+            있습니다. 앞 단계가 만든 값(유동성 등급)이 뒷 단계의 발동 조건으로 흘러가므로,
+            검사에는 순서가 있습니다.</span>`,
+        });
+      } else if (p.summoned) {
+        const ids = (p.summoned || []).map((s) => `${s.reviewer_id}(${s.summon_condition})`);
+        narrate("summon", {
+          layer: "P4 · 동적 소집", kind: "jud",
+          title: `심사관 ${(p.summoned || []).length}명이 지금 만들어졌다`,
+          body: `${ids.length ? ids.map(esc).map((t) => `<code>${t}</code>`).join(" ") : "조건 충족 없음"}
+            <span class="nr-why">왜 중요한가: 심사위원단에 <b>고정 명단이 없습니다.</b> 조건에 맞는
+            전문가만 그 자리에서 생성되고, 나머지는 아예 만들어지지 않습니다 — 같은 시스템인데
+            요청마다 팀 구성이 달라집니다.</span>`,
+        });
+      }
+      break;
+
+    case "candidate":
+      narrate("candidate", {
+        layer: "P2 · 설계 LLM", kind: "llm",
+        title: "후보를 하나만 만들지 않는다",
+        body: `서로 다른 전략으로 후보를 동시에 만들어 경쟁시킵니다.
+          <span class="nr-why">왜 중요한가: 조합 공간이 천문학적이라 “하나 뽑아 검사”가 아니라
+          “여러 개 만들어 살아남는 것”을 택합니다. 이 상상은 규칙이 못 하는 일입니다.</span>`,
+      });
+      break;
+
+    case "rule.fired":
+      if (p.status === "hard_fail") {
+        narrate("hardfail", {
+          layer: "P3 · 룰북 결정론", kind: "fail",
+          title: "규칙이 AI의 설계를 막았다",
+          body: `<code>${esc(p.rule_id)}</code> ${esc(p.reason)}
+            ${p.suggestion ? `<br>규칙표가 제시한 대안: <b>${esc(p.suggestion)}</b>` : ""}
+            <span class="nr-why">왜 중요한가: <b>여기가 이 구조의 핵심입니다.</b> AI가 아무리
+            그럴듯하게 설계해도 출처가 확인된 규칙이 막습니다. 판정에 AI의 추측이 없으므로
+            같은 입력이면 백 번 돌려도 같은 결과입니다. 트레이스의 규칙 ID를 클릭하면
+            원본 CSV 행과 출처 문헌이 열립니다.</span>`,
+        });
+      } else if (p.status === "soft_flag") {
+        narrate("softflag", {
+          layer: "P3 · 근거 정책", kind: "warn",
+          title: "반려까지는 못 가는 지적",
+          body: `<code>${esc(p.rule_id)}</code> ${esc(p.reason)}
+            <span class="nr-why">왜 중요한가: 근거가 미검증인 규칙 행은 <b>반려를 만들 수
+            없습니다.</b> 심사관 이관으로 강등되고, 출처를 못 찾은 행은 로딩 단계에서 아예
+            빠집니다 — “근거 없는 규칙은 실행되지 않는다”가 코드로 강제됩니다.</span>`,
+        });
+      }
+      break;
+
+    case "reflect":
+      narrate(`reflect-${narrationCount}`, {
+        layer: "지휘 · 반성 LLM", kind: "llm", once: false,
+        title: "반려 사유를 읽고 재설계를 지시한다",
+        body: `${esc(p.root_cause || "")} → <b>${esc(p.directive || "")}</b>
+          <span class="nr-why">왜 중요한가: 반려 사유에 담긴 대체 부형제가 그대로 다음 설계
+          지시가 됩니다. 실험실에서 며칠 걸릴 “만들어 보고 실패하고 다시 설계”를 이 안에서
+          끝냅니다.</span>`,
+      });
+      break;
+
+    case "judge.verdict":
+      narrate("judge", {
+        layer: "P5 · 심사 LLM", kind: "jud",
+        title: "심사관은 순위만 매긴다 (반려 권한 없음)",
+        body: `${esc(p.persona)} → 점수 <b>${esc(p.score)}</b>
+          <span class="nr-why">왜 중요한가: 안전·규제 판정은 이미 룰북이 끝냈습니다. 심사관
+          점수는 통과한 후보들 사이의 순위 결정에만 쓰입니다 — LLM에게 안전 판정을 맡기지
+          않겠다는 설계가 권한 분리로 구현돼 있습니다.</span>`,
+      });
+      break;
+
+    case "consensus":
+      narrate("consensus", {
+        layer: "P6 · 합의 결정론", kind: "det",
+        title: "합의로 최종 후보를 고른다",
+        body: `선정 <b>${esc(p.winner || "없음")}</b> · 모델 ${esc(p.model || "")}
+          <span class="nr-why">왜 중요한가: 결정론 하드페일과 심사 가중점수를 합쳐 판단합니다.
+          가중치·임계값은 설정 CSV에서 오므로 이 단계도 재현됩니다.</span>`,
+      });
+      break;
+
+    case "warning":
+      if (ev.node === "infeasible") {
+        narrate("infeasible", {
+          layer: "종단 · 판정", kind: "fail",
+          title: "“이 제약으로는 통과하는 처방이 없다”",
+          body: `${esc(p.reason || "")}
+            ${(p.blocking || []).slice(0, 2).map((b) =>
+              `<br><code>${esc(b.rule_id)}</code> ${esc(b.reason)}${
+                b.suggestion ? ` → 대안 <b>${esc(b.suggestion)}</b>` : ""}`).join("")}
+            <span class="nr-why">왜 중요한가: 재설계로 풀리지 않는 충돌을 알아채고 루프를 돌리지
+            않습니다. 연구원이 들어야 할 답은 “다시 설계했다”가 아니라 “제약 자체가 불가능하다,
+            대신 이걸 쓰라”입니다.</span>`,
+        });
+      }
+      break;
+  }
+}
+
 /* ── 시연 시나리오 ───────────────────────────────────────────────────
-   각 항목은 실제로 돌려서 어떤 경로를 밟는지 측정한 뒤 고른 것이다.
-   "무엇을 보여주는 예시인가"를 함께 적어 시연 중 설명이 필요 없게 한다. */
-const PRESETS = [
+   버튼을 누르면 곧바로 실행되고, 위 해설이 실행에 맞춰 흐른다.
+   각 시나리오가 실제로 어떤 경로를 밟는지 측정해서 고른 조합이다. */
+const SCENARIOS = [
   {
-    label: "규칙이 제약을 반려",
+    id: "guardrail",
+    title: "규칙이 AI를 막는 순간",
+    proves: "검증 계층 · 근거 추적",
     request: "소아용 플루옥세틴 정제를 설계해줘",
     pinned: "Lactose monohydrate",
-    note: "현장 제약으로 유당을 못 박았습니다. 설계자는 제약을 지키고, 룰북이 INC002"
-        + "(2차 아민 + 유당 → Maillard 반응)로 막습니다. 재설계로 풀리지 않는 충돌이라"
-        + " 시스템은 루프를 돌리지 않고 “이 제약으로는 통과가 없다”는 결론과 대체 부형제를 냅니다.",
+    duration: "약 1분",
+    goal: `현장 제약으로 <b>유당을 반드시 쓰라</b>고 못 박았습니다. 설계 AI는 제약을 지키고,
+      룰북이 <code>INC002</code>(2차 아민 + 유당 → Maillard 반응)로 막습니다.
+      재설계로 풀리지 않는 충돌이라 시스템은 루프를 돌리지 않고
+      <b>“이 제약으로는 통과가 없다”</b>는 결론과 대체 부형제를 냅니다.`,
   },
   {
-    label: "소아 안전 심사관 소집",
+    id: "team",
+    title: "요청에 따라 팀이 바뀐다",
+    proves: "자기조직형 멀티 에이전트",
     request: "소아용 바나나향 아세트아미노펜 정제를 설계해줘",
     pinned: "",
-    note: "대상이 소아라서 소아 안전 심사관(REV001)이 그 자리에서 생성됩니다. 가용화"
-        + " 심사관은 조건에 맞지 않아 아예 만들어지지 않습니다 — 고정 명단이 없다는 증거입니다."
-        + " 아세트아미노펜은 아미드라 유당 금기에 걸리지 않는 것도 함께 보입니다.",
+    duration: "약 2분",
+    goal: `대상이 <b>소아</b>라서 소아 안전 심사관(REV001)이 그 자리에서 생성됩니다. 명단에 있는
+      가용화·고령자·문헌조사 심사관은 조건에 맞지 않아 <b>아예 만들어지지 않습니다</b> —
+      고정 명단이 없다는 증거입니다. 아세트아미노펜은 아미드라 유당 금기에 걸리지 않는 것도
+      왼쪽 구조 플래그에서 함께 확인됩니다(<code>is_amide_not_amine</code>).
+      접속이 몰리면 심사 점수가 규칙 기반으로 대체될 수 있고, 그때는 소견에 표시가 붙습니다.`,
   },
   {
-    label: "고령자 심사관 소집",
-    request: "고령자용 메트포르민 정제를 설계해줘",
+    id: "labloop",
+    title: "만든 뒤 다음 실험까지",
+    proves: "Lab-in-the-loop",
+    // 이 시나리오의 요점은 lab-loop이라 설계 단계는 가볍게 둔다 —
+    // 심사관이 많이 소집되면 무료 티어 토큰이 설계에서 다 소모되고 지시가 규칙 기반으로 내려간다.
+    request: "성인용 이부프로펜 정제를 설계해줘",
     pinned: "",
-    note: "같은 요청에서 인구군만 바뀌면 소집되는 전문가도 바뀝니다 —"
-        + " 고령자 안전 심사관(REV006)이 들어오고 소아 심사관은 빠집니다.",
-  },
-  {
-    label: "가용화 심사관 + 포장 규칙",
-    request: "흡습성이 강한 원료를 쓰는 정제를 설계해줘. 장용 코팅이 필요해",
-    pinned: "",
-    note: "코팅 요구가 가용화 전략 심사관(REV002)을 소집하고, 흡습성 플래그가 포장"
-        + " 적합성 규칙을 발동시킵니다. 조건에 따라 검사와 심사가 함께 달라집니다.",
+    duration: "약 2~3분",
+    autoLab: true,
+    goal: `설계를 한 바퀴 돌린 뒤 <b>실험 결과를 자연어로 자동 입력</b>해 lab-in-the-loop을 이어서 돕니다.
+      AI가 문장에서 수치를 판독하고, 규칙이 규격 이탈을 판정한 뒤, 확인시험 마스터 66종에서
+      <b>다음에 할 실험</b>을 골라 지시합니다 — 모든 지시에 ICH·FDA 출처가 붙습니다.`,
   },
 ];
 
-function buildPresets() {
-  const box = $("presets");
-  box.innerHTML = PRESETS.map((p, i) =>
-    `<button type="button" class="preset" data-i="${i}">${esc(p.label)}</button>`).join("");
-  box.querySelectorAll(".preset").forEach((btn) => {
+let activeScenario = null;
+
+function buildScenarios() {
+  const box = $("scenarios");
+  box.innerHTML = SCENARIOS.map((s, i) => `
+    <button type="button" class="scenario" data-i="${i}">
+      <span class="scenario-proves">${esc(s.proves)}</span>
+      <span class="scenario-title">${esc(s.title)}</span>
+      <span class="scenario-run">▶ 실행 · ${esc(s.duration)}</span>
+    </button>`).join("");
+  box.querySelectorAll(".scenario").forEach((btn) => {
     btn.onclick = () => {
-      const preset = PRESETS[Number(btn.dataset.i)];
-      $("request").value = preset.request;
-      $("pinned").value = preset.pinned;
-      $("preset-note").textContent = preset.note;
-      box.querySelectorAll(".preset").forEach((b) => b.classList.remove("on"));
+      if (running) {
+        notice("실행이 끝난 뒤에 다른 시나리오를 눌러 주세요.", "warn");
+        return;
+      }
+      const scenario = SCENARIOS[Number(btn.dataset.i)];
+      activeScenario = scenario;
+      $("request").value = scenario.request;
+      $("pinned").value = scenario.pinned;
+      box.querySelectorAll(".scenario").forEach((b) => b.classList.remove("on"));
       btn.classList.add("on");
-      $("run").focus();
+
+      const goal = $("scenario-goal");
+      goal.hidden = false;
+      goal.innerHTML = `<b>${esc(scenario.title)}</b> — 이 시나리오가 보여주는 것<br>${scenario.goal}`;
+      startRun();
     };
   });
 }
+
+/* 시나리오가 lab-in-the-loop까지 이어질 때, 설계가 끝나면 자동으로 실험 결과를 넣는다. */
+function continueScenario() {
+  if (!activeScenario || !activeScenario.autoLab) return;
+  narrate("labloop-start", {
+    layer: "Lab-in-the-loop", kind: "llm",
+    title: "이제 만든 뒤의 절반 — 실험 결과를 넣는다",
+    body: `실험 노트를 자연어로 자동 입력합니다. AI가 판독 → 규칙이 판정 → AI가 다음 실험을 지시.
+      <span class="nr-why">왜 중요한가: 사람이 판단의 병목이 아니라 벤치에서 실험을 수행하는
+      쪽으로 들어옵니다. 지시의 후보는 실제 확인시험 마스터 66종으로 묶여 있어 AI가 시험을
+      발명할 수 없습니다.</span>`,
+  });
+  $("labloop").open = true;
+  $("wl-notes").value = WL_EXAMPLE;
+  $("labloop").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  setTimeout(() => $("wl-submit").click(), 700);
+}
+
+/* ── SMARTS 직접 검사 ────────────────────────────────────────────────
+   룰북의 배합금기 판정은 SMARTS 매칭에서 출발한다. 판정을 믿으려면 "그 패턴이 정말
+   이 분자에 있는가"를 사람이 확인할 수 있어야 하므로, 그 계층을 화면에 그대로 노출한다.
+   패턴 프리셋은 룰북이 실제로 쓰는 structural_flags_smarts.csv 에서 가져온다. */
+let lastSmiles = "";
+
+async function loadSmartsPresets() {
+  try {
+    const res = await fetch(api("/api/chem/smarts"));
+    if (!res.ok) return;
+    const { patterns } = await res.json();
+    $("sm-presets").innerHTML = patterns.map((p, i) =>
+      `<button type="button" class="sm-preset" data-i="${i}" title="${esc(p.risk_context)}">
+         ${esc(p.flag_name)}</button>`).join("");
+    $("sm-presets").querySelectorAll(".sm-preset").forEach((btn) => {
+      btn.onclick = () => {
+        const pattern = patterns[Number(btn.dataset.i)];
+        $("sm-pattern").value = pattern.smarts;
+        $("sm-out").innerHTML = `<div class="sm-note">
+          <b>${esc(pattern.flag_id)} ${esc(pattern.flag_name)}</b>
+          <div>발동 규칙: <code>${esc(pattern.triggers_rule || "-")}</code></div>
+          <div>위험 맥락: ${esc(pattern.risk_context || "-")}</div>
+          ${pattern.notes ? `<div class="sm-notes">${esc(pattern.notes)}</div>` : ""}
+        </div>`;
+      };
+    });
+  } catch (err) { /* 패턴 목록은 부가 기능 — 실패해도 화면은 돈다 */ }
+}
+
+$("sm-run").onclick = async () => {
+  const smiles = $("sm-smiles").value.trim() || lastSmiles;
+  const smarts = $("sm-pattern").value.trim();
+  if (!smiles) {
+    notice("검사할 SMILES를 입력하거나 먼저 설계를 실행해 주세요.", "warn");
+    return;
+  }
+  if (!smarts) {
+    notice("SMARTS 패턴을 입력하거나 아래 패턴 중 하나를 눌러 주세요.", "warn");
+    return;
+  }
+  const btn = $("sm-run");
+  btn.disabled = true;
+  try {
+    const res = await fetch(api("/api/chem/smarts"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ smiles, smarts }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      throw new Error(detail.detail || `검사 실패 (${res.status})`);
+    }
+    const d = await res.json();
+    const hit = d.parent_match_count > 0;
+    $("sm-out").innerHTML = `
+      <div class="sm-result ${hit ? "hit" : "miss"}">
+        <b>${hit ? `✓ ${esc(d.parent_match_count)}곳 일치` : "✕ 해당 구조 없음"}</b>
+        <div>${esc(d.message)}</div>
+        ${d.is_salt ? `<div class="sm-notes">염 형태 — parent <code>${esc(d.parent_smiles)}</code> 로 매칭</div>` : ""}
+      </div>
+      ${d.svg ? `<div class="mol sm-mol">${d.svg}</div>` : ""}`;
+  } catch (err) {
+    notice(err.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 /* ── 테마 ───────────────────────────────────────────────────────────
    키는 머니메이트·브리핑과 공유('mm:theme'). 저장값이 없으면 시스템 설정을 따른다. */
@@ -667,7 +940,8 @@ $("btn-theme").onclick = () => {
 /* ── 초기화 ─────────────────────────────────────────────────────── */
 (async function init() {
   buildGraph();
-  buildPresets();
+  buildScenarios();
+  loadSmartsPresets();
   setRunning(false);
   try {
     const res = await fetch(api("/api/meta"));

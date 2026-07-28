@@ -6,6 +6,8 @@
   GET  /api/runs/{id}/replay      저장된 이벤트 재생 — 오프라인 시연 안전장치
   GET  /api/runs/{id}             실행 요약
   POST /api/chem/preview          SMILES/API명 → descriptor·구조플래그·2D SVG (RDKit 단독 데모)
+  GET  /api/chem/smarts           룰북이 쓰는 구조 패턴 목록 + 발동 규칙
+  POST /api/chem/smarts           SMILES × SMARTS 직접 매칭 + 강조 구조
   GET  /api/rules/{rule_id}       규칙 원본 CSV 행 + 출처 (근거 드릴다운)
   POST /api/runs/{id}/wetlab      자연어 실험 결과 → 판독·판정·다음 실험 지시 (lab-in-the-loop)
   GET  /api/meta                  룰북·심사관·LLM 가용성 등 시스템 상태
@@ -31,6 +33,7 @@ from sse_starlette.sse import EventSourceResponse
 from formula.agents.client import credentials_available, provider, provider_label
 from formula.checkers.registry import RulebookRegistry
 from formula.chem.profile import build_profile
+from formula.chem.smarts_probe import match_smarts
 from formula.contracts import EventKind, TraceEvent, WetLabResult
 from formula.feedback.interpreter import WetLabInterpreter
 from formula.feedback.labloop import direct_next, read_notes
@@ -83,6 +86,11 @@ class RunRequest(BaseModel):
 class ChemRequest(BaseModel):
     api_name: str = Field(default="", max_length=200)
     smiles: Optional[str] = Field(default=None, max_length=500)
+
+
+class SmartsRequest(BaseModel):
+    smiles: str = Field(default="", max_length=500)
+    smarts: str = Field(default="", max_length=300)
 
 
 class WetLabRequest(BaseModel):
@@ -183,6 +191,47 @@ async def chem_preview(payload: ChemRequest) -> Dict[str, Any]:
     name = payload.api_name or payload.smiles or ""
     profile = build_profile(name, smiles=payload.smiles, base_dir=ROOT)
     return profile.model_dump()
+
+
+@app.get("/api/chem/smarts")
+async def smarts_catalog() -> Dict[str, Any]:
+    """룰북이 쓰는 구조 패턴 목록 — 각 패턴이 어떤 규칙을 발동시키는지 함께 준다.
+
+    화면에서 SMARTS를 직접 시험할 때 "이 패턴이 왜 중요한가"를 바로 보여주기 위한 것이다.
+    """
+    path = ROOT / "database" / "00_master" / "structural_flags_smarts.csv"
+    if not path.exists():
+        return {"patterns": []}
+    frame = pd.read_csv(path, dtype=str, keep_default_na=False).fillna("")
+    return {
+        "patterns": [
+            {
+                "flag_id": row.get("flag_id", ""),
+                "flag_name": row.get("flag_name", ""),
+                "smarts": row.get("smarts_pattern", ""),
+                "triggers_rule": row.get("triggers_rule", ""),
+                "risk_context": row.get("risk_context", ""),
+                "verification_status": row.get("verification_status", ""),
+                "notes": row.get("notes", ""),
+            }
+            for row in frame.to_dict(orient="records")
+        ]
+    }
+
+
+@app.post("/api/chem/smarts")
+async def smarts_match(payload: SmartsRequest) -> Dict[str, Any]:
+    """SMILES에 SMARTS를 직접 대 보고, 맞은 원자를 강조한 구조를 돌려준다.
+
+    룰북의 배합금기 판정은 전부 이 SMARTS 매칭에서 출발한다. 판정을 믿으려면
+    "그 패턴이 정말 이 분자에 있는가"를 직접 확인할 수 있어야 하므로 화면에 노출한다.
+    염 형태는 parent를 추출한 뒤 매칭한다(판정 계층과 같은 규약).
+    """
+    smiles = (payload.smiles or "").strip()
+    smarts = (payload.smarts or "").strip()
+    if not smiles or not smarts:
+        raise HTTPException(422, "SMILES와 SMARTS를 모두 입력해 주세요.")
+    return await asyncio.to_thread(match_smarts, smiles, smarts)
 
 
 # ---------------------------------------------------------------------------

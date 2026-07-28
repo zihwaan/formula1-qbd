@@ -59,7 +59,10 @@ GROQ_MAX_TOKENS = 1200
 GROQ_TPM_MARGIN = 400      # 토큰 추정 오차 흡수용 여유
 GROQ_MIN_COMPLETION = 700  # 이보다 적게 남으면 프롬프트를 줄인다
 GROQ_TIMEOUT = 150.0
-# 예산이 빌 때까지 기다릴 최대 시간. 이걸 넘기면 LLMUnavailable → 결정론 폴백.
+# 예산이 빌 때까지 기다릴 최대 시간. 이걸 넘기면 LLMUnavailable → 규칙 기반 대체.
+# 심사관이 여러 명 소집되면 (심사관 수 × 후보 수 × 2회) 호출이 몰린다. 110초로 늘려 봤더니
+# 실행이 240초까지 늘어나면서도 대체는 여전히 나왔다 — 대기를 늘리는 건 답이 아니라
+# 호출당 토큰을 줄이는 게 답이다. 실측이 더 나았던 75초로 되돌린다.
 GROQ_WAIT_BUDGET = 75.0
 
 T = TypeVar("T", bound=BaseModel)
@@ -450,8 +453,10 @@ def _groq_stream(system_prefix: str, user: str, on_delta: Optional[Callable[[str
 
     def attempt(model: str) -> str:
         httpx = _httpx()
-        payload, _reserved = _groq_payload(model, system, user, effort, max_tokens, stream=True)
+        payload, reserved = _groq_payload(model, system, user, effort, max_tokens, stream=True)
+        payload["stream_options"] = {"include_usage": True}
         chunks: List[str] = []
+        used: Optional[int] = None
         with httpx.stream("POST", GROQ_URL, headers=_groq_headers(),
                           json=payload, timeout=GROQ_TIMEOUT) as response:
             response.raise_for_status()
@@ -462,8 +467,16 @@ def _groq_stream(system_prefix: str, user: str, on_delta: Optional[Callable[[str
                 if data == "[DONE]":
                     break
                 try:
-                    delta = json.loads(data)["choices"][0].get("delta", {})
-                except (json.JSONDecodeError, KeyError, IndexError):
+                    frame = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                # 마지막 프레임에 실린 실제 사용량 (stream_options.include_usage)
+                usage = frame.get("usage") or (frame.get("x_groq") or {}).get("usage")
+                if isinstance(usage, dict) and usage.get("total_tokens"):
+                    used = int(usage["total_tokens"])
+                try:
+                    delta = frame["choices"][0].get("delta", {})
+                except (KeyError, IndexError):
                     continue
                 # gpt-oss는 추론 텍스트를 reasoning으로 따로 보낸다. 심사관의 사고 과정을
                 # 보여주는 화면이므로 둘 다 흘린다(최종 점수는 별도 구조화 호출로 받는다).
@@ -473,7 +486,12 @@ def _groq_stream(system_prefix: str, user: str, on_delta: Optional[Callable[[str
                 chunks.append(text)
                 if on_delta is not None:
                     on_delta(text)
-        return "".join(chunks)
+        # 사용량이 안 오면 흘러나온 텍스트로 추정한다 — 과다 예약을 그대로 두는 것보다 낫다.
+        body = "".join(chunks)
+        _BUDGET.settle(model, reserved,
+                       used if used is not None
+                       else _estimate_tokens(system) + _estimate_tokens(user) + _estimate_tokens(body))
+        return body
 
     return _groq_with_fallback(
         _reserve_for(system, user, effort, max_tokens, True), attempt)

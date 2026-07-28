@@ -98,8 +98,11 @@ API {spec.api_name} · 대상 {spec.target_patient} · 제형 {spec.dosage_form}
 
         # 구조화 출력과 스트리밍을 함께 쓰기 위해, 근거는 스트리밍으로 보여주고
         # 최종 점수만 스키마로 다시 받는다(UI 체감 + 파싱 안정성 양립).
+        # max_tokens를 실제 필요량으로 잡는다. 무료 티어는 예약분이 그대로 분당 한도에서
+        # 빠지므로, 넉넉히 잡으면 뒤에 오는 심사관이 대체 점수로 떨어진다.
         narration = stream_text(SYSTEM_BASE, user, on_delta=on_delta,
-                                system_suffix=system_suffix, effort="medium")
+                                system_suffix=system_suffix, effort="medium",
+                                max_tokens=600)
         from formula.agents.client import parse_structured
 
         # 점수 정리 호출에는 평가 맥락 전체를 다시 보내지 않는다. 방금 쓴 소견에 판단 근거가
@@ -110,7 +113,7 @@ API {spec.api_name} · 대상 {spec.target_patient} · 제형 {spec.dosage_form}
             f"## 평가 대상\n{recipe.candidate_id} · {recipe.strategy} · {recipe.process}\n\n"
             f"## 당신이 방금 작성한 심사 소견\n{narration}\n\n"
             "이 소견을 스키마에 맞춰 점수로 정리하라. rationale에는 소견의 핵심을 옮긴다.",
-            system_suffix=system_suffix, effort="low",
+            system_suffix=system_suffix, effort="low", max_tokens=400,
         )
         source = "llm"
     except LLMUnavailable as exc:

@@ -56,11 +56,14 @@
       <button id="replay" class="ghost" disabled>재생</button>
     </section>
 
-    <!-- 시연용 시나리오 — 각각 다른 경로를 실제로 밟는다(측정해서 고른 조합) -->
-    <section class="presets" aria-label="시연 시나리오">
-      <span class="presets-label">시연 시나리오</span>
-      <div id="presets" class="preset-chips"></div>
-      <p id="preset-note" class="preset-note"></p>
+    <!-- 시연 시나리오 — 누르면 바로 실행되고, 아키텍처 해설이 실행에 맞춰 흐른다.
+         각 시나리오가 실제로 어떤 경로를 밟는지 측정해서 고른 조합이다. -->
+    <section class="scenarios" aria-label="시연 시나리오">
+      <div class="scenarios-head">
+        <span class="scenarios-label">시연 시나리오 — 누르면 바로 실행됩니다</span>
+        <span class="scenarios-hint">실행되는 동안 오른쪽에 아키텍처 해설이 단계별로 뜹니다</span>
+      </div>
+      <div id="scenarios" class="scenario-cards"></div>
     </section>
 
     <main class="grid">
@@ -79,6 +82,25 @@
           <div id="mol-est"></div>
           <div id="mol-warn"></div>
         </div>
+
+        <!-- SMARTS 직접 검사 — 배합금기 판정의 출발점을 사람이 확인할 수 있게 -->
+        <details class="smarts" id="smarts">
+          <summary>구조 패턴(SMARTS) 직접 검사</summary>
+          <p class="smarts-help">
+            배합금기 판정은 “이 분자에 이 작용기가 있는가”에서 시작합니다.
+            그 판별에 쓰는 <b>SMARTS 패턴</b>을 여기서 직접 대 볼 수 있습니다.
+            염은 판정 계층과 같게 <b>parent를 추출한 뒤</b> 매칭합니다.
+          </p>
+          <label class="sr-only" for="sm-smiles">검사할 SMILES</label>
+          <input id="sm-smiles" type="text" autocomplete="off"
+                 placeholder="SMILES (비우면 위 실행 결과 사용)">
+          <label class="sr-only" for="sm-pattern">SMARTS 패턴</label>
+          <input id="sm-pattern" type="text" autocomplete="off"
+                 placeholder="SMARTS 패턴 (예: [NX3][CX3](=[OX1]))">
+          <div class="smarts-presets" id="sm-presets"></div>
+          <button id="sm-run" type="button">패턴 검사</button>
+          <div id="sm-out"></div>
+        </details>
       </aside>
 
       <!-- ── 중앙: 에이전트 그래프 + 트레이스 ──────────────────────────── -->
@@ -90,6 +112,15 @@
             <span><i class="sw det"></i>결정론 (오차 0%)</span>
             <span><i class="sw llm"></i>LLM 판단</span>
             <span><i class="sw jud"></i>동적 소집 심사관</span>
+          </div>
+        </div>
+
+        <!-- 실행에 맞춰 흐르는 아키텍처 해설 — 지금 어느 계층이 무엇을 왜 하는지 -->
+        <div class="panel narration-panel">
+          <h2>지금 무슨 일이 일어나고 있나 <small>실행 단계마다 어느 계층이 무엇을 왜 하는지</small></h2>
+          <div id="scenario-goal" class="scenario-goal" hidden></div>
+          <div id="narration" class="narration" role="log" aria-live="polite">
+            <div class="empty">시나리오를 누르거나 설계를 실행하면 단계별 해설이 여기에 흐릅니다.</div>
           </div>
         </div>
         <div class="panel trace-panel">
