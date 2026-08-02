@@ -20,16 +20,33 @@ from pydantic import BaseModel, Field
 # 추정(estimate)은 신뢰도가 낮으므로 판정 근거가 아니라 '힌트'로만 쓴다 — 실측 우선.
 # ---------------------------------------------------------------------------
 class StructuralFlag(BaseModel):
-    """SMARTS 구조 플래그 1건 (structural_flags_smarts.csv 1행에 대응)."""
+    """SMARTS 구조 플래그 1건.
+
+    기준서 v1.1 §3 "SMARTS 구조 플래그 공통 데이터 계약"을 그대로 따른다.
+    Boolean만 저장하면 중복 motif와 탐지 위치를 확인할 수 없으므로
+    match_count와 atom_indices를 함께 싣고, **구조 사실(fact)과 구조 경고(alert)를
+    alert_level로 분리한다** — 경고는 단독으로 공정을 배제하지 못한다(§L2).
+    """
 
     flag_id: str
-    flag_name: str  # 예: has_primary_amine
+    flag_name: str  # 예: has_primary_aliphatic_amine
     present: bool
     smarts: str
     match_count: int = 0
+    atom_indices: List[List[int]] = Field(default_factory=list)  # 시각화·검토용
+    section: str = ""            # 기준서 절 번호 (4~12)
+    rulebook_group: str = ""     # 룰북 api_functional_group 조인 어휘
+    specificity: str = "medium"  # low | medium | high
+    alert_level: str = "fact"    # fact | conditional_alert | hard_alert
+    interpretation: str = ""
+    required_cofactors: List[str] = Field(default_factory=list)  # 위험 발현 조건
+    applicability: str = "parent"      # parent | input_form | impurity
+    false_positive_notes: str = ""
+    confirmation_test: str = ""        # 이 경고를 확인할 시험
+    smarts_version: str = ""
     fragment_count: Optional[int] = None  # rdkit fr_* 카운트 (교차검증용)
     cross_check_ok: bool = True  # SMARTS와 fragment 카운트가 일치하는가
-    validation_status: str = "UNTESTED"  # 원본 CSV의 validation_status
+    validation_status: str = "draft"
     triggers_rule: str = ""
 
 
@@ -59,6 +76,30 @@ class ApiProfile(BaseModel):
     rdkit_version: str = ""
     warnings: List[str] = Field(default_factory=list)
 
+    # ── 기준서 §1 구조 품질/정규화 ──────────────────────────────────
+    # parent를 만들어도 실제 투입되는 등록 형태는 제제 특성에 영향을 주므로 함께 보존한다.
+    structure_quality: Dict[str, Any] = Field(default_factory=dict)
+    # ── 기준서 §2.1 파생 스크리닝 지표 (BCS·공정 확정값 아님) ────────
+    derived_screens: Dict[str, Any] = Field(default_factory=dict)
+    # ── 재현성: RDKit·정규화·SMARTS 레지스트리 버전 ─────────────────
+    versions: Dict[str, str] = Field(default_factory=dict)
+
+    def alerts(self, level: str = "hard_alert") -> List[StructuralFlag]:
+        """해당 경고 등급의 플래그만. 확인시험 승격 판단에 쓴다."""
+        return [f for f in self.flags if f.present and f.alert_level == level]
+
+    def confirmation_tests(self) -> List[str]:
+        """검출된 구조 경고가 요구하는 확인시험 목록(중복 제거)."""
+        seen: List[str] = []
+        for flag in self.flags:
+            if not flag.present or not flag.confirmation_test:
+                continue
+            for test in flag.confirmation_test.split(";"):
+                name = test.strip()
+                if name and name not in seen:
+                    seen.append(name)
+        return seen
+
     def flag_names(self) -> List[str]:
         """참으로 판정된 구조 플래그 이름 목록."""
         return [f.flag_name for f in self.flags if f.present]
@@ -66,10 +107,22 @@ class ApiProfile(BaseModel):
     def functional_groups(self) -> List[str]:
         """배합금기 룰북의 `api_functional_group`과 조인할 작용기 이름.
 
-        `has_primary_amine` → `primary_amine` 형태로 접두어만 벗긴다.
+        기준서 v1.1은 아민을 지방족/방향족·1·2·3차로 세분하지만, 룰북은 여전히
+        `primary_amine`·`secondary_amine` 어휘로 조인한다. 레지스트리의
+        `rulebook_group`이 그 다리 역할을 하므로 **세분 이름과 룰북 어휘를 둘 다** 낸다.
+        이름만 바꾸면 INC001~INC006이 조용히 발동하지 않게 된다.
         """
-        return [f.flag_name[4:] if f.flag_name.startswith("has_") else f.flag_name
-                for f in self.flags if f.present]
+        names: List[str] = []
+        for flag in self.flags:
+            if not flag.present:
+                continue
+            for candidate in (
+                flag.rulebook_group,
+                flag.flag_name[4:] if flag.flag_name.startswith("has_") else flag.flag_name,
+            ):
+                if candidate and candidate not in names:
+                    names.append(candidate)
+        return names
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +422,8 @@ class EventKind(str, Enum):
     WETLAB = "wetlab"
     WARNING = "warning"
     ERROR = "error"
+    PREDICTIONS = "predictions"
+    LITERATURE = "literature"
 
 
 class TraceEvent(BaseModel):

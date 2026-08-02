@@ -50,8 +50,11 @@ def test_acetaminophen_does_not_trigger_maillard(registry):
     이 테스트가 깨진다면 SMARTS나 배합금기 조인이 바뀐 것이다 — 데모 서사도 함께 봐야 한다.
     """
     spec = _spec("Acetaminophen")
-    assert "is_amide_not_amine" in spec.api_functional_groups
+    # v1.1은 `is_amide_not_amine` 단일 Boolean을 폐기하고 amide와 amine을 각각 검출한다.
+    # 화학적 주장은 그대로다: 아미드는 있고 반응할 유리 아민은 없다.
+    assert "amide" in spec.api_functional_groups
     assert "primary_amine" not in spec.api_functional_groups
+    assert "secondary_amine" not in spec.api_functional_groups
 
     result = registry.run(spec, _lactose_recipe("Acetaminophen"), short_circuit=False)
     maillard = [v for v in result.blockers if v.rule_id in ("INC001", "INC002", "INC003")]

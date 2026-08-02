@@ -1,0 +1,83 @@
+flag_id,flag_name,section,smarts,postprocess,rulebook_group,specificity,alert_level,interpretation,required_cofactors,applicability,false_positive_notes,confirmation_test,smarts_version,validation_status
+FG_N_PRIM_ALIPH,has_primary_aliphatic_amine,4,[NX3;H2;!$(NC=O);!$(NS(=O)=O);!$(NC(=S));!$(NC(=N))][CX4],,primary_amine,high,fact,Maillard·염 형성 후보,reducing_sugar;water;heat;pH,parent,amide·sulfonamide·thiourea N 제외됨,compatibility study;LC stress,1.1.0,draft
+FG_N_SEC_ALIPH,has_secondary_aliphatic_amine,4,[NX3;H1;!$(NC=O);!$(NS(=O)=O);!$(NC(=S));!$(NC(=N))]([CX4])[CX4],,secondary_amine,high,fact,Maillard·nitrosation 후보,reducing_sugar;nitrite;water;heat;pH,parent,고리 NH는 별도 플래그로 분리,compatibility study;NDSRI assessment,1.1.0,draft
+FG_N_TERT_ALIPH,has_tertiary_aliphatic_amine,4,[NX3;H0;+0;!$(NC=O);!$(NS(=O)=O)]([#6])([#6])[#6],,tertiary_amine,medium,conditional_alert,염 형성·N-oxidation·nitrosamine precursor 평가,oxidant;nitrite;pH,parent,방향족 N 포함 가능 — 치환 환경 확인,N-oxide stress;NDSRI assessment,1.1.0,draft
+FG_N_QUAT,has_quaternary_ammonium,4,[NX4+],,quaternary_ammonium,high,fact,영구 양전하,,parent,counterion 필수 동반,salt form 확인,1.1.0,draft
+FG_N_ANILINE,has_aromatic_amine_aniline,4,"[NX3;H2,H1;!$(NC=O);!$(NS(=O)=O)]c",,aromatic_amine,high,conditional_alert,반응성·산화·Maillard 별도 분류,oxidant;reducing_sugar;light,parent,acetanilide 등 amide는 제외됨,oxidative stress;LC stress,1.1.0,draft
+FG_N_PYRIDINE,has_pyridine_like_n,4,[nH0;+0],,basic_heteroaromatic_n,low,fact,염기성 heteroaromatic N 후보,pKa,parent,치환기에 따라 염기도 크게 변동 — pKa 모델 필요,pKa 측정,1.1.0,draft
+FG_N_PYRROLE,has_pyrrole_like_n,4,[nH],,pyrrole_like_n,medium,fact,비염기성 방향족 N,,parent,tetrazole 등 산성 NH와 구분 필요,,1.1.0,draft
+FG_N_AMIDE,has_amide,4,[NX3][CX3](=[OX1]),,amide,high,fact,amine에서 제외되는 일반 amide,water;pH;heat,parent,carbamate·urea도 함께 매치 — 하위 플래그로 구분,aqueous stress LC,1.1.0,draft
+FG_N_SULFONAMIDE,has_sulfonamide,4,[NX3][SX4](=[OX1])(=[OX1]),,sulfonamide,high,fact,약산성 가능; amine 제외,pH,parent,,,1.1.0,draft
+FG_N_CARBAMATE,has_carbamate,4,[NX3][CX3](=[OX1])[OX2],,carbamate,high,conditional_alert,amine 제외·가수분해 조건부,water;pH;heat,parent,,aqueous stress LC,1.1.0,draft
+FG_N_UREA,has_urea,4,[NX3][CX3](=[OX1])[NX3],,urea,high,fact,amine 제외·수소결합,,parent,,,1.1.0,draft
+FG_N_THIOUREA,has_thiourea,4,[NX3][CX3](=[SX1])[NX3],,thiourea,high,conditional_alert,산화·반응성 조건부,oxidant;metal,parent,,oxidative stress,1.1.0,draft
+FG_N_AMIDINE,has_amidine,4,"[CX3](=[NX2,NX3+])[NX3]",,amidine,high,fact,강염기성 가능,pKa,parent,guanidine도 부분 매치 — 함께 판단,pKa 측정,1.1.0,draft
+FG_N_GUANIDINE,has_guanidine,4,"[NX3][CX3](=[NX2,NX3+])[NX3]",,guanidine,high,fact,강염기성 가능,pKa,parent,,pKa 측정,1.1.0,draft
+FG_N_HYDRAZINE,has_hydrazine,4,[NX3][NX3],,hydrazine,medium,conditional_alert,친핵성·산화·aldehyde 반응,oxidant;aldehyde,parent,,oxidative stress;adduct 시험,1.1.0,draft
+FG_N_HYDRAZONE,has_hydrazone,4,[NX3][NX2]=[CX3],,hydrazone,high,conditional_alert,가수분해·이성화 후보,water;pH;light,parent,,aqueous stress LC,1.1.0,draft
+FG_N_HYDROXYLAMINE,has_hydroxylamine,4,"[NX3][OX2H,OX1-]",,hydroxylamine,high,conditional_alert,산화·반응성 후보,oxidant,parent,,oxidative stress,1.1.0,draft
+FG_N_NITROSO,has_nitroso_group,4,[N;X3][N;X2]=[O;X1],,nitroso,high,hard_alert,N-nitroso 존재 여부,,parent,,ICH M7 assessment,1.1.0,draft
+FG_NA_NNITROSAMINE,has_n_nitrosamine,5,[N;X3]([#6])[N;X2]=[O;X1],,n_nitrosamine,high,hard_alert,구조 내 N-nitroso 직접 경고,,parent,,ICH M7 cohort of concern 평가,1.1.0,draft
+FG_NA_NITROSATABLE,has_nitrosatable_secondary_amine,5,[NX3;H1;!$(NC=O);!$(NS(=O)=O);!$(NC(=S));!$(N[a])],,nitrosatable_amine,medium,conditional_alert,nitrite·조건 결합 필요,nitrite;pH;water;heat;time,parent,구조 단독으로 Reject 금지,NDSRI risk assessment,1.1.0,draft
+FG_NA_CYCLIC_SEC,has_cyclic_secondary_amine,5,[N;R;X3;H1],,cyclic_secondary_amine,medium,conditional_alert,환형 2차 아민 후보,nitrite;pH,parent,고리 NH는 염기도·반응성이 사슬형과 다름,NDSRI risk assessment,1.1.0,draft
+FG_NA_DMA,has_dimethylamine_motif,5,[CH3][NX3;!$(NC=O);!$(NS(=O)=O);!$(N[a])][CH3],,dimethylamine_motif,low,conditional_alert,API-related nitrosamine fragment 후보; 문맥검토,nitrite,parent,amide·sulfonamide 질소 제외; 메틸 2개를 명시적으로 요구,NDSRI risk assessment,1.1.0,draft
+FG_NA_DEA,has_diethylamine_motif,5,[CH3][CH2][NX3;!$(NC=O);!$(NS(=O)=O);!$(N[a])][CH2][CH3],,diethylamine_motif,low,conditional_alert,API-related nitrosamine fragment 후보,nitrite,parent,amide·sulfonamide 질소 제외; 에틸 2개를 명시적으로 요구,NDSRI risk assessment,1.1.0,draft
+FG_NA_DIALKYL,has_dialkylamine_motif,5,[NX3;H1;!$(NC=O);!$(NS(=O)=O);!$(N[a])]([CX4])[CX4],,dialkylamine_motif,medium,conditional_alert,일반화된 2차 dialkylamine,nitrite;pH,parent,amide·sulfonamide 질소 제외,NDSRI risk assessment,1.1.0,draft
+FG_NA_NITRO,has_nitro_group,5,"[$([NX3+](=O)[O-]),$([NX3](=O)=O)]",,nitro,high,conditional_alert,nitroso와 구별; 별도 전자성·광화학 경고,light;reductant,parent,,광안정성 ICH Q1B,1.1.0,draft
+FG_AB_COOH,has_carboxylic_acid,6,"[CX3](=[OX1])[OX2H1,OX1-]",,carboxylic_acid,high,fact,약산·염 형성·pH 용해도,pH,parent,ester와 구분됨,pKa 측정,1.1.0,draft
+FG_AB_SULFONIC,has_sulfonic_acid,6,"[SX4](=[OX1])(=[OX1])[OX2H,OX1-]",,sulfonic_acid,high,fact,강산성 가능,pH,parent,,pKa 측정,1.1.0,draft
+FG_AB_PHOSPHONIC,has_phosphonic_acid,6,"[PX4](=[OX1])([OX2H,OX1-])[OX2H,OX1-]",,phosphonic_acid,high,fact,다염기산·금속결합 가능,pH;metal,parent,,pKa 측정;complexation,1.1.0,draft
+FG_AB_PHOSPHATE_ESTER,has_phosphate_ester,6,[PX4](=[OX1])([OX2])[OX2],,phosphate_ester,medium,conditional_alert,가수분해·전하 상태,water;pH,parent,,aqueous stress LC,1.1.0,draft
+FG_AB_PHENOL,has_phenol,6,[OX2H]c,,phenol,high,conditional_alert,약산성·산화 후보,oxidant;metal;pH,parent,anisole 등 O-메틸화는 제외됨,oxidative stress,1.1.0,draft
+FG_AB_TETRAZOLE,has_tetrazole,6,[nH]1nnnc1,,tetrazole,medium,fact,tautomer-aware 복수 패턴 필요,pH,parent,tautomer에 따라 미탐 가능 — 보완 패턴 필요,pKa 측정,1.1.0,draft
+FG_AB_IMIDE,has_imide,6,[NX3]([CX3](=O))[CX3](=O),,imide,high,conditional_alert,약산성·가수분해 조건부,water;pH,parent,,aqueous stress LC,1.1.0,draft
+FG_AB_BASIC_HET_N,has_basic_heteroaromatic_n,6,[nH0;+0],,basic_heteroaromatic_n,low,fact,원자환경 기반 pKa 모델 필요,pKa,parent,치환 환경 의존 — 존재만으로 염기도 확정 금지,pKa 측정,1.1.0,draft
+FG_HYD_ESTER,has_ester,7,[CX3](=[OX1])[OX2][#6],,ester,medium,conditional_alert,일반 ester; 조건부 hydrolysis alert,water_activity;pH;temperature;time,parent,carboxylic acid와 구분 필요,pH-temperature aqueous stress LC,1.1.0,draft
+FG_HYD_THIOESTER,has_thioester,7,[CX3](=[OX1])[SX2][#6],,thioester,high,conditional_alert,가수분해·acyl transfer 후보,water;pH,parent,,aqueous stress LC,1.1.0,draft
+FG_HYD_ANHYDRIDE,has_anhydride,7,[CX3](=[OX1])[OX2][CX3](=[OX1]),,anhydride,high,hard_alert,높은 수분 반응성 후보,water,parent,,수분 민감성 시험;DVS,1.1.0,draft
+FG_HYD_CARBONATE,has_carbonate,7,[OX2][CX3](=[OX1])[OX2],,carbonate,high,conditional_alert,pH·수분 의존 분해,water;pH,parent,,aqueous stress LC,1.1.0,draft
+FG_HYD_LACTONE,has_lactone,7,[C;R](=[O;X1])[O;R],,lactone,high,conditional_alert,고리 크기별 위험 분리,water;pH,parent,ring size 후처리 필요,aqueous stress LC,1.1.0,draft
+FG_HYD_LACTAM,has_lactam,7,[C;R](=[O;X1])[N;R],,lactam,high,conditional_alert,β-lactam과 일반 lactam 분리,water;pH,parent,ring size 후처리 필요,aqueous stress LC,1.1.0,draft
+FG_HYD_BETA_LACTAM,has_beta_lactam,7,[C;R](=[O;X1])[N;R],ring_size:4,beta_lactam,high,hard_alert,4원 고리 ring strain — 높은 구조 경고,water;pH,parent,,aqueous stress LC;β-lactam 안정성,1.1.0,draft
+FG_HYD_GAMMA_LACTAM,has_gamma_lactam,7,[C;R](=[O;X1])[N;R],ring_size:5,gamma_lactam,high,fact,일반 cyclic amide; 자동 High 금지,water;pH,parent,,,1.1.0,draft
+FG_HYD_DELTA_LACTAM,has_delta_lactam,7,[C;R](=[O;X1])[N;R],ring_size:6,delta_lactam,high,fact,일반 cyclic amide,water;pH,parent,,,1.1.0,draft
+FG_HYD_BETA_LACTONE,has_beta_lactone,7,[C;R](=[O;X1])[O;R],ring_size:4,beta_lactone,high,hard_alert,ring strain 고려,water;pH,parent,,aqueous stress LC,1.1.0,draft
+FG_HYD_ACETAL,has_acetal,7,[CX4]([OX2][#6])([OX2][#6]),,acetal,medium,conditional_alert,산성 수계 조건에서 분해 후보,water;acid;temperature,parent,당 고리도 매치 — glycoside와 구분 필요,산성 aqueous stress,1.1.0,draft
+FG_HYD_KETAL,has_ketal,7,[CX4;H0]([OX2][#6])([OX2][#6]),,ketal,medium,conditional_alert,산성 수계 조건에서 분해 후보,water;acid,parent,,산성 aqueous stress,1.1.0,draft
+FG_HYD_IMINE,has_imine,7,[CX3]=[NX2],,imine,medium,conditional_alert,가수분해·isomerization 후보,water;pH,parent,방향족 C=N 포함 가능,aqueous stress LC,1.1.0,draft
+FG_HYD_SULFONATE_ESTER,has_sulfonate_ester,7,[SX4](=[OX1])(=[OX1])[OX2][#6],,sulfonate_ester,high,hard_alert,가수분해·alkylation 반응성,water,parent,,ICH M7 assessment;purge study,1.1.0,draft
+FG_OX_CATECHOL,has_catechol,8,c1c([OX2H])c([OX2H])ccc1,,catechol,high,conditional_alert,인접 dihydroxy; 산화·metal binding,oxidant;metal;oxygen,parent,,oxidative stress;complexation,1.1.0,draft
+FG_OX_POLYPHENOL,has_polyphenol,8,[OX2H]c,count_ge:2,polyphenol,medium,conditional_alert,phenol 2개 이상 — 구조적 우선순위,oxidant;metal,parent,,oxidative stress,1.1.0,draft
+FG_OX_THIOL,has_thiol,8,[SX2H],,thiol,high,conditional_alert,disulfide 형성·산화,oxidant;oxygen;metal,parent,,oxidative stress,1.1.0,draft
+FG_OX_THIOETHER,has_thioether,8,[SX2]([#6])[#6],,thioether,medium,conditional_alert,sulfoxide/sulfone 산화,oxidant;peroxide,parent,,oxidative stress,1.1.0,draft
+FG_OX_DISULFIDE,has_disulfide,8,[SX2][SX2],,disulfide,high,conditional_alert,환원·교환·산화 상태,reductant;pH,parent,,oxidative stress,1.1.0,draft
+FG_OX_ALDEHYDE,has_aldehyde,8,[CX3H1](=[OX1]),,aldehyde,high,conditional_alert,산화·adduct 형성,oxidant;amine,parent,,oxidative stress;adduct 시험,1.1.0,draft
+FG_OX_TERT_AMINE_SITE,has_tertiary_amine_oxidation_site,8,[NX3;H0;+0;!$(NC=O);!$(NS(=O)=O)]([#6])([#6])[#6],,tertiary_amine_oxidation_site,low,conditional_alert,N-oxide 후보; 낮은 특이도,peroxide;oxygen,parent,낮은 특이도 — 단독 판정 금지,N-oxide stress,1.1.0,draft
+FG_OX_BENZYLIC,has_benzylic_site,8,"[CX4;H1,H2,H3][c]",,benzylic_site,low,conditional_alert,자동산화 후보; 낮은 특이도,oxygen;light;metal,parent,매우 흔한 motif — 우선순위 신호로만 사용,oxidative stress,1.1.0,draft
+FG_OX_ALLYLIC,has_allylic_site,8,"[CX4;H1,H2,H3][CX3]=[CX3]",,allylic_site,low,conditional_alert,자동산화 후보; 낮은 특이도,oxygen;light,parent,낮은 특이도,oxidative stress,1.1.0,draft
+FG_OX_POLYUNSAT,has_polyunsaturated_chain,8,[CX3]=[CX3][CX3]=[CX3],,polyunsaturated_chain,medium,conditional_alert,산화·광화학 후보,oxygen;light,parent,,oxidative stress;ICH Q1B,1.1.0,draft
+FG_EL_EPOXIDE,has_epoxide,9,[O;R]1[C;R][C;R]1,,epoxide,high,hard_alert,ring opening electrophile,nucleophile;water;pH,parent,,ICH M7 assessment,1.1.0,draft
+FG_EL_AZIRIDINE,has_aziridine,9,[N;R]1[C;R][C;R]1,,aziridine,high,hard_alert,ring opening electrophile,nucleophile,parent,,ICH M7 assessment,1.1.0,draft
+FG_EL_MICHAEL,has_michael_acceptor,9,"[C,c]=[C,c][CX3](=[OX1])",,michael_acceptor,medium,conditional_alert,"α,β-unsaturated carbonyl",nucleophile;amine;thiol,parent,방향족 고리 포함 시 과탐 가능,adduct 시험,1.1.0,draft
+FG_EL_QUINONE,has_quinone,9,[OX1]=[C;R]1[C;R]=[C;R][C;R](=[OX1])[C;R]=[C;R]1,,quinone,high,hard_alert,redox·nucleophile adduct,nucleophile;reductant,parent,,oxidative stress;adduct 시험,1.1.0,draft
+FG_EL_PEROXIDE,has_peroxide,9,[OX2][OX2],,peroxide,high,hard_alert,분해·radical 위험,heat;light;metal,parent,,안정성 stress,1.1.0,draft
+FG_EL_AZO,has_azo,9,[NX2]=[NX2],,azo,high,conditional_alert,환원·광화학·색소 관련,light;reductant,parent,,ICH Q1B,1.1.0,draft
+FG_EL_ISOCYANATE,has_isocyanate,9,[NX2]=[CX2]=[OX1],,isocyanate,high,hard_alert,고반응성 electrophile,water;nucleophile,parent,,ICH M7 assessment,1.1.0,draft
+FG_EL_ISOTHIOCYANATE,has_isothiocyanate,9,[NX2]=[CX2]=[SX1],,isothiocyanate,high,hard_alert,고반응성 electrophile,water;nucleophile,parent,,ICH M7 assessment,1.1.0,draft
+FG_CH_HYDROXAMATE,has_hydroxamate,10,"[CX3](=[OX1])[NX3][OX2H,OX1-]",,hydroxamate,high,conditional_alert,강한 metal-binding 후보,metal;pH;concentration,parent,,complexation·용출 시험,1.1.0,draft
+FG_CH_13_DICARBONYL,has_1_3_dicarbonyl,10,"[CX3](=[OX1])[CX4,CX3][CX3](=[OX1])",,dicarbonyl_1_3,medium,conditional_alert,enolate 기반 chelation 가능,metal;pH,parent,,complexation 시험,1.1.0,draft
+FG_CH_ALPHA_HYDROXY_ACID,has_alpha_hydroxy_carboxylate,10,"[CX3](=[OX1])([OX2H,OX1-])[CX4]([OX2H])",,alpha_hydroxy_carboxylate,medium,conditional_alert,Ca/Mg 등 조건부 binding,metal;pH,parent,,complexation 시험,1.1.0,draft
+FG_CH_SALICYLATE,has_ortho_hydroxy_carboxylate,10,"c1cc(ccc1[OX2H])[CX3](=[OX1])[OX2H,OX1-]",,ortho_hydroxy_carboxylate,medium,conditional_alert,salicylate-like motif,metal;pH,parent,ortho 배치 확인 필요,complexation 시험,1.1.0,draft
+FG_CH_PHOSPHATE_BINDING,has_phosphate_binding_motif,10,"[PX4](=[OX1])([OX2H,OX1-])[OX2H,OX1-]",,phosphate_binding_motif,medium,conditional_alert,다가 금속 interaction,metal;pH,parent,,complexation 시험,1.1.0,draft
+FG_CH_FLUOROQUINOLONE,has_fluoroquinolone_chelation_motif,10,O=C(O)C1=CN(c2ccccc2C1=O),,fluoroquinolone_chelation_motif,high,conditional_alert,3-carboxyl-4-keto 복합 motif,metal;pH,parent,scaffold 변형체는 미탐 가능,complexation·용출 시험,1.1.0,draft
+FG_PH_CONJ_DIENE,has_conjugated_diene,11,[CX3]=[CX3][CX3]=[CX3],,conjugated_diene,medium,conditional_alert,polyene·광산화 후보,light;oxygen,parent,,ICH Q1B,1.1.0,draft
+FG_PH_POLYENE,has_polyene_chromophore,11,[CX3]=[CX3][CX3]=[CX3][CX3]=[CX3],,polyene_chromophore,medium,conditional_alert,광산화·이성화 후보,light;oxygen,parent,,ICH Q1B,1.1.0,draft
+FG_PH_ENONE,has_alpha_beta_unsaturated_carbonyl,11,[CX3]=[CX3][CX3](=[OX1]),,alpha_beta_unsaturated_carbonyl,medium,conditional_alert,chromophore·Michael acceptor,light;nucleophile,parent,,ICH Q1B;adduct 시험,1.1.0,draft
+FG_PH_AR_CARBONYL,has_aromatic_carbonyl,11,[c][CX3](=[OX1]),,aromatic_carbonyl,low,conditional_alert,광화학 후보,light,parent,흔한 motif — 우선순위 신호,ICH Q1B,1.1.0,draft
+FG_PH_BENZOPHENONE,has_benzophenone_like,11,[c][CX3](=[OX1])[c],,benzophenone_like,medium,conditional_alert,광반응 후보,light,parent,,ICH Q1B,1.1.0,draft
+FG_PH_STILBENE,has_stilbene_like_motif,11,[c][CH]=[CH][c],,stilbene_like_motif,medium,conditional_alert,E/Z 광이성화 후보,light,parent,,ICH Q1B,1.1.0,draft
+FG_PH_N_OXIDE,has_n_oxide,11,"[n+,N+][O-]",,n_oxide,high,conditional_alert,광·산화환원 후보,light;reductant,parent,,ICH Q1B;oxidative stress,1.1.0,draft
+FG_PH_ARYL_BR,has_aryl_bromide,11,[c][Br],,aryl_bromide,low,conditional_alert,낮은 특이도의 광분해 우선순위 신호,light,parent,단독으로 photolabile 확정 금지,ICH Q1B,1.1.0,draft
+FG_PH_ARYL_I,has_aryl_iodide,11,[c][I],,aryl_iodide,low,conditional_alert,낮은 특이도의 광분해 우선순위 신호,light,parent,단독으로 photolabile 확정 금지,ICH Q1B,1.1.0,draft
+FG_PH_NITROAROMATIC,has_nitroaromatic,11,"[c][$([NX3+](=O)[O-]),$([NX3](=O)=O)]",,nitroaromatic,high,conditional_alert,광화학·환원 후보,light;reductant,parent,,ICH Q1B,1.1.0,draft
+FG_SF_PEG,has_peg_or_glycol_chain,12,[OX2][CX4H2][CX4H2][OX2][CX4H2][CX4H2][OX2],,peg_or_glycol_chain,low,fact,수화 경향 보조; 낮은 특이도,humidity,parent,위험도와 단조 관계 아님,DVS,1.1.0,draft

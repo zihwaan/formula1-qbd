@@ -165,6 +165,8 @@ function handle(kind, ev) {
       break;
     }
 
+    case "predictions": renderPredictions(p); break;
+    case "literature": renderLiterature(p); break;
     case "chem.profile": renderChem(p);
       addTrace(ev.seq, "intake", `RDKit 계산 완료 · 플래그 ${(p.flags||[]).filter(f=>f.present).length}건`);
       break;
@@ -518,6 +520,8 @@ function resetView() {
   $("trace").innerHTML = ""; $("cands").innerHTML = "";
   $("consensus").hidden = true;
   $("cand-count").textContent = "";
+  $("pred-panel").hidden = true;
+  $("lit-panel").hidden = true;
   resetGraph();
 }
 
@@ -857,6 +861,46 @@ function continueScenario() {
   $("wl-notes").value = WL_EXAMPLE;
   $("labloop").scrollIntoView({ behavior: "smooth", block: "nearest" });
   setTimeout(() => $("wl-submit").click(), 700);
+}
+
+/* 예측 계층 — 교차검증·불확실성·BCS. 값이 없으면 "미연결"을 그대로 보여준다. */
+function renderPredictions(p) {
+  const pred = p.predictions || {};
+  const plan = p.test_plan || {};
+  const logs = pred.logs || {}, bcs = pred.bcs || {};
+  const box = $("pred-body");
+  $("pred-panel").hidden = false;
+
+  const chip = (s) => `<span class="pred-chip ${esc(s)}">${esc(s)}</span>`;
+  const promo = (plan.promotions || []).map((x) =>
+    `<div class="pred-promo"><b>${esc(x.test)}</b> ${esc(x.from)} → ${esc(x.to)}
+       <div>${esc(x.why)}</div></div>`).join("");
+
+  box.innerHTML = `
+    <div class="pred-row"><span>용해도 LogS</span>${chip(logs.status || "미상")}</div>
+    ${logs.note ? `<div class="pred-note">${esc(logs.note)}</div>` : ""}
+    <div class="pred-row"><span>BCS 등급</span>
+      <b>${esc(bcs.bcs_class || "미결정")}</b>${chip(bcs.status || "")}</div>
+    ${bcs.note ? `<div class="pred-note">${esc(bcs.note)}</div>` : ""}
+    <div class="pred-note">${esc(bcs.limitation || "")}</div>
+    <h3>확인시험 계획 <small>필수 ${esc(plan.required_count || 0)}건</small></h3>
+    ${(plan.tests || []).filter((t) => t.tier === "필수").map((t) =>
+      `<div class="pred-test"><b>${esc(t.tier)}</b> ${esc(t.test)}</div>`).join("")}
+    ${promo ? `<h3>구조·예측이 올린 시험</h3>${promo}` : ""}`;
+}
+
+/* 문헌 조사 — 실제 PubChem·Europe PMC 조회 결과 */
+function renderLiterature(p) {
+  const c = p.compound || {}, l = p.literature || {};
+  $("lit-panel").hidden = false;
+  $("lit-body").innerHTML = `
+    <div class="pred-note">${esc(p.summary || "")}</div>
+    ${c.found ? `<div class="lit-cid">PubChem
+      <a href="${esc(c.url)}" target="_blank" rel="noopener">CID ${esc(c.cid)}</a></div>` : ""}
+    ${(l.hits || []).map((h) => `<div class="lit-hit">
+        <a href="${esc(h.url)}" target="_blank" rel="noopener">${esc(h.title)}</a>
+        <div>${esc(h.journal)} ${esc(h.year)}</div></div>`).join("")
+      || `<div class="pred-note">${esc(l.note || "문헌 없음")}</div>`}`;
 }
 
 /* ── SMARTS 직접 검사 ────────────────────────────────────────────────

@@ -34,6 +34,7 @@ from formula.agents.client import credentials_available, provider, provider_labe
 from formula.checkers.registry import RulebookRegistry
 from formula.chem.profile import build_profile
 from formula.chem.smarts_probe import match_smarts
+from formula.chem.structural_flags import REGISTRY_VERSION, load_flag_definitions
 from formula.contracts import EventKind, TraceEvent, WetLabResult
 from formula.feedback.interpreter import WetLabInterpreter
 from formula.feedback.labloop import direct_next, read_notes
@@ -199,23 +200,25 @@ async def smarts_catalog() -> Dict[str, Any]:
 
     화면에서 SMARTS를 직접 시험할 때 "이 패턴이 왜 중요한가"를 바로 보여주기 위한 것이다.
     """
-    path = ROOT / "database" / "00_master" / "structural_flags_smarts.csv"
-    if not path.exists():
-        return {"patterns": []}
-    frame = pd.read_csv(path, dtype=str, keep_default_na=False).fillna("")
+    rows = load_flag_definitions(ROOT)
     return {
+        "registry_version": REGISTRY_VERSION,
+        "count": len(rows),
         "patterns": [
             {
                 "flag_id": row.get("flag_id", ""),
                 "flag_name": row.get("flag_name", ""),
-                "smarts": row.get("smarts_pattern", ""),
-                "triggers_rule": row.get("triggers_rule", ""),
-                "risk_context": row.get("risk_context", ""),
-                "verification_status": row.get("verification_status", ""),
-                "notes": row.get("notes", ""),
+                "section": row.get("section", ""),
+                "smarts": row.get("smarts", "") or row.get("smarts_pattern", ""),
+                "alert_level": row.get("alert_level", ""),
+                "specificity": row.get("specificity", ""),
+                "triggers_rule": row.get("rulebook_group", "") or row.get("triggers_rule", ""),
+                "risk_context": row.get("interpretation", "") or row.get("risk_context", ""),
+                "confirmation_test": row.get("confirmation_test", ""),
+                "notes": row.get("false_positive_notes", "") or row.get("notes", ""),
             }
-            for row in frame.to_dict(orient="records")
-        ]
+            for row in rows
+        ],
     }
 
 

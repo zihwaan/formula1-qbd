@@ -12,7 +12,10 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from formula.agents.client import LLMUnavailable, parse_structured
+from formula.chem.predictions import build_prediction_layer, uncertainty_triggered_tests
 from formula.chem.profile import build_profile, resolve_smiles
+from formula.feedback.test_planner import plan_tests
+from formula.literature import search_api
 from formula.contracts import EventKind, FormulationSpec
 from formula.orchestrator.events import emit
 
@@ -76,6 +79,20 @@ def translate(
          flags=[f.model_dump() for f in profile.flags],
          estimates=[e.model_dump() for e in profile.estimates],
          svg=profile.svg, rdkit_version=profile.rdkit_version, warnings=profile.warnings)
+    # ── 입력 단계 확장 (기준서 v1.1 + 팀 리뷰) ─────────────────────────
+    # 문헌 조사 → 예측 계층(교차검증·불확실성) → BCS → 확인시험 등급 계획.
+    # 네트워크·모델이 없으면 각 계층이 "자료 없음"을 보고하고 화면은 계속 진행된다.
+    flag_names = [f.flag_name for f in profile.flags if f.present]
+    predictions = build_prediction_layer(profile.parent_smiles or profile.smiles)
+    requests = uncertainty_triggered_tests(predictions)
+    plan = plan_tests(flag_names, requests,
+                      route="oral_solid" if spec.dosage_form in ("tablet", "capsule") else "other")
+    emit(node, EventKind.PREDICTIONS, predictions=predictions,
+         test_plan=plan, requested_tests=requests)
+
+    literature = search_api(spec.api_name, profile.parent_smiles or profile.smiles)
+    emit(node, EventKind.LITERATURE, **literature)
+
     emit(node, EventKind.SPEC_READY, source=source, spec=spec.model_dump(exclude={"api_profile"}))
     emit(node, EventKind.NODE_EXIT, api_name=spec.api_name)
     return spec

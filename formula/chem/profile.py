@@ -18,6 +18,13 @@ from rdkit import Chem
 from formula.chem.descriptors import compute_descriptors, lipinski_veber
 from formula.chem.estimator import estimate_properties
 from formula.chem.render import to_svg
+from formula.chem.descriptors_v2 import (
+    CALC_OPTIONS,
+    derived_screens,
+    extended_descriptors,
+    structure_quality,
+    versions,
+)
 from formula.chem.structural_flags import detect_flags, strip_salt
 from formula.contracts import ApiProfile, FormulationSpec
 
@@ -88,6 +95,17 @@ def build_profile(
     flags, flag_warnings = detect_flags(parent, base_dir)
     profile.flags = flags
     profile.warnings.extend(flag_warnings)
+
+    # ── 기준서 v1.1 확장분 ────────────────────────────────────────────
+    # §1 구조 품질 · §2 확장 descriptor · §2.1 파생 스크리닝 · 계산옵션/버전 기록.
+    # 원본 mol 기준으로 염·전하 상태를 보고, descriptor는 parent 기준으로 계산한다.
+    profile.structure_quality = structure_quality(smiles)
+    profile.descriptors.update(extended_descriptors(parent))
+    profile.derived_screens = derived_screens(
+        parent, descriptors, profile.descriptors,
+        [f.flag_name for f in flags if f.present])
+    profile.versions = versions()
+    profile.versions["calc_options"] = "; ".join(f"{k}={v}" for k, v in CALC_OPTIONS.items())
 
     estimates, estimate_warnings = estimate_properties(descriptors, base_dir, measured=measured)
     profile.estimates = estimates
