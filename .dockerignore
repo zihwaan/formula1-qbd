@@ -10,3 +10,4 @@ __pycache__
 *.docx
 docs/
 database/legacy/*.md
+database/reference/books/

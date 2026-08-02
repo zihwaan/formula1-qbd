@@ -34,3 +34,8 @@ QbD 3-Agent System - Technical Briefing.pdf
 # database/legacy/ 에 정식 보관되어 있다.
 /incompatibility_rules.csv
 /process_failure_rules.csv
+
+# ── 참고서적 PDF ──────────────────────────────────────────────────────
+# 저작권 자료가 섞일 수 있어 저장소에 넣지 않는다. 각자 로컬에 배치하면
+# RAG가 실행 시점에 색인한다(formula/rag/pdf_source.py).
+database/reference/books/

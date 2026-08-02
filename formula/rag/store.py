@@ -9,6 +9,11 @@
   1. `database/00_master/excipient_master.csv`   (100행, 이도영 정본 — 기능·플래그·EMA 임계)
   2. `database/reference/excipient_master_iid.csv` (1,796행, 조하준 — FDA IID 사용 이력)
   3. `database/**/**_SOURCES.md`                  (15개 문서 — 규칙의 출처 원문)
+  4. `database/reference/books/*.pdf`             (참고서적 — 로컬 배치, 저장소 미포함)
+
+4번은 부형제의 **서술적 근거**를 담당한다. 마스터 표는 "무엇이 있나"를, 책은
+"왜 그것을 쓰고 언제 문제가 되나"를 알려준다. 저작권 자료가 섞일 수 있으므로
+PDF와 추출 텍스트는 저장소·배포 이미지에 넣지 않고 로컬에서만 읽는다.
 """
 
 from __future__ import annotations
@@ -21,6 +26,8 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from rank_bm25 import BM25Okapi
+
+from formula.rag import pdf_source
 
 _TOKEN = re.compile(r"[A-Za-z0-9가-힣._%-]+")
 
@@ -53,6 +60,7 @@ class KnowledgeStore:
         self._index_excipient_master()
         self._index_iid()
         self._index_sources()
+        self._index_books()
         corpus = [_tokenize(f"{d.title} {d.text}") for d in self.documents]
         self._bm25 = BM25Okapi(corpus) if corpus else None
 
@@ -116,6 +124,27 @@ class KnowledgeStore:
                         title=f"{path.stem} · {heading}"[:120],
                         text=section[:4000],
                         meta={"file": str(path.relative_to(self.base_dir))},
+                    )
+                )
+
+    def _index_books(self) -> None:
+        """참고서적 PDF를 페이지 묶음 단위로 색인한다(있을 때만).
+
+        책은 저장소에 없고 각자 로컬에 배치한다 — `database/reference/books/`.
+        pypdf가 없거나 책이 없으면 조용히 건너뛴다. 있으면 심사관이
+        "어느 책 몇 쪽"까지 인용할 수 있게 된다.
+        """
+        if not pdf_source.available():
+            return
+        for book in pdf_source.find_books(self.base_dir):
+            for page, title, text in pdf_source.iter_chunks(book):
+                self.documents.append(
+                    Document(
+                        doc_id=f"BOOK:{book.stem}#p{page}",
+                        source="book",
+                        title=f"{book.stem} · {title}"[:120],
+                        text=text,
+                        meta={"book": book.name, "page": page},
                     )
                 )
 
