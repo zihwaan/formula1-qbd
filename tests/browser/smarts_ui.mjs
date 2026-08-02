@@ -9,9 +9,10 @@ let fail=0; const ck=(n,ok,d='')=>{console.log(`${ok?'  ✓':'  ✗'} ${n}${d?' 
 
 console.log('\n[SMARTS 검사]');
 await p.click('#smarts > summary');
-const presets = await p.locator('.sm-preset').count();
-ck('룰북 패턴 프리셋 노출', presets === 5, `${presets}개`);
-await p.locator('.sm-preset').first().click();
+const opts = await p.locator('#sm-pick option').count();
+const groups = await p.locator('#sm-pick optgroup').count();
+ck('룰북 패턴 전량 노출', opts > 70 && groups >= 9, `${opts-1}종 · ${groups}개 절`);
+await p.selectOption('#sm-pick', '0');
 const note = await p.locator('#sm-out').textContent();
 ck('패턴이 발동시키는 규칙 표시', /incompatibility|규칙/.test(note), note.replace(/\s+/g,' ').slice(0,80));
 

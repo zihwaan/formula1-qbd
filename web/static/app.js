@@ -908,27 +908,42 @@ function renderLiterature(p) {
    이 분자에 있는가"를 사람이 확인할 수 있어야 하므로, 그 계층을 화면에 그대로 노출한다.
    패턴 프리셋은 룰북이 실제로 쓰는 structural_flags_smarts.csv 에서 가져온다. */
 let lastSmiles = "";
+let smartsPatterns = [];
 
 async function loadSmartsPresets() {
   try {
     const res = await fetch(api("/api/chem/smarts"));
     if (!res.ok) return;
-    const { patterns } = await res.json();
-    $("sm-presets").innerHTML = patterns.map((p, i) =>
-      `<button type="button" class="sm-preset" data-i="${i}" title="${esc(p.risk_context)}">
-         ${esc(p.flag_name)}</button>`).join("");
-    $("sm-presets").querySelectorAll(".sm-preset").forEach((btn) => {
-      btn.onclick = () => {
-        const pattern = patterns[Number(btn.dataset.i)];
-        $("sm-pattern").value = pattern.smarts;
-        $("sm-out").innerHTML = `<div class="sm-note">
-          <b>${esc(pattern.flag_id)} ${esc(pattern.flag_name)}</b>
-          <div>발동 규칙: <code>${esc(pattern.triggers_rule || "-")}</code></div>
-          <div>위험 맥락: ${esc(pattern.risk_context || "-")}</div>
-          ${pattern.notes ? `<div class="sm-notes">${esc(pattern.notes)}</div>` : ""}
-        </div>`;
-      };
-    });
+    const { patterns, count } = await res.json();
+    smartsPatterns = patterns;
+
+    // 82개를 버튼으로 깔면 사이드바가 못 쓰게 된다 — 기준서 절별로 묶어 고르게 한다.
+    const SECTIONS = {
+      "4": "질소·아민", "5": "니트로사민", "6": "산·염기", "7": "가수분해",
+      "8": "산화", "9": "반응성", "10": "금속 결합", "11": "광분해", "12": "고체상",
+    };
+    const groups = {};
+    patterns.forEach((p, i) => (groups[p.section] ||= []).push({ ...p, i }));
+    $("sm-presets").innerHTML = `
+      <select id="sm-pick" aria-label="구조 패턴 선택">
+        <option value="">규칙표가 쓰는 패턴 ${esc(count)}종에서 고르기…</option>
+        ${Object.keys(SECTIONS).filter((k) => groups[k]).map((k) =>
+          `<optgroup label="${esc(SECTIONS[k])}">${groups[k].map((p) =>
+            `<option value="${p.i}">${esc(p.flag_name)}</option>`).join("")}</optgroup>`).join("")}
+      </select>`;
+    $("sm-pick").onchange = (e) => {
+      const pattern = smartsPatterns[Number(e.target.value)];
+      if (!pattern) return;
+      $("sm-pattern").value = pattern.smarts;
+      $("sm-out").innerHTML = `<div class="sm-note">
+        <b>${esc(pattern.flag_id)} ${esc(pattern.flag_name)}</b>
+        <div>발동 규칙: <code>${esc(pattern.triggers_rule || "-")}</code>
+          · 경고 등급 <b>${esc(pattern.alert_level)}</b> · 특이도 ${esc(pattern.specificity)}</div>
+        <div>${esc(pattern.risk_context || "")}</div>
+        ${pattern.confirmation_test ? `<div>확인시험: ${esc(pattern.confirmation_test)}</div>` : ""}
+        ${pattern.notes ? `<div class="sm-notes">주의: ${esc(pattern.notes)}</div>` : ""}
+      </div>`;
+    };
   } catch (err) { /* 패턴 목록은 부가 기능 — 실패해도 화면은 돈다 */ }
 }
 

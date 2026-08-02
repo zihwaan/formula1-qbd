@@ -589,3 +589,8 @@ table.ll-read td:last-child { text-align: right; color: var(--ink-1); font-weigh
 .lit-hit { font-size: 11px; padding: 5px 0; border-bottom: 1px solid var(--border); line-height: 1.5; }
 .lit-hit a { color: var(--ink-1); }
 .lit-hit div { color: var(--ink-muted); font-size: 10px; }
+.smarts-presets select {
+  width: 100%; padding: 8px 10px; border-radius: var(--radius-s);
+  border: 1px solid var(--border); background: var(--page); color: var(--ink-1);
+  font-family: inherit; font-size: 11.5px;
+}
