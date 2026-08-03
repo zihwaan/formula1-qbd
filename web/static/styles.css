@@ -270,6 +270,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 }
 .sw.llm { border-style: dashed; border-color: var(--series-3); }
 .sw.jud { border-style: dotted; border-color: var(--series-5); }
+.sw.loop { border-style: dashed; border-color: var(--grid); background: transparent; }
+/* 되먹임 라벨 — 어느 결과가 어느 계층으로 돌아가는지가 이 그래프의 요점이라 이름을 붙인다 */
+.edge-label { font-size: 9.5px; fill: var(--ink-muted); font-family: var(--font-sans); }
 
 /* ── 트레이스 ─────────────────────────────────────────────────────── */
 .trace { max-height: 360px; overflow-y: auto; font-size: 12.5px; }
@@ -327,6 +330,72 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .consensus h3 { font-size: 12px; margin-bottom: 7px; }
 .consensus .win { color: var(--status-good); font-weight: 700; }
 .consensus .tag { color: var(--ink-muted); font-size: 10.5px; }
+
+/* ── 근거 충족 게이트 ──────────────────────────────────────────────
+   프로토콜 상태는 룰 판정과 다른 축이라 색을 새로 만들지 않는다 —
+   보류는 주의(warn), 승인은 통과(good)로 기존 어휘를 그대로 쓰고, 나머지는 선 모양으로 가른다. */
+.evidence {
+  margin-top: 14px; padding: 13px; background: var(--page);
+  border: 1px solid var(--border); border-radius: var(--radius-s); font-size: 12px;
+}
+.evidence h3 { font-size: 12px; margin-bottom: 8px; }
+.evidence h3 small { color: var(--ink-muted); font-weight: 500; margin-left: 6px; }
+.ev-state {
+  padding: 9px 11px; border-radius: var(--radius-s); border: 1px solid var(--border);
+  background: var(--surface-1); line-height: 1.6; font-size: 11.5px; word-break: keep-all;
+}
+.ev-state b { display: block; font-size: 12px; margin-bottom: 3px; }
+.ev-state.blocked { border-style: dashed; border-color: color-mix(in srgb, var(--status-warn) 55%, var(--border)); }
+.ev-state.blocked b { color: var(--status-warn); }
+.ev-state.approved { border-color: color-mix(in srgb, var(--status-good) 55%, var(--border)); }
+.ev-state.approved b { color: var(--status-good); }
+.ev-approved { font-size: 10.5px; color: var(--ink-muted); margin-top: 5px; }
+
+.ev-group { margin-top: 14px; }
+.ev-group h4 {
+  font-size: 10.5px; color: var(--ink-muted); text-transform: uppercase;
+  letter-spacing: .05em; font-weight: 700; margin-bottom: 7px;
+}
+.ev-group h4 small { text-transform: none; letter-spacing: 0; font-weight: 500; margin-left: 6px; }
+.ev-item {
+  border: 1px solid var(--border); border-left-width: 2px; border-radius: var(--radius-s);
+  padding: 10px 12px; margin-bottom: 8px; background: var(--surface-1);
+}
+.ev-item.missing { border-left-color: var(--status-warn); }
+.ev-item.done { border-left-color: var(--status-good); }
+.ev-item.failed { border-left-color: var(--status-critical); }
+.ev-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.ev-head b { font-size: 12px; }
+.ev-status { margin-left: auto; font-size: 10px; color: var(--ink-muted); }
+.ev-why { margin-top: 6px; font-size: 11.5px; line-height: 1.6; color: var(--ink-2); word-break: keep-all; }
+.ev-risk, .ev-stop, .ev-result {
+  margin-top: 5px; font-size: 10.5px; line-height: 1.55; color: var(--ink-muted); word-break: keep-all;
+}
+.ev-result { color: var(--ink-2); }
+.ev-input { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+.ev-input select, .ev-input input {
+  padding: 7px 9px; border-radius: var(--radius-s); border: 1px solid var(--border);
+  background: var(--page); color: var(--ink-1); font-family: inherit; font-size: 11.5px;
+}
+.ev-input input { flex: 1; min-width: 160px; }
+.ev-input select:focus, .ev-input input:focus { outline: none; border-color: var(--ink-1); }
+.ev-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.ev-actions button {
+  padding: 9px 16px; border-radius: var(--radius-pill); border: 1px solid transparent;
+  background: var(--accent-fixed); color: var(--on-accent-fixed); font-weight: 650; font-size: 12px;
+}
+.ev-actions button.ghost { background: transparent; border-color: var(--border); color: var(--ink-1); }
+.ev-actions button.ghost:hover { background: var(--grid); }
+
+/* 후보 카드의 프로토콜 상태 뱃지 */
+.readiness {
+  margin-top: 8px; padding: 7px 9px; border-radius: var(--radius-s);
+  border: 1px solid var(--border); font-size: 10.5px; line-height: 1.5; color: var(--ink-muted);
+}
+.readiness b { display: block; font-size: 11px; color: var(--ink-1); margin-bottom: 2px; }
+.readiness.blocked { border-style: dashed; }
+.readiness.blocked b { color: var(--status-warn); }
+.readiness.approved b { color: var(--status-good); }
 
 /* ── 분자 패널 ────────────────────────────────────────────────────── */
 /* RDKit SVG는 검정 선으로 그려지므로 다크 모드에서도 흰 판을 유지한다 */
@@ -462,6 +531,14 @@ table.ll-read { width: 100%; border-collapse: collapse; font-size: 11px; }
 table.ll-read td { padding: 3px 0; font-family: var(--font-mono); color: var(--ink-2); }
 table.ll-read td:last-child { text-align: right; color: var(--ink-1); font-weight: 600; }
 .ll-obs { margin-top: 6px; font-size: 11px; color: var(--ink-muted); }
+/* 이 배치가 어떤 상태의 프로토콜에서 나왔는지 — 승인 전 데이터를 같은 무게로 읽으면 안 된다 */
+.ll-state {
+  padding: 7px 10px; border-radius: var(--radius-s); border: 1px dashed var(--border);
+  font-size: 11px; color: var(--ink-muted); margin-bottom: 12px;
+}
+.ll-state b { color: var(--ink-1); }
+.ll-state.approved { border-style: solid; border-color: color-mix(in srgb, var(--status-good) 45%, var(--border)); }
+.ll-state.blocked b { color: var(--status-warn); }
 .ll-summary {
   padding: 9px 11px; border-radius: var(--radius-s); font-size: 11.5px; line-height: 1.6;
   border: 1px solid var(--border); background: var(--page);

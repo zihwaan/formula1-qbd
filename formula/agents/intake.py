@@ -90,6 +90,16 @@ def translate(
     emit(node, EventKind.PREDICTIONS, predictions=predictions,
          test_plan=plan, requested_tests=requests)
 
+    # 예측 계층의 **신뢰도 상태**만 스펙에 남긴다. 근거 충족 게이트가 "이 값을 우리가 실제로
+    # 아는가"를 판정할 때 참조한다(예: LogS가 not_connected/high_uncertainty면 실험 용해도가
+    # 선행 근거가 된다). 등급 자체(bcs_class)는 여전히 채우지 않는다 — 추정으로 BCS를
+    # 확정하지 않는 것이 이 시스템의 원칙이다(기준서 §13).
+    spec.properties.setdefault("logs_status",
+                               str((predictions.get("logs") or {}).get("status", "not_connected")))
+    spec.properties.setdefault("bcs_source",
+                               "predicted" if (predictions.get("bcs") or {}).get("bcs_class")
+                               else "unknown")
+
     literature = search_api(spec.api_name, profile.parent_smiles or profile.smiles)
     emit(node, EventKind.LITERATURE, **literature)
 

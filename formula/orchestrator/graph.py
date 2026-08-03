@@ -1,19 +1,26 @@
-"""LangGraph StateGraph — 설계 → 검증 → 심사 → 합의 → 반성 루프.
+"""LangGraph StateGraph — 설계 → 규칙 검증 → 근거 검증 → 심사 → 합의 → 반성 루프.
 
-    intake ─→ route ─→ generate ──(Send ×N)──→ gate ─┬─(통과)→ summon ──(Send ×M)──→ consensus ─→ END
+    intake ─→ route ─→ generate ──(Send ×N)──→ gate ─┬─(통과)→ evidence ─→ summon ──(Send ×M)──→ consensus ─→ END
                           ↑                          │
                           └──────── reflect ←────────┘ (HARD_FAIL, 최대 5회)
+
+**게이트가 둘인 이유.** `gate`는 "지금 아는 정보 안에 금기·규제 위반이 있는가"를 묻고,
+`evidence`는 "금기가 없더라도 이 전략을 실행할 만큼 실제로 알고 있는가"를 묻는다. 룰북 통과는
+안전 확정이 아니라 *명시적 위반을 발견하지 못했다*는 뜻이고, 신약 API는 정보 자체가 없어서
+위반이 안 잡히는 경우가 많다. 그래서 근거 게이트는 후보를 반려하지 않고 **실행을 보류**한다 —
+반려 권한은 룰북에, 보류 권한은 근거 게이트에 둔다.
 
 병렬 팬아웃은 LangGraph의 `Send`로 한다. 설계 후보 N개와 심사관 M명이 동시에 돌고,
 결과는 state의 reducer(operator.add)로 합쳐진다.
 
-**결정론 경계**: route/gate/consensus 노드는 순수 파이썬이다. LLM은 generate/judge/reflect에만 있다.
+**결정론 경계**: route/gate/evidence/consensus 노드는 순수 파이썬이다.
+LLM은 generate/judge/reflect에만 있다.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
@@ -21,7 +28,8 @@ from langgraph.types import Send
 from formula.agents import consensus as consensus_mod
 from formula.agents import generator, intake, judge, reflect
 from formula.checkers.registry import RulebookRegistry
-from formula.contracts import EventKind, Recipe
+from formula.contracts import EventKind, ProtocolReadiness, Recipe
+from formula.evidence.gate import EvidenceGate
 from formula.orchestrator.events import emit
 from formula.orchestrator.state import MAX_REFLECTION_LOOPS, FormulationState
 
@@ -80,8 +88,18 @@ def _required_conflict(state: Dict[str, Any], failures: List[Any]) -> bool:
     return any(p.split()[0].lower() in haystack for p in pinned)
 
 
-def build_graph(base_dir: Path, registry: RulebookRegistry):
-    """그래프를 조립해 컴파일한다. base_dir/registry는 클로저로 노드에 주입한다."""
+def build_graph(base_dir: Path, registry: RulebookRegistry,
+                evidence_gate: Optional[EvidenceGate] = None,
+                evidence_store: Optional[Dict[str, Any]] = None):
+    """그래프를 조립해 컴파일한다. base_dir/registry는 클로저로 노드에 주입한다.
+
+    `evidence_store`를 주면 근거 판정이 나오는 **즉시** 그 딕셔너리에 후보별 판정과 재평가에
+    필요한 입력(spec·recipe·derived)이 쌓인다. 실행 전 루프(확인시험 결과 입력)는 그래프가
+    끝나기 전에도 열려 있으므로, 최종 state만 보고 있으면 화면에는 요청이 떠 있는데 서버는
+    "판정 없음"이라고 답하는 구간이 생긴다.
+    """
+
+    evidence_gate = evidence_gate or EvidenceGate(base_dir)
 
     # ── P0 · 입력 번역 + RDKit 물성 ────────────────────────────────────
     def node_intake(state: FormulationState) -> Dict[str, Any]:
@@ -156,11 +174,46 @@ def build_graph(base_dir: Path, registry: RulebookRegistry):
         emit("gate", EventKind.NODE_EXIT, passed=sum(1 for r in results if r["passed"]))
         return {"results": results}
 
-    # ── 분기: 통과 후보가 있으면 심사로, 없으면 반성으로 ────────────────
+    # ── P4 · 근거 충족 게이트 (순수 파이썬) ────────────────────────────
+    def node_evidence(state: FormulationState) -> Dict[str, Any]:
+        """룰을 통과한 후보마다 "실행할 만큼 아는가"를 판정한다.
+
+        여기서는 **반려하지 않는다.** 근거가 없다는 것은 처방이 틀렸다는 뜻이 아니라
+        아직 실행 가능한 공정 프로토콜을 낼 수 없다는 뜻이므로, 후보는 그대로 심사·합의로
+        보내고 상태만 '실행 불가 초안'으로 묶는다. 연구자가 받는 것은 초안 + 선행
+        확인시험 요청이고, 그 결과가 들어오면 이 판정을 다시 계산한다.
+        """
+        emit("evidence", EventKind.NODE_ENTER)
+        spec = state["spec"]
+        assessments: Dict[str, Any] = {}
+
+        for result in state.get("results", []):
+            if not result.get("passed"):
+                continue
+            assessment = evidence_gate.assess(spec, result["recipe"], result.get("derived"))
+            assessments[assessment.candidate_id] = assessment
+            if evidence_store is not None:
+                evidence_store[assessment.candidate_id] = {
+                    "assessment": assessment, "spec": spec,
+                    "recipe": result["recipe"], "derived": result.get("derived"),
+                }
+            payload = assessment.model_dump(mode="json")
+            payload["protocol"] = evidence_gate.protocol(assessment)
+            emit("evidence", EventKind.EVIDENCE, **payload)
+
+        blocked = [a for a in assessments.values()
+                   if a.readiness == ProtocolReadiness.BLOCKED]
+        readiness = (ProtocolReadiness.BLOCKED.value if blocked and len(blocked) == len(assessments)
+                     else ProtocolReadiness.READY_FOR_REVIEW.value) if assessments else ""
+        emit("evidence", EventKind.NODE_EXIT,
+             assessed=len(assessments), blocked=len(blocked), readiness=readiness)
+        return {"evidence": assessments, "readiness": readiness}
+
+    # ── 분기: 통과 후보가 있으면 근거 게이트로, 없으면 반성으로 ──────────
     def route_after_gate(state: FormulationState) -> str:
         results = state.get("results", [])
         if any(r["passed"] for r in results):
-            return "summon"
+            return "evidence"
         failures = [v for r in results for v in r["verdicts"] if v.failed]
 
         # 사용자가 못 박은 성분 자체가 반려 사유라면 재설계로 풀릴 문제가 아니다.
@@ -175,7 +228,7 @@ def build_graph(base_dir: Path, registry: RulebookRegistry):
             return "exhausted"
         return "reflect"
 
-    # ── P4 · 심사관 동적 소집 ──────────────────────────────────────────
+    # ── P5 · 심사관 동적 소집 ──────────────────────────────────────────
     def node_summon(state: FormulationState) -> Dict[str, Any]:
         emit("summon", EventKind.NODE_ENTER)
         passed = [r for r in state.get("results", []) if r["passed"]]
@@ -210,18 +263,27 @@ def build_graph(base_dir: Path, registry: RulebookRegistry):
                                  payload["recipe"], payload["verdicts"], base_dir)
         return {"judge_verdicts": [verdict]}
 
-    # ── P5 · 합의 도출 (결정론) ────────────────────────────────────────
+    # ── P6 · 합의 도출 (결정론) ────────────────────────────────────────
     def node_consensus(state: FormulationState) -> Dict[str, Any]:
         emit("consensus", EventKind.NODE_ENTER)
         summary = consensus_mod.build_consensus(
             state.get("results", []), state.get("judge_verdicts", []), base_dir)
+
+        # 합의가 고르는 것은 **권고 후보**다. 실행 가능한 프로토콜인지는 근거 게이트가
+        # 따로 정하므로, 선정 결과에 그 상태를 함께 실어 보낸다.
+        assessment = (state.get("evidence") or {}).get(summary.get("winner"))
+        if assessment is not None:
+            summary["readiness"] = assessment.readiness.value
+            summary["evidence_summary"] = assessment.summary
+            summary["protocol"] = evidence_gate.protocol(assessment)
+
         emit("consensus", EventKind.CONSENSUS, **summary)
         emit("consensus", EventKind.NODE_EXIT, winner=summary["winner"])
         return {"consensus": summary,
                 "final_candidate": summary["winner"],
                 "status": "passed" if summary["winner"] else "rejected"}
 
-    # ── P6 · 반성 → 재설계 ────────────────────────────────────────────
+    # ── P7 · 반성 → 재설계 ────────────────────────────────────────────
     def node_reflect(state: FormulationState) -> Dict[str, Any]:
         failures = [v for r in state.get("results", []) for v in r["verdicts"] if v.failed]
         attempt = state.get("reflection_count", 0) + 1
@@ -284,7 +346,8 @@ def build_graph(base_dir: Path, registry: RulebookRegistry):
     graph = StateGraph(FormulationState)
     for name, fn in [
         ("intake", node_intake), ("route", node_route), ("generate", node_generate),
-        ("gate", node_gate), ("summon", node_summon), ("judge", node_judge),
+        ("gate", node_gate), ("evidence", node_evidence),
+        ("summon", node_summon), ("judge", node_judge),
         ("consensus", node_consensus), ("reflect", node_reflect),
         ("escalate", node_escalate), ("exhausted", node_exhausted),
         ("infeasible", node_infeasible),
@@ -296,7 +359,8 @@ def build_graph(base_dir: Path, registry: RulebookRegistry):
     graph.add_conditional_edges("route", fan_out_generators, ["generate"])
     graph.add_edge("generate", "gate")
     graph.add_conditional_edges("gate", route_after_gate,
-                                ["summon", "reflect", "escalate", "exhausted", "infeasible"])
+                                ["evidence", "reflect", "escalate", "exhausted", "infeasible"])
+    graph.add_edge("evidence", "summon")
     graph.add_conditional_edges("summon", fan_out_judges, ["judge", "consensus"])
     graph.add_edge("judge", "consensus")
     graph.add_conditional_edges("reflect", fan_out_generators, ["generate"])

@@ -151,7 +151,7 @@
           <div class="f1-flowmark">▼</div>
 
           <div class="f1-tier t3">
-            <header><span>③ 검증 계층 — 두 축</span><span>Deterministic + Dynamic Jury</span></header>
+            <header><span>③ 규칙 게이트 — 금기가 있는가</span><span>Deterministic + Dynamic Jury</span></header>
             <div class="f1-cols c2">
               <div class="f1-box f1-det"><b>규칙 검사 도구벨트 · 오차 0%</b>
                 <div class="f1-sub" style="margin-top:7px">
@@ -159,7 +159,8 @@
                   <div class="f1-pill-sm">공정 실패</div>
                   <div class="f1-pill-sm">규제 상한</div>
                 </div>
-                <span style="display:block;margin-top:7px">AI의 추측이 없다. 몇 번을 돌려도 같은 결과</span>
+                <span style="display:block;margin-top:7px">AI의 추측이 없다. 몇 번을 돌려도 같은 결과.
+                  단, 통과는 “위반을 <b>발견하지 못했다</b>”는 뜻이다</span>
               </div>
               <div class="f1-box f1-jud"><b>동적 심사위원단 · 상황따라 N명</b>
                 <div class="f1-sub" style="margin-top:7px">
@@ -171,18 +172,35 @@
               </div>
             </div>
           </div>
+          <div class="f1-flowmark">▼ 통과한 후보만</div>
+
+          <div class="f1-tier t3">
+            <header><span>④ 근거 게이트 — 실행할 만큼 아는가</span><span>Evidence Readiness</span></header>
+            <div class="f1-cols c3">
+              <div class="f1-box f1-det"><b>프로토콜 전 필수</b>
+                <span>없으면 전략이 바뀐다 → 실행 보류</span></div>
+              <div class="f1-box f1-det"><b>병행 수행</b>
+                <span>전략은 그대로 · 중단/변경 기준과 함께</span></div>
+              <div class="f1-box f1-det"><b>배치 후 조건부</b>
+                <span>첫 배치 결과를 보고 필요하면</span></div>
+            </div>
+            <div class="f1-cap">반려 권한이 아니라 <b>보류 권한</b>을 가진 게이트다.
+              선행 근거가 비면 실행 가능한 프로토콜 대신 <b>확인시험 프로토콜</b>이 나간다.</div>
+          </div>
           <div class="f1-flowmark">▼</div>
 
-          <div class="f1-io">합의 도출 — 결정론 하드페일 + 심사 가중점수</div>
-          <div class="f1-cols c2" style="margin-top:2px">
-            <div class="f1-loop">⟲ 반려 → 반성 에이전트 → ① 로 되돌아감</div>
-            <div class="f1-io win">✓ 최종 통과 처방 + 합의 근거 기록</div>
+          <div class="f1-io">합의 도출 — 결정론 하드페일 + 심사 가중점수 → <b>권고 후보 처방</b></div>
+          <div class="f1-cols c3" style="margin-top:2px">
+            <div class="f1-loop">⟲ 규칙 반려 → 반성 에이전트 → ① 로</div>
+            <div class="f1-loop">⟲ 확인시험 결과 → 입력·근거 계층으로</div>
+            <div class="f1-io win">✓ 연구자 승인 → 실행 가능 프로토콜</div>
           </div>
         </div>`,
-      note: `심사위원단에 <b>고정 명단이 없다</b>는 점이 결정적이다. 대상이 소아라면 소아 안전 심사관이,
-             난용성 약(BCS II·IV)이면 가용화 심사관이 그 자리에서 만들어진다. 덕분에 ①낭비 없이 빠르고,
-             ②새 전문가는 소집 조건 한 줄만 더하면 되고, ③"왜 굳이 에이전트냐"에 답이 된다 —
-             룰북에 없는 상황을 판단하고 충돌하는 목표 사이에서 타협점을 찾는 일은 규칙이 못 하기 때문이다.`,
+      note: `구조의 뼈대는 <b>게이트가 둘</b>이라는 점이다. 규칙 게이트는 “금기가 있는가”를 묻고 반려하며,
+             근거 게이트는 “알고 있는가”를 묻고 보류한다. 자료가 없어서 규칙이 아무것도 못 잡은 경우를
+             통과로 읽지 않기 위해서다. 여기에 <b>심사위원단에 고정 명단이 없다</b>는 점이 더해진다 —
+             대상이 소아라면 소아 안전 심사관이, 난용성 약(BCS II·IV)이면 가용화 심사관이 그 자리에서
+             만들어지고 나머지는 아예 생성되지 않는다.`,
     },
 
     {
@@ -312,10 +330,66 @@
     },
 
     {
+      nav: "실행 전: 알아야 실행한다 ★",
+      kicker: "근거 충족 게이트",
+      title: "금기가 없다는 것과, 실행해도 된다는 것은 다르다",
+      lead: `규칙표는 <b>알고 있는 값</b>에 대해서만 위반을 판정한다. 값 자체가 없으면 규칙은 아무것도
+             잡지 못하고, 그 침묵이 “안전하다”로 읽힌다. 신약 주성분에서는 이게 일상이다 —
+             수분 안정성도, 배합적합성도, 실험 용해도도 없는 상태로 개발이 시작되기 때문이다.
+             그래서 규칙 게이트 뒤에 <b>질문을 하나 더</b> 둔다.`,
+      art: `
+        <div class="f1-arch f1-seq">
+          <div class="f1-cols c2">
+            <div class="f1-box f1-det"><b>규칙 게이트</b>
+              <span>금기·규제 위반이 있는가 → 있으면 <b>반려</b> (재설계로)</span></div>
+            <div class="f1-box f1-det"><b>근거 게이트</b>
+              <span>실행할 만큼 아는가 → 모르면 <b>보류</b> (확인시험 먼저)</span></div>
+          </div>
+          <div class="f1-flowmark">▼ 후보마다 근거 결손을 계산한다 (LLM 호출 0회)</div>
+
+          <div class="f1-tier">
+            <header><span>요구는 시점으로 나뉜다</span><span>16종 · 데이터로 관리</span></header>
+            <div class="f1-cols c3">
+              <div class="f1-box f1-det"><b>프로토콜 전 필수</b>
+                <span>수계 공정인데 수분 안정성 없음 · 난용성 전략인데 실험 용해도 없음 ·
+                  BCS가 예측 기반 · 아민 + 환원당인데 배합적합성 없음</span></div>
+              <div class="f1-box"><b>병행 수행</b>
+                <span>판별력 있는 용출법 확립 · 시료 용액 안정성.
+                  <b>중단/변경 기준</b>을 함께 낸다</span></div>
+              <div class="f1-box"><b>배치 후 조건부</b>
+                <span>입도–용출 상관 · 잔사 고체상 · 불순물 응답계수 —
+                  첫 배치 결과를 본 뒤에</span></div>
+            </div>
+            <div class="f1-cap">요구는 <b>실제 확인시험 66종 안의 시험만</b> 가리킬 수 있다.
+              없는 시험을 가리키는 행은 읽는 단계에서 버려지므로,
+              모든 요청에 방법·판정 기준·ICH/USP 출처가 붙는다.</div>
+          </div>
+          <div class="f1-flowmark">▼</div>
+
+          <div class="f1-cols c3">
+            <div class="f1-box"><b>실행 불가 초안</b><span>선행 근거 비어 있음.
+              처방과 근거는 보이지만 실행하면 안 된다</span></div>
+            <div class="f1-box"><b>검토용 프로토콜</b><span>선행 근거 충족.
+              연구자 검토 대기</span></div>
+            <div class="f1-box f1-det"><b>실행 가능 프로토콜</b><span>연구자가 승인함.
+              누가 언제 승인했는지 함께 기록</span></div>
+          </div>
+          <div class="f1-flowmark">▼ 확인시험 결과를 넣으면 그 자리에서 다시 계산</div>
+          <div class="f1-io">적합 → 근거 충족 · <b>부적합 → 근거가 채워진 게 아니라 전제가 부정된 것</b>
+            (그 전략은 배제)</div>
+        </div>`,
+      note: `<b>시스템은 스스로 마지막 칸으로 넘어가지 않는다.</b> 근거가 다 채워져도 승인은 사람이 하고,
+             근거가 빈 상태에서 승인을 요청하면 서버가 거부한다. 이 되먹임은 다음 장의 배치 결과 되먹임과
+             <b>돌아가는 곳이 다르다</b> — 확인시험 결과는 “무엇을 아는가”를 바꾸므로 입력·근거 계층으로,
+             배치 결과는 “무엇이 잘못됐는가”를 알려 주므로 설계·프로토콜 개정으로 간다.`,
+    },
+
+    {
       nav: "만든 뒤: 다음 실험 지시",
       kicker: "Lab-in-the-loop",
       title: "AI가 결과를 읽고, 다음 실험을 지시한다",
-      lead: `여기까지가 <b>만들기 전</b>의 절반이다. 나머지 절반은 실제로 만든 뒤에 온다.
+      lead: `근거가 채워지고 연구자가 승인해 프로토콜이 실행 가능해지면, 연구원이 배치를 제조한다.
+             나머지 절반은 그 뒤에 온다.
              연구원이 실험 결과를 자연어로 적어 넣으면, AI가 수치를 판독하고 규칙이 규격 이탈을
              판정한 뒤, <b>다음에 무슨 실험을 해야 하는지 AI가 지시한다.</b> 사람은 판단의 병목이
              아니라 벤치에서 그 실험을 수행하는 쪽으로 들어온다 —
@@ -412,7 +486,7 @@
   const visited = new Set();
 
   function buildRail() {
-    el("guide-count").textContent = `${STEPS.length}단계 · 약 4분`;
+    el("guide-count").textContent = `${STEPS.length}단계 · 약 5분`;
     el("guide-nav").innerHTML = STEPS.map((s, i) => `<li data-i="${i}">${s.nav}</li>`).join("");
     el("guide-dots").innerHTML = STEPS.map((_, i) => `<i data-i="${i}"></i>`).join("");
     document.querySelectorAll("#guide-nav li, #guide-dots i").forEach((node) => {

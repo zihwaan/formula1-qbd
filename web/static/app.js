@@ -33,21 +33,33 @@ function clearNotice() {
 let runId = null;
 let source = null;
 const candidates = new Map();   // candidate_id → {recipe, verdicts[], judges[], gate}
+const assessments = new Map();  // candidate_id → 근거 충족 판정 (evidence 이벤트)
+let winnerId = null;            // 합의가 고른 권고 후보
 
 /* ── 고정 그래프 레이아웃 ────────────────────────────────────────────
-   kind: det(결정론) | llm(LLM 판단) | jud(동적 심사관) */
+   kind: det(결정론) | llm(LLM 판단) | jud(동적 심사관)
+   게이트가 둘이라는 것이 이 그래프의 요지다: gate(금기가 있는가) → evidence(알고 있는가). */
 const NODES = [
-  { id: "intake",    x:  30, y: 30, w: 120, label: "intake",    sub: "요구 → 스펙",     kind: "llm" },
-  { id: "route",     x: 180, y: 30, w: 120, label: "route",     sub: "유동성 → 공정",   kind: "det" },
-  { id: "generate",  x: 330, y: 30, w: 130, label: "generate",  sub: "후보 병렬 설계",  kind: "llm" },
-  { id: "gate",      x: 490, y: 30, w: 130, label: "gate",      sub: "룰북 판정",       kind: "det" },
-  { id: "summon",    x: 650, y: 30, w: 120, label: "summon",    sub: "심사관 소집",     kind: "det" },
-  { id: "consensus", x: 810, y: 30, w: 140, label: "consensus", sub: "가중 합의",       kind: "det" },
-  { id: "reflect",   x: 490, y: 210, w: 130, label: "reflect",  sub: "재설계 지시",     kind: "llm" },
+  { id: "intake",    x:  14, y: 30, w: 104, label: "intake",    sub: "요구 → 스펙",     kind: "llm" },
+  { id: "route",     x: 138, y: 30, w: 104, label: "route",     sub: "유동성 → 공정",   kind: "det" },
+  { id: "generate",  x: 262, y: 30, w: 112, label: "generate",  sub: "후보 병렬 설계",  kind: "llm" },
+  { id: "gate",      x: 394, y: 30, w: 112, label: "gate",      sub: "룰북 판정",       kind: "det" },
+  { id: "evidence",  x: 526, y: 30, w: 124, label: "evidence",  sub: "근거 충족 판정",  kind: "det" },
+  { id: "summon",    x: 670, y: 30, w: 104, label: "summon",    sub: "심사관 소집",     kind: "det" },
+  { id: "consensus", x: 794, y: 30, w: 118, label: "consensus", sub: "가중 합의",       kind: "det" },
+  { id: "reflect",   x: 394, y: 210, w: 112, label: "reflect",  sub: "재설계 지시",     kind: "llm" },
 ];
 const EDGES = [
   ["intake", "route"], ["route", "generate"], ["generate", "gate"],
-  ["gate", "summon"], ["summon", "consensus"],
+  ["gate", "evidence"], ["evidence", "summon"], ["summon", "consensus"],
+];
+/* 되먹임은 두 개다 — 규칙 반려(설계로) 와 확인시험(입력·근거로). 배치 결과 루프는
+   화면 아래 별도 패널이 담당하므로 그래프에는 실행 전 루프만 그린다. */
+const LOOPS = [
+  { d: "M 450 76 L 450 210", key: "gate->reflect" },
+  { d: "M 394 233 L 318 233 L 318 76", key: "reflect->generate", label: "반려 → 재설계", lx: 330, ly: 227 },
+  { d: "M 588 76 L 588 268 L 66 268 L 66 76", key: "evidence->intake",
+    label: "근거 부족 → 확인시험 선행", lx: 300, ly: 262 },
 ];
 const NODE_H = 46;
 
@@ -67,16 +79,19 @@ function buildGraph() {
     path.dataset.edge = `${from}->${to}`;
     svg.appendChild(path);
   }
-  // 반성 루프: gate → reflect → generate
-  for (const [d, key] of [
-    [`M 555 76 L 555 210`, "gate->reflect"],
-    [`M 490 233 L 395 233 L 395 76`, "reflect->generate"],
-  ]) {
+  for (const loop of LOOPS) {
     const path = document.createElementNS(SVG_NS, "path");
-    path.setAttribute("d", d);
+    path.setAttribute("d", loop.d);
     path.setAttribute("class", "edge loop");
-    path.dataset.edge = key;
+    path.dataset.edge = loop.key;
     svg.appendChild(path);
+    if (!loop.label) continue;
+    const text = document.createElementNS(SVG_NS, "text");
+    text.setAttribute("x", loop.lx);
+    text.setAttribute("y", loop.ly);
+    text.setAttribute("class", "edge-label");
+    text.textContent = loop.label;
+    svg.appendChild(text);
   }
   NODES.forEach((n) => svg.appendChild(nodeEl(n)));
 }
@@ -105,13 +120,13 @@ function addJudgeNode(reviewerId, persona) {
   if (judgeNodes.has(reviewerId)) return;
   const index = judgeNodes.size;
   const node = {
-    id: `judge-${reviewerId}`, x: 650, y: 100 + index * 56, w: 150,
+    id: `judge-${reviewerId}`, x: 668, y: 100 + index * 56, w: 140,
     label: reviewerId, sub: persona.slice(0, 14), kind: "jud",
   };
   judgeNodes.set(reviewerId, node);
   const svg = $("graph");
   const edge = document.createElementNS(SVG_NS, "path");
-  edge.setAttribute("d", `M 710 76 L 710 ${node.y}`);
+  edge.setAttribute("d", `M 722 76 L 722 ${node.y}`);
   edge.setAttribute("class", "edge loop");
   svg.appendChild(edge);
   svg.appendChild(nodeEl(node));
@@ -218,8 +233,22 @@ function handle(kind, ev) {
       break;
     }
 
+    case "evidence": {
+      assessments.set(p.candidate_id, p);
+      const blocking = (p.gaps || []).filter((g) => isBlocking(g)).length;
+      addTrace(ev.seq, "evidence",
+        `${p.candidate_id}: ${READINESS[p.readiness]?.label || p.readiness}`
+        + (blocking ? ` · 선행 확인시험 ${blocking}건 필요` : ""),
+        p.readiness === "blocked" ? "warn" : "");
+      renderCandidates();
+      renderEvidence();
+      break;
+    }
+
     case "consensus": renderConsensus(p);
-      addTrace(ev.seq, "consensus", `선정: ${p.winner || "없음"} (보고 ${p.reported}건)`);
+      winnerId = p.winner || null;
+      renderEvidence();
+      addTrace(ev.seq, "consensus", `권고 후보: ${p.winner || "없음"} (보고 ${p.reported}건)`);
       break;
 
     case "reflect":
@@ -267,6 +296,20 @@ function renderChem(p) {
     ? `<div class="warn">⚠ ${p.warnings.map(esc).join("<br>⚠ ")}</div>` : "";
 }
 
+/* 프로토콜 실행 상태 — 룰 통과와는 다른 축이다. 라벨을 한 곳에서만 관리한다. */
+const READINESS = {
+  blocked: { label: "실행 불가 초안", hint: "선행 근거 부족 — 확인시험이 먼저입니다" },
+  ready_for_review: { label: "검토용 프로토콜", hint: "선행 근거 충족 — 연구자 승인 대기" },
+  approved: { label: "실행 가능 프로토콜", hint: "연구자 승인 완료" },
+};
+const TIMING = {
+  before_protocol: { label: "프로토콜 전 필수", note: "결과가 없으면 실행 가능한 프로토콜을 내지 않습니다" },
+  parallel: { label: "병행 수행", note: "전략은 그대로 두고 함께 진행 — 중단/변경 기준을 같이 봅니다" },
+  post_batch: { label: "배치 후 조건부", note: "첫 배치 결과를 본 뒤에 필요하면 수행합니다" },
+};
+const isBlocking = (gap) =>
+  gap.status === "failed" || (gap.timing === "before_protocol" && gap.status !== "satisfied");
+
 function renderCandidates() {
   const box = $("cands");
   if (!candidates.size) return;
@@ -274,6 +317,7 @@ function renderCandidates() {
   box.innerHTML = "";
   for (const [id, entry] of candidates) {
     const gate = entry.gate;
+    const assessment = assessments.get(id);
     const card = document.createElement("div");
     card.className = "card " + (gate ? (gate.passed ? "pass" : "fail") : "");
     const ings = entry.recipe.ingredients
@@ -282,10 +326,17 @@ function renderCandidates() {
       `<span class="chip ${esc(v.status)}" data-rule="${esc(v.rule_id)}">${esc(v.rule_id)}</span>`).join("");
     const judges = entry.judges.map((j) =>
       `<div class="judge-note ${j.source === "deterministic-fallback" ? "stand-in" : ""}"><b>${esc(j.persona)}</b> ${esc(j.score)}${j.source === "deterministic-fallback" ? ' <span class="stand-in-tag">규칙 기반 대체 점수 · LLM 미사용</span>' : ""} — ${esc(j.rationale)}</div>`).join("");
+    // 룰 통과와 별개로 "실행해도 되는 상태인가"를 카드에서 바로 읽을 수 있어야 한다.
+    const readiness = assessment
+      ? `<div class="readiness ${esc(assessment.readiness)}">
+           <b>${esc(READINESS[assessment.readiness]?.label || assessment.readiness)}</b>
+           <span>${esc(READINESS[assessment.readiness]?.hint || "")}</span></div>`
+      : "";
     card.innerHTML = `
       <h4>${esc(id)}<span class="tag">${esc(entry.recipe.strategy)} · ${esc(entry.recipe.process || "")}</span></h4>
       <div class="ing">${ings}</div>
       <div class="ing">포장: ${esc(entry.recipe.packaging || "-")}</div>
+      ${readiness}
       <div class="chips">${chips}</div>${judges}`;
     card.querySelectorAll(".chip").forEach((chip) => {
       chip.onclick = () => showRule(chip.dataset.rule);
@@ -302,10 +353,167 @@ function renderConsensus(p) {
       점수 ${esc(r.weighted_score ?? "-")} · 분산 ${esc(r.variance ?? "-")} · 심사관 ${esc(r.reviewers)}
       ${r.low_confidence ? " <span class='tag'>저신뢰</span>" : ""}
       ${r.eligible ? "" : " <span class='tag'>반려</span>"}</div>`).join("");
-  el.innerHTML = `<h3>합의 (${esc(p.model)})</h3>
-    <div class="win">선정: ${esc(p.winner || "없음")}</div>${rows}
+  // "최종 처방"이 아니라 **권고 후보**다 — 실행 여부는 근거 게이트와 연구자 승인이 정한다.
+  el.innerHTML = `<h3>합의 · 권고 후보 처방 (${esc(p.model)})</h3>
+    <div class="win">권고 후보: ${esc(p.winner || "없음")}</div>${rows}
     <div class="tag" style="margin-top:6px">심사관 점수는 순위 결정 전용 — 반려 권한 없음</div>
+    <div class="tag">권고 후보 ≠ 실행 가능 프로토콜 — 아래 근거 충족 게이트에서 상태가 정해집니다</div>
     ${(p.rulebook_feedback || []).map((f) => `<div class="warn">${esc(f)}</div>`).join("")}`;
+}
+
+/* ── 근거 충족 게이트 (실험 전 루프) ────────────────────────────────────
+   룰을 통과한 뒤에도 "실행할 만큼 아는가"를 따로 묻는다. 선행 근거가 비어 있으면
+   실행 가능한 공정 프로토콜 대신 **확인시험 요청**을 내고, 그 결과를 여기서 되받는다. */
+function renderEvidence() {
+  const box = $("evidence");
+  const id = (winnerId && assessments.has(winnerId)) ? winnerId : [...assessments.keys()][0];
+  const a = id ? assessments.get(id) : null;
+  if (!a) return;
+  box.hidden = false;
+
+  const state = READINESS[a.readiness] || { label: a.readiness, hint: "" };
+  const groups = ["before_protocol", "parallel", "post_batch"].map((timing) => {
+    const gaps = (a.gaps || []).filter((g) => g.timing === timing);
+    if (!gaps.length) return "";
+    const meta = TIMING[timing];
+    return `<div class="ev-group">
+      <h4>${esc(meta.label)} <small>${esc(meta.note)}</small></h4>
+      ${gaps.map((g) => evidenceRow(g, timing === "before_protocol")).join("")}</div>`;
+  }).join("");
+
+  const blocking = (a.gaps || []).filter(isBlocking);
+  const actions = `<div class="ev-actions">
+      ${blocking.length ? `<button id="ev-submit" type="button">확인시험 결과 제출 → 근거 재평가</button>
+        <button id="ev-example" class="ghost" type="button">예시 결과 넣기</button>`
+      : `<button id="ev-approve" type="button">연구자 승인 → 실행 가능 프로토콜</button>`}
+    </div>`;
+
+  box.innerHTML = `
+    <h3>근거 충족 게이트 <small>${esc(id)} · 룰 통과 ≠ 정보 충분</small></h3>
+    <div class="ev-state ${esc(a.readiness)}"><b>${esc(state.label)}</b>
+      <span>${esc(a.summary || state.hint)}</span></div>
+    ${a.approved_by ? `<div class="ev-approved">승인: ${esc(a.approved_by)}</div>` : ""}
+    ${groups}
+    ${actions}
+    <div id="ev-out"></div>`;
+
+  if ($("ev-submit")) $("ev-submit").onclick = () => submitConfirmation(id);
+  if ($("ev-example")) $("ev-example").onclick = () => fillConfirmationExample();
+  if ($("ev-approve")) $("ev-approve").onclick = () => approveProtocol(id);
+}
+
+function evidenceRow(gap, withInput) {
+  const done = gap.status === "satisfied";
+  const failed = gap.status === "failed";
+  const source = gap.source_url
+    ? `<a href="${esc(gap.source_url)}" target="_blank" rel="noopener">${esc(gap.source_reference)}</a>`
+    : esc(gap.source_reference);
+  const input = (withInput && !done) ? `
+    <div class="ev-input" data-req="${esc(gap.requirement_id)}">
+      <select aria-label="${esc(gap.label)} 결과">
+        <option value="pass">적합 — 근거 확보</option>
+        <option value="fail">부적합 — 이 전략 배제</option>
+      </select>
+      <input type="text" maxlength="120" placeholder="측정값·요약 (예: 25°C/75%RH 7일, 분해물 0.3%)">
+    </div>` : "";
+  return `<div class="ev-item ${done ? "done" : failed ? "failed" : "missing"}">
+    <div class="ev-head"><b>${esc(gap.label)}</b>
+      <code class="ll-id">${esc(gap.test_id)}</code>
+      <span class="ev-status">${done ? "충족" : failed ? "부적합" : "미확보"}</span></div>
+    <div class="ev-why">${esc(gap.why)}</div>
+    ${gap.risk ? `<div class="ev-risk">근거 없이 진행하면: ${esc(gap.risk)}</div>` : ""}
+    <div class="ll-spec">시험: ${esc(gap.test_name)} · 측정 ${esc(gap.output_variable)}
+      ${gap.unit ? `(${esc(gap.unit)})` : ""} · 판정 ${esc(gap.acceptance_logic)}</div>
+    ${gap.stop_criteria ? `<div class="ev-stop">중단/변경 기준: ${esc(gap.stop_criteria)}</div>` : ""}
+    ${gap.source_reference ? `<div class="ll-src">근거 ${source}</div>` : ""}
+    ${gap.result_note ? `<div class="ev-result">입력된 결과: ${esc(gap.result_note)}</div>` : ""}
+    ${input}</div>`;
+}
+
+const EV_EXAMPLE = "37°C 수계 조건 7일, 총 분해물 0.4% (규격 이내)";
+
+function fillConfirmationExample() {
+  document.querySelectorAll("#evidence .ev-input input").forEach((el) => {
+    if (!el.value) el.value = EV_EXAMPLE;
+  });
+}
+
+async function submitConfirmation(candidateId) {
+  const entries = [...document.querySelectorAll("#evidence .ev-input")].map((row) => ({
+    requirement_id: row.dataset.req,
+    outcome: row.querySelector("select").value,
+    value: row.querySelector("input").value.trim(),
+  })).filter((e) => e.value || e.outcome === "fail");
+
+  if (!entries.length) {
+    notice("확인시험 결과를 한 건 이상 적어 주세요 (부적합은 값 없이도 제출됩니다).", "warn");
+    return;
+  }
+  const btn = $("ev-submit");
+  btn.disabled = true;
+  btn.textContent = "재평가 중…";
+  try {
+    const res = await fetch(api(`/api/runs/${runId}/confirmation`), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidate_id: candidateId, entries }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      throw new Error(detail.detail || `근거 재평가에 실패했습니다 (${res.status})`);
+    }
+    const updated = await res.json();
+    assessments.set(updated.candidate_id, updated);
+    narrateEvidenceLoop(updated);
+    renderCandidates();
+    renderEvidence();
+  } catch (err) {
+    notice(err.message, "error", true);
+    btn.disabled = false;
+    btn.textContent = "확인시험 결과 제출 → 근거 재평가";
+  }
+}
+
+async function approveProtocol(candidateId) {
+  const btn = $("ev-approve");
+  btn.disabled = true;
+  btn.textContent = "승인 중…";
+  try {
+    const res = await fetch(api(`/api/runs/${runId}/approve`), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidate_id: candidateId }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      throw new Error(detail.detail || `승인에 실패했습니다 (${res.status})`);
+    }
+    const updated = await res.json();
+    assessments.set(updated.candidate_id, updated);
+    narrate("approved", {
+      layer: "연구자 승인", kind: "det",
+      title: "이제서야 실행 가능한 프로토콜이 된다",
+      body: `${esc(updated.candidate_id)} — ${esc(updated.summary)}
+        <span class="nr-why">왜 중요한가: 근거가 충족돼도 시스템이 스스로 실행 가능으로
+        올리지 않습니다. 사람이 승인해야 상태가 바뀌고, 승인 이력이 함께 남습니다.</span>`,
+    });
+    renderCandidates();
+    renderEvidence();
+  } catch (err) {
+    notice(err.message, "error", true);
+    btn.disabled = false;
+    btn.textContent = "연구자 승인 → 실행 가능 프로토콜";
+  }
+}
+
+function narrateEvidenceLoop(updated) {
+  const failed = (updated.gaps || []).filter((g) => g.status === "failed");
+  narrate(`confirm-${narrationCount}`, {
+    layer: "실험 전 루프 · 결정론", kind: failed.length ? "fail" : "det", once: false,
+    title: failed.length ? "확인시험이 전제를 부정했다" : "확인시험 결과로 근거가 채워졌다",
+    body: `${esc(updated.summary)}
+      <span class="nr-why">왜 중요한가: 확인시험 결과는 <b>입력·근거 계층으로</b> 돌아갑니다.
+      배치 결과가 설계·프로토콜 개정으로 가는 것과 되먹임 지점이 다릅니다 — 그래서 입력창도
+      둘로 나눠 둡니다.</span>`,
+  });
 }
 
 const tokenBuffers = new Map();
@@ -330,6 +538,13 @@ function renderWetlab(report) {
   const read = report.read || {};
   const directive = report.directive || {};
   const off = (report.findings || []).filter((f) => f.off_target);
+
+  // 이 데이터가 어떤 상태의 프로토콜에서 나왔는지를 함께 남긴다 — 승인 전 배치의 결과를
+  // 승인된 프로토콜의 결과와 같은 무게로 읽으면 안 된다.
+  const stateBlock = report.protocol_state && report.protocol_state !== "unknown"
+    ? `<div class="ll-state ${esc(report.protocol_state)}">이 배치의 프로토콜 상태:
+        <b>${esc(READINESS[report.protocol_state]?.label || report.protocol_state)}</b></div>`
+    : "";
 
   const measured = Object.entries(read.measurements || {});
   const readBlock = measured.length
@@ -369,7 +584,7 @@ function renderWetlab(report) {
          ? '<div class="warn">이 지시는 LLM 없이 규칙으로 선정됐습니다 (카테고리 매칭).</div>' : ""}`
     : '<div class="warn">다음 실험을 특정하지 못했습니다.</div>';
 
-  $("wl-out").innerHTML = readBlock + verdictBlock + directiveBlock;
+  $("wl-out").innerHTML = stateBlock + readBlock + verdictBlock + directiveBlock;
 }
 
 /* ── 근거 드릴다운 ──────────────────────────────────────────────── */
@@ -428,8 +643,9 @@ function connect(path, { isReconnect = false } = {}) {
 
   source = new EventSource(path);
   const kinds = ["run.start", "run.end", "node.enter", "node.exit", "chem.profile",
-    "spec.ready", "candidate", "rule.fired", "verdict", "judge.summoned", "judge.token",
-    "judge.verdict", "consensus", "reflect", "warning", "error", "wetlab"];
+    "spec.ready", "candidate", "rule.fired", "verdict", "evidence", "judge.summoned",
+    "judge.token", "judge.verdict", "consensus", "reflect", "warning", "error",
+    "confirmation", "approval", "wetlab"];
   kinds.forEach((kind) => source.addEventListener(kind, (e) => {
     let payload;
     try {
@@ -515,10 +731,14 @@ function finishRun(summary) {
 }
 
 function resetView() {
-  candidates.clear(); tokenBuffers.clear(); degraded.clear();
+  candidates.clear(); tokenBuffers.clear(); degraded.clear(); assessments.clear();
+  winnerId = null;
   resetNarration();
   $("trace").innerHTML = ""; $("cands").innerHTML = "";
   $("consensus").hidden = true;
+  $("evidence").hidden = true;
+  $("evidence").innerHTML = "";
+  $("wl-out").innerHTML = "";
   $("cand-count").textContent = "";
   $("pred-panel").hidden = true;
   $("lit-panel").hidden = true;
@@ -676,7 +896,7 @@ function narrateEvent(kind, ev, p) {
       } else if (p.summoned) {
         const ids = (p.summoned || []).map((s) => `${s.reviewer_id}(${s.summon_condition})`);
         narrate("summon", {
-          layer: "P4 · 동적 소집", kind: "jud",
+          layer: "P5 · 동적 소집", kind: "jud",
           title: `심사관 ${(p.summoned || []).length}명이 지금 만들어졌다`,
           body: `${ids.length ? ids.map(esc).map((t) => `<code>${t}</code>`).join(" ") : "조건 충족 없음"}
             <span class="nr-why">왜 중요한가: 심사위원단에 <b>고정 명단이 없습니다.</b> 조건에 맞는
@@ -731,9 +951,27 @@ function narrateEvent(kind, ev, p) {
       });
       break;
 
+    case "evidence": {
+      const blocking = (p.gaps || []).filter(isBlocking);
+      const tests = [...new Set(blocking.map((g) => g.test_id))].slice(0, 3);
+      narrate("evidence", {
+        layer: "P4 · 근거 충족 게이트", kind: blocking.length ? "warn" : "det",
+        title: blocking.length
+          ? "룰은 통과했지만, 실행할 만큼 알지는 못한다"
+          : "선행 근거가 충족돼 검토용 프로토콜을 낼 수 있다",
+        body: `${esc(p.summary || "")}
+          ${tests.length ? `<br>선행 확인시험: ${tests.map((t) => `<code>${esc(t)}</code>`).join(" ")}` : ""}
+          <span class="nr-why">왜 중요한가: 룰북 통과는 "금기를 발견하지 못했다"이지 "안전이
+          확정됐다"가 아닙니다. 신약 API는 정보 자체가 없어서 위반이 안 잡히기도 합니다.
+          그래서 <b>금기 판정과 근거 판정을 분리</b>하고, 근거가 비면 반려 대신
+          <b>실행을 보류</b>하고 확인시험을 먼저 요청합니다.</span>`,
+      });
+      break;
+    }
+
     case "judge.verdict":
       narrate("judge", {
-        layer: "P5 · 심사 LLM", kind: "jud",
+        layer: "P6 · 심사 LLM", kind: "jud",
         title: "심사관은 순위만 매긴다 (반려 권한 없음)",
         body: `${esc(p.persona)} → 점수 <b>${esc(p.score)}</b>
           <span class="nr-why">왜 중요한가: 안전·규제 판정은 이미 룰북이 끝냈습니다. 심사관
@@ -744,11 +982,13 @@ function narrateEvent(kind, ev, p) {
 
     case "consensus":
       narrate("consensus", {
-        layer: "P6 · 합의 결정론", kind: "det",
-        title: "합의로 최종 후보를 고른다",
-        body: `선정 <b>${esc(p.winner || "없음")}</b> · 모델 ${esc(p.model || "")}
-          <span class="nr-why">왜 중요한가: 결정론 하드페일과 심사 가중점수를 합쳐 판단합니다.
-          가중치·임계값은 설정 CSV에서 오므로 이 단계도 재현됩니다.</span>`,
+        layer: "P7 · 합의 결정론", kind: "det",
+        title: "합의는 최종 처방이 아니라 권고 후보를 고른다",
+        body: `권고 후보 <b>${esc(p.winner || "없음")}</b> · 모델 ${esc(p.model || "")}
+          ${p.readiness ? `· 상태 <b>${esc(READINESS[p.readiness]?.label || p.readiness)}</b>` : ""}
+          <span class="nr-why">왜 중요한가: 결정론 하드페일과 심사 가중점수를 합쳐 순위를
+          정합니다. 다만 그 후보가 <b>실행 가능한 프로토콜인지는 근거 게이트가 따로</b>
+          정하고, 마지막에 연구자가 승인해야 상태가 바뀝니다.</span>`,
       });
       break;
 
@@ -801,17 +1041,19 @@ const SCENARIOS = [
   },
   {
     id: "labloop",
-    title: "만든 뒤 다음 실험까지",
-    proves: "Lab-in-the-loop",
-    // 이 시나리오의 요점은 lab-loop이라 설계 단계는 가볍게 둔다 —
+    title: "실행 전 근거 → 배치 → 다음 실험",
+    proves: "이중 루프 (근거 게이트 + Lab-in-the-loop)",
+    // 이 시나리오의 요점은 두 루프라 설계 단계는 가볍게 둔다 —
     // 심사관이 많이 소집되면 무료 티어 토큰이 설계에서 다 소모되고 지시가 규칙 기반으로 내려간다.
     request: "성인용 이부프로펜 정제를 설계해줘",
     pinned: "",
     duration: "약 2~3분",
     autoLab: true,
-    goal: `설계를 한 바퀴 돌린 뒤 <b>실험 결과를 자연어로 자동 입력</b>해 lab-in-the-loop을 이어서 돕니다.
-      AI가 문장에서 수치를 판독하고, 규칙이 규격 이탈을 판정한 뒤, 확인시험 마스터 66종에서
-      <b>다음에 할 실험</b>을 골라 지시합니다 — 모든 지시에 ICH·FDA 출처가 붙습니다.`,
+    goal: `설계가 끝나면 먼저 <b>근거 충족 게이트</b>가 “이 전략을 실행할 만큼 아는가”를 묻습니다.
+      선행 확인시험 결과를 자동 입력해 근거를 채우고 <b>연구자 승인</b>까지 진행한 뒤에야
+      배치 결과를 넣습니다. AI가 문장에서 수치를 판독하고, 규칙이 규격 이탈을 판정한 뒤,
+      확인시험 마스터 66종에서 <b>다음에 할 실험</b>을 골라 지시합니다 —
+      두 루프의 결과가 서로 다른 계층으로 돌아가는 것이 이 구조의 요지입니다.`,
   },
 ];
 
@@ -846,13 +1088,34 @@ function buildScenarios() {
   });
 }
 
-/* 시나리오가 lab-in-the-loop까지 이어질 때, 설계가 끝나면 자동으로 실험 결과를 넣는다. */
-function continueScenario() {
+/* 시나리오가 두 루프까지 이어질 때, 설계가 끝나면 순서대로 자동 진행한다.
+   실행 전 루프(확인시험 → 근거 재평가 → 승인)를 먼저 돌고, 그 다음에야 배치 결과를 넣는다 —
+   순서 자체가 이 아키텍처의 주장이라 시연도 같은 순서로 흐른다. */
+async function continueScenario() {
   if (!activeScenario || !activeScenario.autoLab) return;
+
+  const id = (winnerId && assessments.has(winnerId)) ? winnerId : [...assessments.keys()][0];
+  if (id) {
+    narrate("evloop-start", {
+      layer: "실험 전 루프", kind: "det",
+      title: "먼저 “실행해도 되는가”를 해결한다",
+      body: `선행 확인시험 결과를 자동 입력해 근거를 채우고, 연구자 승인까지 진행합니다.
+        <span class="nr-why">왜 중요한가: 이 단계를 건너뛰면 수분·열 안정성도 모르는 API에
+        습식과립 프로토콜을 그대로 내보내게 됩니다. 배치를 만든 뒤에는 되돌릴 수 없습니다.</span>`,
+    });
+    $("evidence").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if ($("ev-example")) {
+      fillConfirmationExample();
+      await submitConfirmation(id);
+      await new Promise((done) => setTimeout(done, 400));
+    }
+    if ($("ev-approve")) await approveProtocol(id);
+  }
+
   narrate("labloop-start", {
-    layer: "Lab-in-the-loop", kind: "llm",
-    title: "이제 만든 뒤의 절반 — 실험 결과를 넣는다",
-    body: `실험 노트를 자연어로 자동 입력합니다. AI가 판독 → 규칙이 판정 → AI가 다음 실험을 지시.
+    layer: "실험 후 루프", kind: "llm",
+    title: "이제 만든 뒤의 절반 — 배치 결과를 넣는다",
+    body: `배치 결과를 자연어로 자동 입력합니다. AI가 판독 → 규칙이 판정 → AI가 다음 실험을 지시.
       <span class="nr-why">왜 중요한가: 사람이 판단의 병목이 아니라 벤치에서 실험을 수행하는
       쪽으로 들어옵니다. 지시의 후보는 실제 확인시험 마스터 66종으로 묶여 있어 AI가 시험을
       발명할 수 없습니다.</span>`,

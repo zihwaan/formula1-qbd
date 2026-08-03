@@ -71,7 +71,11 @@ class FormulationState(TypedDict, total=False):
     # P3 — 결정론 게이트 (병렬 → 누적)
     results: Annotated[List[CandidateResult], accumulate]
 
-    # P4/P5 — 심사 & 합의
+    # P4 — 근거 충족 게이트 (후보별 판정 · candidate_id → EvidenceAssessment)
+    evidence: Dict[str, Any]
+    readiness: str  # 대표 후보의 프로토콜 상태 (blocked | ready_for_review | approved)
+
+    # P5/P6 — 심사 & 합의
     summoned: List[JudgeSpec]
     judge_verdicts: Annotated[List[JudgeVerdict], accumulate]
     consensus: Optional[Dict[str, Any]]
@@ -81,11 +85,11 @@ class FormulationState(TypedDict, total=False):
     reflection_directive: str
     reject_reasons: List[str]
 
-    # P7 — lab-in-the-loop (실험 결과 → 다음 실험 지시)
+    # P7 — lab-in-the-loop (배치 결과 → 원인 가설 → 다음 실험 지시)
     wetlab: Optional[FeedbackReport]
 
     # 종료 상태
-    status: str  # running | passed | rejected | escalated | exhausted
+    status: str  # running | passed | rejected | escalated | exhausted | infeasible
     final_candidate: Optional[str]
 
 
@@ -101,6 +105,8 @@ def new_state(request: str, smiles: Optional[str] = None, run_id: Optional[str] 
         strategies=[],
         candidates=[],
         results=[],
+        evidence={},
+        readiness="",
         summoned=[],
         judge_verdicts=[],
         consensus=None,

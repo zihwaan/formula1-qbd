@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Formula 1 is a QbD (Quality-by-Design) validation engine for pharmaceutical **formulation** design. It checks whether a drug recipe (API + excipients + process + packaging) will fail before it's ever made in a lab. The design principle: **AI proposes recipes, deterministic rules verify them** — creative generation is LLM work, but safety/regulatory checks must be a calculator (same input → same verdict, 0% error).
 
-The README.md (Korean) is the authoritative design doc. The LLM/agent orchestration layer (LangGraph generators, dynamic judges, RAG, Gradio dashboard) is **roadmap, not built** — what exists today is the deterministic checking core and a scripted demo.
+**There are two deterministic gates, and conflating them is the mistake to avoid.** `gate` (rulebook) asks *is there a contraindication in what we know*; `evidence` (`formula/evidence/`) asks *do we know enough to execute this strategy at all*. A rulebook pass means "no explicit violation found", not "safe" — a novel API often has no data, so nothing fires. The evidence gate therefore holds execution (draft, not executable) instead of rejecting, and asks for the confirmation tests that would settle it. Rejection authority stays with the rulebook; hold authority is the evidence gate's.
+
+The README.md (Korean) is the authoritative design doc — update it in the same commit when the design story changes. (An older revision of this file called the LangGraph/judge layer "roadmap, not built"; it has been built and is what the live pod runs.)
 
 ## Commands
 
@@ -15,7 +17,7 @@ The README.md (Korean) is the authoritative design doc. The LLM/agent orchestrat
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 54 tests — run this first when changing the core
+.venv/bin/pytest                                  # 89 tests — run this first when changing the core
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
 .venv/bin/python scripts/feedback_demo.py         # lab-in-the-loop (결과 해석)
@@ -121,6 +123,11 @@ The whole system is **data-driven, not code-driven**. Rules live in CSVs; a sing
   **`rulebook_group` is the compatibility bridge.** v1.1 splits amines into aliphatic/aromatic and 1°/2°/3°, but `incompatibility_1to1.csv` still joins on `primary_amine`/`secondary_amine`. `functional_groups()` emits both, and `test_rulebook_join_vocabulary_survives_rename` pins it — rename without the bridge and INC001–INC006 stop firing silently.
 - **`formula/chem/descriptors_v2.py`** — §1 structure quality (salt/charge/stereo/parent), §2 extended descriptors, §2.1 derived screens (Lipinski/Veber with *reasons*, not just counts). Never a hard gate: §13 lists what RDKit may not decide alone.
 - **`formula/chem/predictions.py`** — solubility/permeability/pKa predictor registry. Adapters report `available()`; **nothing is fabricated when a model is absent** — the layer returns `not_connected` and that itself triggers a data request. Two LogS predictions ≥1 log apart ⇒ `high_uncertainty` ⇒ a required experiment. ADMET-AI / SolTranNet / QupKake slots exist but are *not installed* (torch-scale dependencies); wiring one is a deployment decision, not a code change.
+- **`formula/evidence/gate.py`** — the **Evidence Readiness Gate** (pre-experiment loop), added 2026-08-03 after review feedback that the repo implemented only the *post*-batch loop. Same data-driven contract as the rulebook: a requirement is one row of `database/reference/evidence_requirements.csv` (16 rows: 7 before_protocol / 4 parallel / 5 post_batch) with `applies_when` / `satisfied_when` evaluated through the same restricted eval (`checkers/applies_when.py`), extended with `flag()`, `prop()`, `has_measured()`, `ingredient()`, `role()` plus `process`/`strategy`/`is_salt`/`bcs_source`/`logs_status`.
+  - **A requirement may only cite a `test_id` that exists in `confirmation_test_master.csv`** — rows citing an unknown test are dropped at load (`gate.dropped`, pinned by a test). This is the same invariant as the wet-lab directive: the system cannot invent a test, so every request carries method + acceptance logic + ICH/USP citation.
+  - Readiness is a *third* axis next to pass/fail: `blocked` (draft, not executable) → `ready_for_review` → `approved`. **The system never reaches `approved` on its own**; `approve()` raises when anything is blocking and the API returns 409. `EvidenceGap.blocking` is true for any unsatisfied `before_protocol` row **and for any `failed` row at any timing** — a confirmation test that came back 부적합 negates the premise, which is worse than not knowing.
+  - `intake.translate` stores only prediction *confidence* (`logs_status`, `bcs_source`) into `spec.properties`; it still must not set `bcs_class` from predictions (기준서 §13). `bcs_source == "measured"` is derived from the rulebook's `derived["bcs_class"]`, which only exists when measured values gated it.
+  - The loop re-evaluates without re-running the graph (`Run.reassess`) — this layer is deterministic, so the only new input is the test result. **Zero LLM calls in the whole pre-experiment loop**; keep it that way.
 - **`formula/feedback/test_planner.py`** — structural alerts promote confirmation tests 권장→필수 and record *why*. Route scope: non-oral-solid downgrades solid-state characterisation.
 - **`formula/rag/pdf_source.py`** — indexes reference books (Handbook of Pharmaceutical Excipients etc.) into the BM25 store. The tables say *what* excipients exist; the books say *why* you use one and *when* it fails — that's what a judge needs to cite. **Chunk per page, not per N pages**: merging two pages fused two different monographs into one document and a "lactose" query returned the magnesium-stearate chunk. Books live in `database/reference/books/` which is **gitignored and dockerignored** — indexed locally at runtime, never committed or shipped, so nothing is redistributed. Absent pypdf or absent books, the layer silently no-ops.
 - **`formula/literature.py`** — PubChem + Europe PMC, no API key. Query uses `TITLE_ABS:` fields and relevance sort; citation sort surfaced mega-cited reviews that merely mention the drug.
@@ -128,7 +135,7 @@ The whole system is **data-driven, not code-driven**. Rules live in CSVs; a sing
 - **`formula/chem/`** — RDKit input pipeline. `build_profile(api_name|smiles)` → `ApiProfile` (descriptors, SMARTS structural flags, advisory estimates, 2D SVG). Salts are stripped before SMARTS matching; `fr_*` counts cross-check every pattern. **Solubility/permeability estimates are `confidence=low` and must never set `bcs_class`** — the manifest gates `bcs_classification` behind measured values.
 - **`formula/orchestrator/`** — LangGraph `StateGraph` (`graph.py`), shared state with a reset-aware `accumulate` reducer (`state.py`; return `None` to clear a fan-out list between reflection rounds), and the `TraceEvent` bus (`events.py`). Every node emits events; the web UI consumes only that stream.
 - **`formula/agents/`** — Claude nodes. All use structured output (`messages.parse`) and **all have deterministic fallbacks**; `consensus.py` is pure Python driven by `severity_scoring_config.csv` (B model: judge scores rank, never block).
-- **`web/`** — FastAPI + SSE + a no-build SPA. `/api/rules/{rule_id}` powers the evidence drill-down that shows the originating CSV row and its SOURCES document. `static/explainer.{js,css}` is the 8-step visual walkthrough of the README (auto-opens on first visit, reopened from the masthead, deep-linkable via `?guide=N`); its content mirrors README.md chapters, so **update it when the design story changes** — it's what a first-time visitor reads instead of the README.
+- **`web/`** — FastAPI + SSE + a no-build SPA. Two result inputs, deliberately separate: `POST /api/runs/{id}/confirmation` (pre-experiment — returns into the input/evidence layer and re-runs the assessment) and `POST /api/runs/{id}/wetlab` (post-batch — returns into design/protocol revision). Merging them into one box erases *where* a result goes back to, which is the point of the dual loop. `POST /api/runs/{id}/approve` is the human gate; it 409s while evidence is missing. `/api/rules/{rule_id}` powers the evidence drill-down that shows the originating CSV row and its SOURCES document. `static/explainer.{js,css}` is the 8-step visual walkthrough of the README (auto-opens on first visit, reopened from the masthead, deep-linkable via `?guide=N`); its content mirrors README.md chapters, so **update it when the design story changes** — it's what a first-time visitor reads instead of the README.
 
 ### Front-end rules (learned the hard way — don't regress these)
 
@@ -137,7 +144,9 @@ mirroring `~/zihwan/wealthmate/frontend/src/tokens.css`, light/dark via `data-th
 theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one service applies to all).
 
 - **Colour is reserved for rule verdicts.** `--status-good/warn/serious/critical` mark
-  통과/주의/이관/반려 only. Agent kinds (결정론/LLM/심사관) are categorical, so they're separated by
+  통과/주의/이관/반려 only. Protocol readiness reuses that vocabulary rather than inventing colours:
+  hold = warn + dashed border, approved = good, review = plain — dashed/solid carries the state so
+  it stays colour-blind safe. Agent kinds (결정론/LLM/심사관) are categorical, so they're separated by
   grey level **plus line style** (solid/dashed/dotted) — that keeps them colour-blind safe and is
   why the graph and the explainer use the same three border styles.
 - **`[hidden]` is force-declared `display:none !important` in `styles.css`.** Both overlays set
@@ -166,7 +175,7 @@ theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one ser
 
 - **`formula/contracts.py`** — all shared Pydantic models (the stable interface between the pharmacy-student data team and the backend). Key types: `FormulationSpec` (translated input: API, functional groups, BCS class, target patient, measured params, property flags), `Recipe` (candidate: ingredients with role/amount, process, packaging), `Verdict` (deterministic result: `PASS`/`HARD_FAIL`/`SOFT_FLAG`), `RulebookEntry`, `JudgeSpec`. If CSV columns change, fix the manifest `schema` — these contracts stay stable.
 - **`formula/checkers/applies_when.py`** — evaluates `applies_when` / `row_filter` expressions via a **restricted `eval`** (`__builtins__` stripped, only a whitelisted context of spec fields + property flags exposed). These expressions are *trusted manifest-author input*, not user input. On expression error it fails closed (rule does not fire).
-- **`formula/feedback/`** — the **lab-in-the-loop** layer: AI reads the result data, the rulebook judges it, and AI **directs the next experiment**; the human runs that experiment at the bench and feeds results back (the paradigm FutureHouse/Oxford/Fordham's *Robin* put forward). Three stages with three different owners, mirroring the design loop's split:
+- **`formula/feedback/`** — the **post-batch** half of lab-in-the-loop (the pre-experiment half is `formula/evidence/`): AI reads the result data, the rulebook judges it, and AI **directs the next experiment**; the human runs that experiment at the bench and feeds results back (the paradigm FutureHouse/Oxford/Fordham's *Robin* put forward). Three stages with three different owners, mirroring the design loop's split:
   1. `labloop.read_notes()` — **LLM** turns a free-text lab note into measurements. It may only transcribe numbers that appear in the text; a regex reader takes over with no key.
   2. `interpreter.WetLabInterpreter` — **deterministic**, unchanged. Compares each metric to `database/legacy/wetlab_feedback_rules.csv` and returns a `FeedbackReport` (off-target findings + cause + suggested revision). Same data → same verdict.
   3. `labloop.direct_next()` — **LLM constrained by data.** Picks the next experiments *only from the 66 real rows of* `database/reference/confirmation_test_master.csv`, so every directive carries its ICH/USP citation. Any `test_id` outside that pool is discarded before it reaches the UI — the model cannot invent a test. This closes the roadmap item "확인시험 마스터(66종)를 wet-lab 루프에 연결".
@@ -210,9 +219,12 @@ read about it. Keep them in sync with the graph — they are the demo.
   (light design run, then auto-fills the lab note and submits, chaining into lab-in-the-loop).
   If you change a request string, **re-run it** and confirm the claimed path still fires — a
   scenario that doesn't demonstrate what its card promises is worse than no scenario.
-  `labloop`'s request is deliberately cheap (`성인용 이부프로펜`): its point is the wet-lab half, and
+  `labloop`'s request is deliberately cheap (`성인용 이부프로펜`): its point is the two loops, and
   a request that summons 3–4 judges spends the whole free-tier budget on the design phase
   (judges × candidates × 2 calls), which pushes the directive onto the rule-based path.
+  Since 2026-08-03 `continueScenario()` walks **both** loops in order — auto-fills the confirmation
+  results, approves, and only then submits the lab note. The order is the architectural claim
+  ("근거 먼저, 배치는 그다음"), so don't reorder it for speed.
 - **`narrateEvent()` → `narrate()`** — turns the event stream into ordered commentary. Every card
   carries the **owning layer** (`P3 · 룰북 결정론`, `P5 · 심사 LLM`, …) and a **`왜 중요한가`** line
   explaining why that layer exists. That pairing is the point: graph lighting alone doesn't tell

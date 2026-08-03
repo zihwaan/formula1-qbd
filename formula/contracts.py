@@ -274,6 +274,114 @@ class Verdict(BaseModel):
         return self.status == VerdictStatus.HARD_FAIL
 
 
+class EvidenceTiming(str, Enum):
+    """이 근거를 **언제** 확보해야 하는가.
+
+    모든 확인시험을 무조건 먼저 시키는 것은 비효율이다. 선택된 전략을 바꿀 수 있는
+    시험만 선행시키고, 나머지는 병행하거나 배치 뒤에 조건부로 돌린다.
+    """
+
+    BEFORE_PROTOCOL = "before_protocol"  # 없으면 실행 가능한 공정 프로토콜을 낼 수 없다
+    PARALLEL = "parallel"  # 전략은 안 바꾸지만 세부 조건 최적화에 필요 → 병행
+    POST_BATCH = "post_batch"  # 첫 배치 결과에 따라 조건부로 수행
+
+
+class EvidenceStatus(str, Enum):
+    SATISFIED = "satisfied"  # 근거 확보됨(실측·확인시험 결과)
+    MISSING = "missing"  # 근거 없음
+    FAILED = "failed"  # 확인시험을 했는데 부적합 — 이 전략은 배제된다
+
+
+class ProtocolReadiness(str, Enum):
+    """공정 프로토콜의 실행 가능 상태.
+
+    룰 게이트 통과는 "금기를 발견하지 못했다"일 뿐 "실행해도 된다"가 아니다.
+    근거가 충족되어야 검토용 프로토콜이 되고, 연구자가 승인해야 실행 가능해진다.
+    """
+
+    BLOCKED = "blocked"  # 근거 부족 — 실행 불가 초안(Grounded Draft, Not Executable)
+    READY_FOR_REVIEW = "ready_for_review"  # 근거 충족 — 연구자 검토용 프로토콜
+    APPROVED = "approved"  # 연구자 승인 완료 — 실행 가능 공정 프로토콜
+
+
+class EvidenceGap(BaseModel):
+    """후보 1건에 대한 근거 요구 1건과 그 충족 여부."""
+
+    requirement_id: str
+    evidence_key: str
+    label: str = ""
+    timing: EvidenceTiming = EvidenceTiming.BEFORE_PROTOCOL
+    status: EvidenceStatus = EvidenceStatus.MISSING
+    why: str = ""  # 왜 이 후보에 이 근거가 필요한가 (발동 조건의 뜻)
+    risk: str = ""  # 근거 없이 실행하면 무엇이 잘못되는가
+    stop_criteria: str = ""  # 병행 시험일 때 중단/변경 기준
+    # 이 근거를 만드는 확인시험 (confirmation_test_master.csv 의 실제 행)
+    test_id: str = ""
+    test_name: str = ""
+    test_category: str = ""
+    test_design: str = ""
+    output_variable: str = ""
+    acceptance_logic: str = ""
+    unit: str = ""
+    source_reference: str = ""
+    source_url: str = ""
+    # 확인시험 결과가 들어왔을 때의 기록
+    result_note: str = ""
+
+    @property
+    def blocking(self) -> bool:
+        """이 결손이 실행 가능 프로토콜을 막는가.
+
+        선행 시험이 비어 있으면 당연히 막고, **시점과 무관하게 '부적합' 결과도 막는다** —
+        확인시험이 전제를 부정했는데 그대로 진행하는 것이 가장 위험하기 때문이다.
+        """
+        if self.status == EvidenceStatus.FAILED:
+            return True
+        return (self.timing == EvidenceTiming.BEFORE_PROTOCOL
+                and self.status != EvidenceStatus.SATISFIED)
+
+
+class EvidenceAssessment(BaseModel):
+    """후보 1건에 대한 근거 충족 판정 (Evidence Readiness Gate의 산출물)."""
+
+    candidate_id: str
+    strategy: str = ""
+    process: str = ""
+    readiness: ProtocolReadiness = ProtocolReadiness.BLOCKED
+    gaps: List[EvidenceGap] = Field(default_factory=list)  # 충족된 항목까지 전부
+    summary: str = ""
+    approved_by: str = ""  # 승인한 연구자 표기 (감사 흔적)
+    approved_at: Optional[float] = None
+
+    def of_timing(self, timing: EvidenceTiming) -> List[EvidenceGap]:
+        return [g for g in self.gaps if g.timing == timing]
+
+    @property
+    def blocking(self) -> List[EvidenceGap]:
+        return [g for g in self.gaps if g.blocking]
+
+    @property
+    def satisfied(self) -> List[EvidenceGap]:
+        return [g for g in self.gaps if g.status == EvidenceStatus.SATISFIED]
+
+    @property
+    def failed(self) -> List[EvidenceGap]:
+        return [g for g in self.gaps if g.status == EvidenceStatus.FAILED]
+
+
+class ConfirmationResult(BaseModel):
+    """연구자가 되돌려 넣는 **확인시험**(선행 시험) 결과 1건.
+
+    배치 결과(`WetLabResult`)와 입력을 분리한다 — 돌아가는 곳이 다르기 때문이다.
+    확인시험 결과는 입력·근거 계층으로 돌아가고, 배치 결과는 설계·프로토콜 개정으로 간다.
+    """
+
+    requirement_id: str
+    outcome: str = "pass"  # pass(적합) | fail(부적합) — fail이면 그 전략은 배제된다
+    value: str = ""  # 측정값·요약 (자유 텍스트)
+    note: str = ""
+
+
 class JudgeVerdict(BaseModel):
     """정성 판단 에이전트(Judge)의 판정 1건."""
 
@@ -419,6 +527,9 @@ class EventKind(str, Enum):
     JUDGE_VERDICT = "judge.verdict"
     CONSENSUS = "consensus"
     REFLECT = "reflect"
+    EVIDENCE = "evidence"  # 후보별 근거 충족 판정 (Evidence Readiness Gate)
+    CONFIRMATION = "confirmation"  # 확인시험 결과 입력 → 근거 재평가 (실험 전 루프)
+    APPROVAL = "approval"  # 연구자 승인 → 실행 가능 프로토콜 전환
     WETLAB = "wetlab"
     WARNING = "warning"
     ERROR = "error"

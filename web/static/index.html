@@ -121,6 +121,7 @@
             <span><i class="sw det"></i>결정론 (오차 0%)</span>
             <span><i class="sw llm"></i>LLM 판단</span>
             <span><i class="sw jud"></i>동적 소집 심사관</span>
+            <span><i class="sw loop"></i>되먹임 (반려 · 확인시험 · 배치 결과)</span>
           </div>
         </div>
 
@@ -146,14 +147,20 @@
         </div>
         <div id="consensus" class="consensus" hidden></div>
 
-        <!-- ── Lab-in-the-loop ────────────────────────────────────────
-             AI가 결과를 판독·해석하고 **다음 실험을 지시**한다.
+        <!-- ── 근거 충족 게이트 (실험 전 루프) ──────────────────────────
+             룰을 통과했어도 "실행할 만큼 아는가"는 다른 질문이다.
+             선행 근거가 비면 실행 가능한 공정 프로토콜 대신 확인시험 요청을 낸다. -->
+        <div id="evidence" class="evidence" hidden></div>
+
+        <!-- ── Lab-in-the-loop (실험 후 루프) ──────────────────────────
+             AI가 배치 결과를 판독·해석하고 **다음 실험을 지시**한다.
              사람은 벤치에서 그 실험을 수행하고 결과를 다시 넣는다. -->
         <details class="labloop" id="labloop">
-          <summary>Lab-in-the-loop — 실험 결과를 넣으면 다음 실험을 지시합니다</summary>
+          <summary>배치 결과 루프 — 만든 뒤의 결과를 넣으면 다음 실험을 지시합니다</summary>
           <p class="labloop-help">
-            수행한 실험 결과를 <b>자연어로</b> 적어 주세요. AI가 수치를 판독하고,
+            <b>배치를 제조한 뒤</b>의 결과를 자연어로 적어 주세요. AI가 수치를 판독하고,
             규칙이 규격 이탈을 판정한 뒤, 확인시험 마스터에서 <b>다음에 할 실험</b>을 고릅니다.
+            (실행 <b>전</b>에 필요한 확인시험은 위 <b>근거 충족 게이트</b>에서 따로 받습니다.)
           </p>
           <label class="sr-only" for="wl-notes">실험 노트</label>
           <textarea id="wl-notes" rows="4"

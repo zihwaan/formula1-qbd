@@ -9,8 +9,15 @@
   GET  /api/chem/smarts           룰북이 쓰는 구조 패턴 목록 + 발동 규칙
   POST /api/chem/smarts           SMILES × SMARTS 직접 매칭 + 강조 구조
   GET  /api/rules/{rule_id}       규칙 원본 CSV 행 + 출처 (근거 드릴다운)
-  POST /api/runs/{id}/wetlab      자연어 실험 결과 → 판독·판정·다음 실험 지시 (lab-in-the-loop)
+  GET  /api/runs/{id}/evidence    후보별 근거 충족 판정 + 확인시험 프로토콜 (실험 전 루프)
+  POST /api/runs/{id}/confirmation 확인시험 결과 입력 → 근거 재평가 (실험 전 루프)
+  POST /api/runs/{id}/approve     연구자 승인 → 실행 가능 공정 프로토콜로 전환
+  POST /api/runs/{id}/wetlab      자연어 배치 결과 → 판독·판정·다음 실험 지시 (실험 후 루프)
   GET  /api/meta                  룰북·심사관·LLM 가용성 등 시스템 상태
+
+**루프가 둘이라 입력도 둘이다.** `/confirmation`은 실행 *전* 확인시험 결과라서 입력·근거
+계층으로 돌아가고, `/wetlab`은 배치를 만든 *뒤*의 결과라서 설계·프로토콜 개정으로 간다.
+한 입력창에 섞으면 결과가 어디로 되먹임되는지가 사라진다.
 """
 
 from __future__ import annotations
@@ -35,7 +42,8 @@ from formula.checkers.registry import RulebookRegistry
 from formula.chem.profile import build_profile
 from formula.chem.smarts_probe import match_smarts
 from formula.chem.structural_flags import REGISTRY_VERSION, load_flag_definitions
-from formula.contracts import EventKind, TraceEvent, WetLabResult
+from formula.evidence.gate import EvidenceGate
+from formula.contracts import ConfirmationResult, EventKind, TraceEvent, WetLabResult
 from formula.feedback.interpreter import WetLabInterpreter
 from formula.feedback.labloop import direct_next, read_notes
 from formula.orchestrator.events import event_to_sse
@@ -63,6 +71,7 @@ QUEUES: Dict[str, List[asyncio.Queue]] = {}
 ACTIVE: set = set()
 
 _registry: Optional[RulebookRegistry] = None
+_evidence_gate: Optional[EvidenceGate] = None
 
 
 def registry() -> RulebookRegistry:
@@ -70,6 +79,14 @@ def registry() -> RulebookRegistry:
     if _registry is None:
         _registry = RulebookRegistry(ROOT / "config" / "rulebook_manifest.yaml", base_dir=ROOT)
     return _registry
+
+
+def evidence_gate() -> EvidenceGate:
+    """근거 요구표는 실행마다 바뀌지 않으므로 프로세스에 한 번만 읽는다."""
+    global _evidence_gate
+    if _evidence_gate is None:
+        _evidence_gate = EvidenceGate(ROOT)
+    return _evidence_gate
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +115,25 @@ class WetLabRequest(BaseModel):
     candidate_id: str = Field(default="", max_length=100)
     measurements: Dict[str, float] = Field(default_factory=dict)
     notes: str = Field(default="", max_length=2000)
+
+
+class ConfirmationEntry(BaseModel):
+    """확인시험 1건의 결과 (실행 전 루프)."""
+
+    requirement_id: str = Field(max_length=40)
+    outcome: str = Field(default="pass", pattern="^(pass|fail)$")
+    value: str = Field(default="", max_length=300)
+    note: str = Field(default="", max_length=500)
+
+
+class ConfirmationRequest(BaseModel):
+    candidate_id: str = Field(default="", max_length=100)
+    entries: List[ConfirmationEntry] = Field(default_factory=list, max_length=20)
+
+
+class ApprovalRequest(BaseModel):
+    candidate_id: str = Field(default="", max_length=100)
+    approver: str = Field(default="researcher", max_length=60)
 
 
 # ---------------------------------------------------------------------------
@@ -274,14 +310,109 @@ def _sources_for(rule_file: str) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# Lab-in-the-loop (판독 → 판정 → 다음 실험 지시)
+# 실험 전 루프 — 근거 충족 게이트 (확인시험 요청 → 결과 입력 → 재평가 → 승인)
+#
+# 이 루프는 그래프를 다시 돌리지 않는다. 근거 판정은 결정론이라 새로 들어온 확인시험
+# 결과만 얹으면 같은 계산이 다시 나오기 때문이다(LLM 호출 0회).
+# ---------------------------------------------------------------------------
+def _require_run(run_id: str) -> Run:
+    execution = RUNS.get(run_id)
+    if execution is None:
+        raise HTTPException(404, "run 없음")
+    return execution
+
+
+def _evidence_payload(execution: Run, assessment) -> Dict[str, Any]:
+    return {
+        **assessment.model_dump(mode="json"),
+        "protocol": execution.evidence_gate.protocol(assessment),
+    }
+
+
+@app.get("/api/runs/{run_id}/evidence")
+async def get_evidence(run_id: str) -> Dict[str, Any]:
+    """후보별 근거 충족 판정과 확인시험 프로토콜."""
+    execution = _require_run(run_id)
+    # 실행이 끝나기 전에도 조회된다 — 근거 노드가 판정한 즉시 store에 쌓이므로 그걸 먼저 본다.
+    assessments = {**(execution.final.get("evidence") or {}),
+                   **{cid: entry["assessment"] for cid, entry in execution.evidence_store.items()}}
+    return {
+        "run_id": run_id,
+        "winner": execution.final.get("final_candidate"),
+        "candidates": {cid: _evidence_payload(execution, a) for cid, a in assessments.items()},
+    }
+
+
+@app.post("/api/runs/{run_id}/confirmation")
+async def submit_confirmation(run_id: str, payload: ConfirmationRequest) -> Dict[str, Any]:
+    """확인시험 결과를 넣고 근거 판정을 다시 계산한다 (실행 전 루프의 되먹임).
+
+    결과가 '부적합'이면 그 전략은 배제된다 — 근거가 전제를 부정했는데 프로토콜을 내보내는
+    것이 가장 위험하므로, 상태를 실행 불가로 유지하고 재설계가 필요하다고 알린다.
+    """
+    execution = _require_run(run_id)
+    candidate_id = payload.candidate_id or execution.final.get("final_candidate") or ""
+    if not payload.entries:
+        raise HTTPException(422, "확인시험 결과가 비어 있습니다.")
+
+    known = {gap.requirement_id for gap in
+             (execution.assessment(candidate_id).gaps if execution.assessment(candidate_id) else [])}
+    if not known:
+        raise HTTPException(404, "이 후보의 근거 판정을 찾지 못했습니다. 먼저 설계를 실행해 주세요.")
+
+    store = execution.confirmations.setdefault(candidate_id, {})
+    unknown: List[str] = []
+    for entry in payload.entries:
+        if entry.requirement_id not in known:
+            unknown.append(entry.requirement_id)   # 이 후보에 요구되지 않은 항목은 받지 않는다
+            continue
+        store[entry.requirement_id] = ConfirmationResult(**entry.model_dump())
+    if not store:
+        raise HTTPException(422, f"이 후보에 해당하지 않는 항목입니다: {', '.join(unknown)}")
+
+    try:
+        assessment = execution.reassess(candidate_id)
+    except KeyError:
+        raise HTTPException(404, "후보를 찾지 못했습니다.")
+
+    result = {**_evidence_payload(execution, assessment), "unknown_requirements": unknown}
+    execution.bus.publish(TraceEvent(run_id=run_id, node="evidence",
+                                     kind=EventKind.CONFIRMATION, payload=result))
+    return result
+
+
+@app.post("/api/runs/{run_id}/approve")
+async def approve_protocol(run_id: str, payload: ApprovalRequest) -> Dict[str, Any]:
+    """연구자 승인 — 근거가 충족된 후보만 실행 가능 공정 프로토콜로 전환한다."""
+    execution = _require_run(run_id)
+    candidate_id = payload.candidate_id or execution.final.get("final_candidate") or ""
+    try:
+        assessment = execution.approve(candidate_id, payload.approver)
+    except KeyError:
+        raise HTTPException(404, "후보를 찾지 못했습니다.")
+    except ValueError as exc:
+        # 근거가 비어 있는데 승인되면 이 게이트 자체가 무의미해진다 → 409로 거절.
+        raise HTTPException(409, str(exc))
+
+    result = _evidence_payload(execution, assessment)
+    execution.bus.publish(TraceEvent(run_id=run_id, node="evidence",
+                                     kind=EventKind.APPROVAL, payload=result))
+    return result
+
+
+# ---------------------------------------------------------------------------
+# 실험 후 루프 — Lab-in-the-loop (판독 → 판정 → 다음 실험 지시)
 # ---------------------------------------------------------------------------
 @app.post("/api/runs/{run_id}/wetlab")
 async def submit_wetlab(run_id: str, payload: WetLabRequest) -> Dict[str, Any]:
-    """Lab-in-the-loop 한 바퀴: 자연어 판독 → 결정론 판정 → 다음 실험 지시.
+    """배치 결과 한 바퀴: 자연어 판독 → 결정론 판정 → 다음 실험 지시.
 
     `notes`에 실험 노트를 자연어로 넣으면 거기서 측정값을 뽑아내고, 폼으로 넣은
     `measurements`가 있으면 그 값이 판독값을 덮는다(사람이 명시한 값이 우선).
+
+    입력은 **배치를 이미 만든 뒤**의 결과다. 승인 전 프로토콜로 만든 배치라면 그 사실을
+    응답에 남긴다 — 판정은 그대로 하되, 어떤 상태의 프로토콜에서 나온 데이터인지가
+    기록에 함께 남아야 한다.
     """
     rules = ROOT / "database" / "legacy" / "wetlab_feedback_rules.csv"
     if not rules.exists():
@@ -314,6 +445,9 @@ async def submit_wetlab(run_id: str, payload: WetLabRequest) -> Dict[str, Any]:
     }
     execution = RUNS.get(run_id)
     if execution is not None:
+        assessment = execution.assessment(payload.candidate_id
+                                          or execution.final.get("final_candidate") or "")
+        result["protocol_state"] = assessment.readiness.value if assessment else "unknown"
         execution.bus.publish(TraceEvent(run_id=run_id, node="labloop",
                                          kind=EventKind.WETLAB, payload=result))
     return result
@@ -332,6 +466,7 @@ async def meta() -> Dict[str, Any]:
                         "summon_condition", "base_weight"]].to_dict(orient="records")
     return {
         "rulebook": reg.summary(),
+        "evidence": evidence_gate().summary(),
         "entries": [{"id": e.id, "file": e.file, "layer": e.layer,
                      "eval_type": e.eval_type.value, "strategy": e.strategy,
                      "priority": e.trigger_priority, "polarity": e.polarity.value}
