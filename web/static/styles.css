@@ -227,6 +227,12 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   gap: 16px; padding: 16px 0 0; align-items: start;
 }
 .center { display: grid; gap: 16px; min-width: 0; }
+/* 규칙 ID·시험 ID·측정 키 같은 긴 토큰은 줄바꿈 지점이 없어서 열의 **최소 너비**를 밀어낸다.
+   좁은 화면에서 그 한 토큰 때문에 페이지 전체가 가로로 스크롤되므로, 다른 방법이 없을 때만
+   토큰 안에서 끊게 한다(`anywhere`는 break-word와 달리 min-content 계산에도 반영된다).
+   한글은 `word-break: keep-all`이 그대로 유지돼 단어 중간에서 끊기지 않는다. */
+.panel { min-width: 0; }
+.trace .msg, .nr-body, .ev-why, .ev-applied, .ll-why, .ll-spec { overflow-wrap: anywhere; }
 .panel {
   background: var(--surface-1); border: 1px solid var(--border);
   border-radius: var(--radius-m); padding: 16px; box-shadow: var(--shadow-card);
@@ -330,6 +336,55 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .consensus h3 { font-size: 12px; margin-bottom: 7px; }
 .consensus .win { color: var(--status-good); font-weight: 700; }
 .consensus .tag { color: var(--ink-muted); font-size: 10.5px; }
+
+/* ── 실험 데이터 입력 (선택) ────────────────────────────────────────
+   비워 두는 것이 기본이고, 채우면 그만큼 선행 확인시험이 줄어든다는 사실이
+   화면에서 읽혀야 한다 — 그래서 항목마다 무엇이 열리는지를 작은 글씨로 단다. */
+.inputs {
+  margin-top: 12px; background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius-s); padding: 10px 14px; font-size: 12px;
+}
+.inputs > summary { cursor: pointer; font-weight: 650; font-size: 12.5px; padding: 4px 0; }
+.inputs > summary:hover { color: var(--ink-2); }
+.inputs-opt { color: var(--ink-muted); font-weight: 500; font-size: 11px; margin-left: 6px; }
+.inputs-help {
+  margin: 6px 0 12px; font-size: 11.5px; line-height: 1.65; color: var(--ink-muted);
+  word-break: keep-all;
+}
+.inputs-help b { color: var(--ink-2); }
+.inputs-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.inputs-group { border: 1px solid var(--border); border-radius: var(--radius-s); padding: 10px 12px; }
+.inputs-group legend { font-size: 11px; font-weight: 700; padding: 0 5px; color: var(--ink-1); }
+.inputs-note {
+  font-size: 10.5px; color: var(--ink-muted); line-height: 1.55;
+  margin-bottom: 9px; word-break: keep-all;
+}
+.inputs-field { display: block; margin-bottom: 9px; }
+.inputs-label { display: flex; gap: 5px; align-items: baseline; font-size: 11.5px; }
+.inputs-label i { font-style: normal; color: var(--ink-muted); font-size: 10.5px; }
+.inputs-field input {
+  width: 100%; margin-top: 4px; padding: 7px 9px; border-radius: var(--radius-s);
+  border: 1px solid var(--border); background: var(--page); color: var(--ink-1);
+  font-family: inherit; font-size: 12px;
+}
+.inputs-field input:focus, .inputs-check input:focus { outline: none; border-color: var(--ink-1); }
+.inputs-field small, .inputs-check small {
+  display: block; margin-top: 3px; font-size: 10px; color: var(--ink-muted); line-height: 1.5;
+}
+.inputs-check { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 9px; font-size: 11.5px; }
+.inputs-check input { margin-top: 2px; }
+.inputs-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.inputs-actions button {
+  padding: 7px 14px; border-radius: var(--radius-pill); border: 1px solid var(--border);
+  background: transparent; color: var(--ink-1); font-size: 11.5px; font-weight: 600;
+}
+.inputs-actions button:hover { background: var(--grid); }
+.inputs-count { font-size: 11px; color: var(--ink-muted); }
+.ev-applied { margin-top: 7px; font-size: 10.5px; color: var(--ink-muted); line-height: 1.7; }
+.ev-applied code {
+  font-family: var(--font-mono); background: var(--grid); padding: 1px 6px; border-radius: 4px;
+}
+.ev-num { max-width: 150px; }
 
 /* ── 근거 충족 게이트 ──────────────────────────────────────────────
    프로토콜 상태는 룰 판정과 다른 축이라 색을 새로 만들지 않는다 —

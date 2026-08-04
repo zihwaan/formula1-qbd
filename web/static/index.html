@@ -56,6 +56,23 @@
       <button id="replay" class="ghost" disabled>재생</button>
     </section>
 
+    <!-- 이미 갖고 있는 실측값을 처음부터 넣는 자리 (선택).
+         비워 두면 시스템이 "모른다"로 판정하고 확인시험을 먼저 요청한다 —
+         값을 넣으면 그만큼 선행 시험이 줄고, 룰 판정 자체가 실측 기반으로 바뀐다. -->
+    <details class="inputs" id="inputs">
+      <summary>실험 데이터 입력 <span class="inputs-opt">선택 · 비워도 실행됩니다</span></summary>
+      <p class="inputs-help">
+        이미 측정한 값이 있으면 넣어 주세요. <b>실측값은 추정보다 우선</b>하며,
+        각 항목이 무엇을 여는지 아래에 적어 두었습니다. 넣지 않으면 시스템은 “모른다”로 보고
+        <b>선행 확인시험</b>을 먼저 요청합니다.
+      </p>
+      <div id="inputs-body" class="inputs-grid"></div>
+      <div class="inputs-actions">
+        <button id="inputs-clear" class="ghost" type="button">입력 비우기</button>
+        <span id="inputs-count" class="inputs-count"></span>
+      </div>
+    </details>
+
     <!-- 시연 시나리오 — 누르면 바로 실행되고, 아키텍처 해설이 실행에 맞춰 흐른다.
          각 시나리오가 실제로 어떤 경로를 밟는지 측정해서 고른 조합이다. -->
     <section class="scenarios" aria-label="시연 시나리오">

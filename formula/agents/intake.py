@@ -49,8 +49,16 @@ def translate(
     smiles: Optional[str] = None,
     node: str = "intake",
     required_excipients: Optional[List[str]] = None,
+    measured_params: Optional[Dict[str, float]] = None,
+    property_flags: Optional[Dict[str, bool]] = None,
 ) -> FormulationSpec:
-    """자연어 요구를 스펙으로 옮기고 RDKit 프로파일을 붙인다."""
+    """자연어 요구를 스펙으로 옮기고 RDKit 프로파일을 붙인다.
+
+    `measured_params`/`property_flags`는 사용자가 처음부터 넣은 **실측값**이다(선택 입력).
+    이 값들은 LLM 해석보다도, RDKit 추정보다도 우선한다 — `with_profile`이 `setdefault`로
+    빈칸만 채우므로, 먼저 넣어 두면 어떤 계층도 덮어쓰지 못한다. 실측이 있으면 추정을
+    쓰지 않는다는 원칙이 대입 순서로 강제된다.
+    """
     emit(node, EventKind.NODE_ENTER, request=request)
 
     try:
@@ -65,7 +73,9 @@ def translate(
         api_name=parsed.api_name,
         target_patient=parsed.target_patient,
         dosage_form=parsed.dosage_form,
-        properties=dict(parsed.properties),
+        # 사용자 지정 플래그가 LLM 해석을 이긴다(사람이 명시한 값이 우선).
+        properties={**dict(parsed.properties), **(property_flags or {})},
+        measured_params=dict(measured_params or {}),
         # 사용자가 못 박은 현장 제약. LLM이 해석해 바꿀 수 없는 값이라 그대로 싣는다.
         required_excipients=[e.strip() for e in (required_excipients or []) if e.strip()],
     )
@@ -103,7 +113,11 @@ def translate(
     literature = search_api(spec.api_name, profile.parent_smiles or profile.smiles)
     emit(node, EventKind.LITERATURE, **literature)
 
-    emit(node, EventKind.SPEC_READY, source=source, spec=spec.model_dump(exclude={"api_profile"}))
+    emit(node, EventKind.SPEC_READY, source=source,
+         spec=spec.model_dump(exclude={"api_profile"}),
+         # 사용자가 넣은 실측값은 따로 표시한다 — 어디까지가 사람이 준 값이고
+         # 어디부터가 계산·추정인지 화면에서 갈라 보여야 한다.
+         user_measured=dict(measured_params or {}), user_flags=dict(property_flags or {}))
     emit(node, EventKind.NODE_EXIT, api_name=spec.api_name)
     return spec
 

@@ -1,0 +1,117 @@
+# 실험 데이터 입력 카탈로그 — 사용자가 처음부터 넣을 수 있는 실측값 목록.
+#
+# 왜 목록을 따로 두는가:
+#   1. **아무 키나 받으면 안 된다.** 여기 값들은 룰북 조건식(`applies_when`)의 평가 문맥에
+#      그대로 합쳐진다. 서버는 이 파일에 있는 키만 통과시킨다(허용목록).
+#   2. **무엇을 넣으면 무엇이 열리는지**를 화면에 그대로 보여주기 위해서다. 입력이 어떤
+#      규칙·어떤 근거 요구를 움직이는지 모르면 연구자는 빈칸을 채울 이유가 없다.
+#   3. 항목을 늘리는 일이 코드 수정이 아니라 데이터 입력이어야 한다(이 저장소의 대원칙).
+#
+# `key`는 룰북/근거표가 실제로 참조하는 canonical 이름이어야 한다. 오타가 나면 조용히
+# 아무 규칙도 발동하지 않는다 — `tests/test_experimental_inputs.py`가 그걸 막는다.
+#
+# type: number(실측값) | bool(수행 여부) | choice(등급)
+# unlocks: 이 값이 채워지면 실제로 무엇이 달라지는가 (화면에 그대로 노출)
+
+groups:
+  - id: flow
+    label: 분말 유동성
+    note: USP <1174> 등급을 산출해 공정 경로(직접타정 가능 여부)를 결정한다. 비우면 경로 판단이 기본값으로 간다.
+    fields:
+      - key: angle_of_repose
+        label: 안식각
+        unit: "°"
+        type: number
+        min: 0
+        max: 90
+        placeholder: "예: 48"
+        unlocks: 유동성 등급 산출 → 직접타정·습식과립 경로 결정
+      - key: compressibility_index
+        label: 압축성 지수 (Carr)
+        unit: "%"
+        type: number
+        min: 0
+        max: 100
+        placeholder: "예: 28"
+        unlocks: 유동성 등급 교차 확인 · 공정 규칙 임계값 판정
+      - key: hausner_ratio
+        label: Hausner 비
+        unit: ""
+        type: number
+        min: 0.8
+        max: 3
+        placeholder: "예: 1.35"
+        unlocks: 유동성 등급 교차 확인
+
+  - id: biopharm
+    label: 생물약제학 (BCS)
+    note: 두 값이 모두 있어야 BCS 등급이 **실측 기반**으로 확정된다. 추정으로는 확정하지 않는다(기준서 §13).
+    fields:
+      - key: dose_solubility_volume
+        label: 용량/용해도 부피
+        unit: mL
+        type: number
+        min: 0
+        placeholder: "예: 180"
+        unlocks: BCS 고용해도 판정 (ICH M9 · 250 mL 기준)
+      - key: fraction_absorbed
+        label: 흡수율
+        unit: "%"
+        type: number
+        min: 0
+        max: 100
+        placeholder: "예: 92"
+        unlocks: BCS 고투과도 판정 → 가용화 전략 필요 여부
+      - key: solubility_mg_per_ml
+        label: 실험 용해도
+        unit: mg/mL
+        type: number
+        min: 0
+        placeholder: "예: 0.12"
+        unlocks: 근거 요구 EVR004(실험 용해도) 충족
+
+  - id: stability
+    label: 안정성 · 배합적합성
+    note: 수계 공정과 배합 판단의 선행 근거다. 수행한 시험이 있으면 체크하면 그만큼 선행 확인시험이 줄어든다.
+    fields:
+      - key: aqueous_stability_percent
+        label: 수계 조건 잔존율
+        unit: "%"
+        type: number
+        min: 0
+        max: 100
+        placeholder: "예: 99.4"
+        unlocks: 근거 요구 EVR001(수계 공정 중 API 안정성) 충족
+      - key: forced_degradation_done
+        label: 강제분해 시험 완료
+        type: bool
+        unlocks: 근거 요구 EVR002(강제분해 프로파일) 충족
+      - key: compatibility_study_done
+        label: 부형제 배합적합성 시험 완료
+        type: bool
+        unlocks: 근거 요구 EVR007(환원당 × 아민) 충족
+      - key: salt_form_verified
+        label: 염 형태 안정성 확인 완료
+        type: bool
+        unlocks: 근거 요구 EVR003(염 전환 위험) 충족
+
+  - id: properties
+    label: 물성 플래그
+    note: 문장에서 읽어내지 못하는 성질을 직접 지정한다. 포장·공정 규칙의 발동 조건이 된다.
+    fields:
+      - key: hygroscopic
+        label: 흡습성
+        type: bool
+        unlocks: 고투습 포장 금지 규칙 발동
+      - key: light_sensitive
+        label: 광분해 민감
+        type: bool
+        unlocks: 코팅·포장 규칙 발동 (차광 필요 판정)
+      - key: heat_sensitive
+        label: 열 민감
+        type: bool
+        unlocks: 경로 규칙 RTE005 발동 → 수계 습식과립 배제(건조 열 노출)
+      - key: moisture_sensitive
+        label: 수분 민감
+        type: bool
+        unlocks: 경로 규칙 RTE004 발동 → 수계 습식과립 배제, 건식과립 권장

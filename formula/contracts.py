@@ -315,6 +315,10 @@ class EvidenceGap(BaseModel):
     why: str = ""  # 왜 이 후보에 이 근거가 필요한가 (발동 조건의 뜻)
     risk: str = ""  # 근거 없이 실행하면 무엇이 잘못되는가
     stop_criteria: str = ""  # 병행 시험일 때 중단/변경 기준
+    # 이 시험이 산출하는 canonical 측정값 이름. 결과가 이 자리에 꽂히면 충족 조건이
+    # '표시'가 아니라 실제 실측값으로 참이 된다 — 확인시험 결과가 입력 계층으로 돌아가는 통로.
+    result_key: str = ""
+    result_unit: str = ""
     # 이 근거를 만드는 확인시험 (confirmation_test_master.csv 의 실제 행)
     test_id: str = ""
     test_name: str = ""
@@ -379,6 +383,7 @@ class ConfirmationResult(BaseModel):
     requirement_id: str
     outcome: str = "pass"  # pass(적합) | fail(부적합) — fail이면 그 전략은 배제된다
     value: str = ""  # 측정값·요약 (자유 텍스트)
+    value_num: Optional[float] = None  # 요구표의 `result_key`에 대응하는 정량 결과
     note: str = ""
 
 

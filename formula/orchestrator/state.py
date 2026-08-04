@@ -59,6 +59,9 @@ class FormulationState(TypedDict, total=False):
     request: str  # 사용자의 자연어 요구
     smiles: Optional[str]
     required_excipients: List[str]  # 현장 제약으로 반드시 넣어야 하는 부형제
+    # 사용자가 처음부터 넣은 실측값·플래그(선택). 추정보다 우선한다.
+    measured_params: Dict[str, float]
+    property_flags: Dict[str, bool]
 
     # P0 — 입력 번역 & 물성
     spec: Optional[FormulationSpec]
@@ -94,12 +97,16 @@ class FormulationState(TypedDict, total=False):
 
 
 def new_state(request: str, smiles: Optional[str] = None, run_id: Optional[str] = None,
-              required_excipients: Optional[List[str]] = None) -> FormulationState:
+              required_excipients: Optional[List[str]] = None,
+              measured_params: Optional[Dict[str, float]] = None,
+              property_flags: Optional[Dict[str, bool]] = None) -> FormulationState:
     return FormulationState(
         run_id=run_id or uuid.uuid4().hex[:12],
         request=request,
         smiles=smiles,
         required_excipients=list(required_excipients or []),
+        measured_params=dict(measured_params or {}),
+        property_flags=dict(property_flags or {}),
         spec=None,
         api_profile=None,
         strategies=[],

@@ -32,10 +32,13 @@ class Run:
     """
 
     def __init__(self, base_dir: Path, request: str, smiles: Optional[str] = None,
-                 run_id: Optional[str] = None, required_excipients: Optional[List[str]] = None):
+                 run_id: Optional[str] = None, required_excipients: Optional[List[str]] = None,
+                 measured_params: Optional[Dict[str, float]] = None,
+                 property_flags: Optional[Dict[str, bool]] = None):
         self.base_dir = Path(base_dir)
         self.state = new_state(request, smiles=smiles, run_id=run_id,
-                               required_excipients=required_excipients)
+                               required_excipients=required_excipients,
+                               measured_params=measured_params, property_flags=property_flags)
         self.run_id: str = self.state["run_id"]
         self.bus = EventBus(self.run_id)
         self.final: Dict[str, Any] = {}
@@ -48,6 +51,8 @@ class Run:
         self.evidence_store: Dict[str, Dict[str, Any]] = {}
         # candidate_id → {requirement_id → ConfirmationResult}
         self.confirmations: Dict[str, Dict[str, ConfirmationResult]] = {}
+        # candidate_id → 확인시험 결과가 실측값 자리에 꽂힌 내역 (화면에 그대로 보여준다)
+        self.applied_results: Dict[str, Dict[str, float]] = {}
 
     async def stream(self) -> AsyncIterator[TraceEvent]:
         """그래프를 돌리며 TraceEvent를 흘린다."""
@@ -132,13 +137,36 @@ class Run:
         inputs = self._inputs_for(candidate_id)
         if inputs is None or inputs.get("spec") is None:
             raise KeyError(candidate_id)
+        resolved = self.confirmations.get(candidate_id, {})
+        self.applied_results[candidate_id] = self._apply_results(inputs["spec"], resolved)
         assessment = self.evidence_gate.assess(
-            inputs["spec"], inputs["recipe"], inputs.get("derived"),
-            resolved=self.confirmations.get(candidate_id, {}),
+            inputs["spec"], inputs["recipe"], inputs.get("derived"), resolved=resolved,
         )
         self.evidence_store[candidate_id] = {**inputs, "assessment": assessment}
         (self.final.setdefault("evidence", {}))[candidate_id] = assessment
         return assessment
+
+    def _apply_results(self, spec: Any,
+                       resolved: Dict[str, ConfirmationResult]) -> Dict[str, float]:
+        """확인시험 결과를 **스펙의 실측값 자리**에 꽂는다.
+
+        "확인시험 결과는 입력·근거 계층으로 돌아간다"를 문장이 아니라 데이터 이동으로
+        구현하는 지점이다. 값이 실측값으로 들어가면 요구의 충족 조건(`satisfied_when`)이
+        표시가 아니라 실제로 참이 되고, 다음 실행의 룰 판정에도 같은 값이 쓰인다.
+        부적합(fail) 결과는 넣지 않는다 — 그건 근거 확보가 아니라 전제의 부정이다.
+        """
+        applied: Dict[str, float] = {}
+        by_id = {row["requirement_id"]: row for row in self.evidence_gate.requirements}
+        for requirement_id, result in resolved.items():
+            row = by_id.get(requirement_id)
+            key = (row or {}).get("result_key", "")
+            if not key or result.outcome != "pass":
+                continue
+            # 수치가 오면 그대로, 안 오면 "수행함"을 1로 기록한다(불리언형 요구).
+            value = result.value_num if result.value_num is not None else 1.0
+            spec.measured_params[key] = float(value)
+            applied[key] = float(value)
+        return applied
 
     def approve(self, candidate_id: str, approver: str = "researcher") -> EvidenceAssessment:
         """연구자 승인 — 근거가 충족된 후보만 실행 가능 프로토콜로 올린다."""

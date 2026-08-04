@@ -35,6 +35,7 @@ let source = null;
 const candidates = new Map();   // candidate_id → {recipe, verdicts[], judges[], gate}
 const assessments = new Map();  // candidate_id → 근거 충족 판정 (evidence 이벤트)
 let winnerId = null;            // 합의가 고른 권고 후보
+let lastApplied = {};           // 확인시험 결과가 실측값 자리에 꽂힌 내역
 
 /* ── 고정 그래프 레이아웃 ────────────────────────────────────────────
    kind: det(결정론) | llm(LLM 판단) | jud(동적 심사관)
@@ -393,6 +394,9 @@ function renderEvidence() {
     <div class="ev-state ${esc(a.readiness)}"><b>${esc(state.label)}</b>
       <span>${esc(a.summary || state.hint)}</span></div>
     ${a.approved_by ? `<div class="ev-approved">승인: ${esc(a.approved_by)}</div>` : ""}
+    ${Object.keys(lastApplied).length ? `<div class="ev-applied">입력 계층에 반영된 실측값:
+      ${Object.entries(lastApplied).map(([k, v]) =>
+        `<code>${esc(k)} = ${esc(v)}</code>`).join(" ")}</div>` : ""}
     ${groups}
     ${actions}
     <div id="ev-out"></div>`;
@@ -408,13 +412,20 @@ function evidenceRow(gap, withInput) {
   const source = gap.source_url
     ? `<a href="${esc(gap.source_url)}" target="_blank" rel="noopener">${esc(gap.source_reference)}</a>`
     : esc(gap.source_reference);
+  // 이 시험이 canonical 측정값을 내면 숫자 칸을 함께 준다 — 그 값은 요약 문구가 아니라
+  // 스펙의 실측값 자리에 그대로 꽂혀서 다음 판정의 입력이 된다.
+  const numeric = gap.result_key ? `
+      <input type="number" step="any" class="ev-num" data-unit="${esc(gap.result_unit || "")}"
+             placeholder="${esc(gap.result_key)}${gap.result_unit ? ` (${esc(gap.result_unit)})` : ""}">` : "";
   const input = (withInput && !done) ? `
     <div class="ev-input" data-req="${esc(gap.requirement_id)}">
       <select aria-label="${esc(gap.label)} 결과">
         <option value="pass">적합 — 근거 확보</option>
         <option value="fail">부적합 — 이 전략 배제</option>
       </select>
-      <input type="text" maxlength="120" placeholder="측정값·요약 (예: 25°C/75%RH 7일, 분해물 0.3%)">
+      ${numeric}
+      <input type="text" maxlength="120" class="ev-text"
+             placeholder="측정값·요약 (예: 25°C/75%RH 7일, 분해물 0.3%)">
     </div>` : "";
   return `<div class="ev-item ${done ? "done" : failed ? "failed" : "missing"}">
     <div class="ev-head"><b>${esc(gap.label)}</b>
@@ -433,17 +444,23 @@ function evidenceRow(gap, withInput) {
 const EV_EXAMPLE = "37°C 수계 조건 7일, 총 분해물 0.4% (규격 이내)";
 
 function fillConfirmationExample() {
-  document.querySelectorAll("#evidence .ev-input input").forEach((el) => {
+  document.querySelectorAll("#evidence .ev-input .ev-text").forEach((el) => {
     if (!el.value) el.value = EV_EXAMPLE;
   });
 }
 
 async function submitConfirmation(candidateId) {
-  const entries = [...document.querySelectorAll("#evidence .ev-input")].map((row) => ({
-    requirement_id: row.dataset.req,
-    outcome: row.querySelector("select").value,
-    value: row.querySelector("input").value.trim(),
-  })).filter((e) => e.value || e.outcome === "fail");
+  const entries = [...document.querySelectorAll("#evidence .ev-input")].map((row) => {
+    const num = row.querySelector(".ev-num");
+    const value = row.querySelector(".ev-text").value.trim();
+    const raw = num && num.value.trim() !== "" ? Number(num.value) : null;
+    return {
+      requirement_id: row.dataset.req,
+      outcome: row.querySelector("select").value,
+      value,
+      value_num: Number.isFinite(raw) ? raw : null,
+    };
+  }).filter((e) => e.value || e.value_num !== null || e.outcome === "fail");
 
   if (!entries.length) {
     notice("확인시험 결과를 한 건 이상 적어 주세요 (부적합은 값 없이도 제출됩니다).", "warn");
@@ -463,6 +480,7 @@ async function submitConfirmation(candidateId) {
     }
     const updated = await res.json();
     assessments.set(updated.candidate_id, updated);
+    lastApplied = updated.applied_measurements || {};
     narrateEvidenceLoop(updated);
     renderCandidates();
     renderEvidence();
@@ -732,7 +750,7 @@ function finishRun(summary) {
 
 function resetView() {
   candidates.clear(); tokenBuffers.clear(); degraded.clear(); assessments.clear();
-  winnerId = null;
+  winnerId = null; lastApplied = {};
   resetNarration();
   $("trace").innerHTML = ""; $("cands").innerHTML = "";
   $("consensus").hidden = true;
@@ -757,12 +775,15 @@ async function startRun() {
   clearNotice();
   setRunning(true);
   try {
+    const { measured, flags } = collectInputs();
     const res = await fetch(api("/api/runs"), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         request,
         smiles: $("smiles").value.trim() || null,
         required_excipients: $("pinned").value.split(",").map((s) => s.trim()).filter(Boolean),
+        measured_params: measured,
+        property_flags: flags,
       }),
     });
     if (!res.ok) {
@@ -774,6 +795,11 @@ async function startRun() {
     }
     const data = await res.json();
     if (!data.run_id) throw new Error("서버 응답에 run_id가 없습니다");
+    // 카탈로그에 없는 키는 서버가 버린다. 조용히 넘기면 "왜 안 먹었는지"를 알 수 없다.
+    if ((data.rejected_inputs || []).length) {
+      notice(`입력 중 ${data.rejected_inputs.length}건이 허용 목록에 없어 제외됐습니다: `
+        + data.rejected_inputs.join(", "), "warn");
+    }
     runId = data.run_id;
     connect(api(`/api/runs/${runId}/stream`));
   } catch (err) {
@@ -1166,6 +1192,66 @@ function renderLiterature(p) {
       || `<div class="pred-note">${esc(l.note || "문헌 없음")}</div>`}`;
 }
 
+/* ── 실험 데이터 입력 (선택) ─────────────────────────────────────────
+   서버의 카탈로그(`/api/inputs`)를 그대로 그린다. 항목을 늘리는 일이 YAML 편집이지
+   프런트 수정이 아니어야 하므로, 필드 목록을 여기에 복사해 두지 않는다.
+   각 항목의 `unlocks`(무엇이 열리는가)를 같이 보여준다 — 그게 없으면 아무도 안 채운다. */
+let inputCatalog = { groups: [] };
+
+async function loadInputCatalog() {
+  try {
+    const res = await fetch(api("/api/inputs"));
+    if (!res.ok) return;
+    inputCatalog = await res.json();
+  } catch (err) {
+    return;   // 부가 입력이라 실패해도 실행은 된다
+  }
+  $("inputs-body").innerHTML = (inputCatalog.groups || []).map((g) => `
+    <fieldset class="inputs-group">
+      <legend>${esc(g.label)}</legend>
+      <div class="inputs-note">${esc(g.note || "")}</div>
+      ${(g.fields || []).map((f) => f.type === "bool"
+        ? `<label class="inputs-check">
+             <input type="checkbox" data-key="${esc(f.key)}" data-type="bool">
+             <span><b>${esc(f.label)}</b><small>${esc(f.unlocks || "")}</small></span>
+           </label>`
+        : `<label class="inputs-field">
+             <span class="inputs-label"><b>${esc(f.label)}</b>
+               ${f.unit ? `<i>${esc(f.unit)}</i>` : ""}</span>
+             <input type="number" step="any" data-key="${esc(f.key)}" data-type="number"
+                    placeholder="${esc(f.placeholder || "")}">
+             <small>${esc(f.unlocks || "")}</small>
+           </label>`).join("")}
+    </fieldset>`).join("");
+
+  $("inputs-body").addEventListener("input", updateInputCount);
+  $("inputs-clear").onclick = () => {
+    $("inputs-body").querySelectorAll("input").forEach((el) => {
+      if (el.type === "checkbox") el.checked = false; else el.value = "";
+    });
+    updateInputCount();
+  };
+}
+
+function collectInputs() {
+  const measured = {}, flags = {};
+  $("inputs-body").querySelectorAll("input").forEach((el) => {
+    const key = el.dataset.key;
+    if (el.dataset.type === "bool") {
+      if (el.checked) flags[key] = true;
+    } else if (el.value.trim() !== "" && Number.isFinite(Number(el.value))) {
+      measured[key] = Number(el.value);
+    }
+  });
+  return { measured, flags };
+}
+
+function updateInputCount() {
+  const { measured, flags } = collectInputs();
+  const n = Object.keys(measured).length + Object.keys(flags).length;
+  $("inputs-count").textContent = n ? `${n}개 입력됨 — 그만큼 선행 확인시험이 줄어듭니다` : "";
+}
+
 /* ── SMARTS 직접 검사 ────────────────────────────────────────────────
    룰북의 배합금기 판정은 SMARTS 매칭에서 출발한다. 판정을 믿으려면 "그 패턴이 정말
    이 분자에 있는가"를 사람이 확인할 수 있어야 하므로, 그 계층을 화면에 그대로 노출한다.
@@ -1264,6 +1350,7 @@ $("btn-theme").onclick = () => {
   buildGraph();
   buildScenarios();
   loadSmartsPresets();
+  loadInputCatalog();
   setRunning(false);
   try {
     const res = await fetch(api("/api/meta"));

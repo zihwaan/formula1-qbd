@@ -104,7 +104,9 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
     # ── P0 · 입력 번역 + RDKit 물성 ────────────────────────────────────
     def node_intake(state: FormulationState) -> Dict[str, Any]:
         spec = intake.translate(state["request"], base_dir, smiles=state.get("smiles"),
-                                required_excipients=state.get("required_excipients"))
+                                required_excipients=state.get("required_excipients"),
+                                measured_params=state.get("measured_params"),
+                                property_flags=state.get("property_flags"))
         return {"spec": spec, "api_profile": spec.api_profile}
 
     # ── P1 · 공정 경로 분기 (결정론) ───────────────────────────────────

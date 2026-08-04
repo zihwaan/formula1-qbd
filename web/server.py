@@ -1,7 +1,8 @@
 """FastAPI 서버 — 에이전트 실행을 SSE로 중계한다.
 
 엔드포인트
-  POST /api/runs                  설계 실행 시작 → run_id
+  GET  /api/inputs                실험 데이터 입력 카탈로그 (무엇을 넣으면 무엇이 열리는가)
+  POST /api/runs                  설계 실행 시작 → run_id (실측값 선택 입력 가능)
   GET  /api/runs/{id}/stream      TraceEvent SSE 스트림 (UI의 유일한 입력)
   GET  /api/runs/{id}/replay      저장된 이벤트 재생 — 오프라인 시연 안전장치
   GET  /api/runs/{id}             실행 요약
@@ -43,6 +44,7 @@ from formula.chem.profile import build_profile
 from formula.chem.smarts_probe import match_smarts
 from formula.chem.structural_flags import REGISTRY_VERSION, load_flag_definitions
 from formula.evidence.gate import EvidenceGate
+from formula.experimental_inputs import ExperimentalInputs
 from formula.contracts import ConfirmationResult, EventKind, TraceEvent, WetLabResult
 from formula.feedback.interpreter import WetLabInterpreter
 from formula.feedback.labloop import direct_next, read_notes
@@ -72,6 +74,7 @@ ACTIVE: set = set()
 
 _registry: Optional[RulebookRegistry] = None
 _evidence_gate: Optional[EvidenceGate] = None
+_experimental_inputs: Optional[ExperimentalInputs] = None
 
 
 def registry() -> RulebookRegistry:
@@ -89,6 +92,13 @@ def evidence_gate() -> EvidenceGate:
     return _evidence_gate
 
 
+def experimental_inputs() -> ExperimentalInputs:
+    global _experimental_inputs
+    if _experimental_inputs is None:
+        _experimental_inputs = ExperimentalInputs(ROOT)
+    return _experimental_inputs
+
+
 # ---------------------------------------------------------------------------
 # 요청 모델
 # ---------------------------------------------------------------------------
@@ -99,6 +109,10 @@ class RunRequest(BaseModel):
     smiles: Optional[str] = Field(default=None, max_length=500)
     # 현장 제약으로 반드시 써야 하는 부형제. 설계자는 회피할 수 없고 룰북이 판정한다.
     required_excipients: List[str] = Field(default_factory=list, max_length=8)
+    # 이미 갖고 있는 실측값(선택). 카탈로그에 있는 키만 통과한다 — 임의 키를 받으면
+    # 룰북 조건식 문맥을 사용자가 덮어쓸 수 있다.
+    measured_params: Dict[str, float] = Field(default_factory=dict)
+    property_flags: Dict[str, bool] = Field(default_factory=dict)
 
 
 class ChemRequest(BaseModel):
@@ -118,11 +132,17 @@ class WetLabRequest(BaseModel):
 
 
 class ConfirmationEntry(BaseModel):
-    """확인시험 1건의 결과 (실행 전 루프)."""
+    """확인시험 1건의 결과 (실행 전 루프).
+
+    `value_num`은 그 시험이 산출하는 canonical 측정값이다(요구표의 `result_key`).
+    숫자로 들어오면 **스펙의 실측값 자리에 그대로 꽂힌다** — 확인시험 결과가 입력·근거
+    계층으로 돌아간다는 말이 문장이 아니라 데이터 이동으로 구현되는 지점이다.
+    """
 
     requirement_id: str = Field(max_length=40)
     outcome: str = Field(default="pass", pattern="^(pass|fail)$")
     value: str = Field(default="", max_length=300)
+    value_num: Optional[float] = None
     note: str = Field(default="", max_length=500)
 
 
@@ -137,16 +157,31 @@ class ApprovalRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# 입력 카탈로그
+# ---------------------------------------------------------------------------
+@app.get("/api/inputs")
+async def input_catalog() -> Dict[str, Any]:
+    """처음부터 넣을 수 있는 실측값 목록. 각 항목이 무엇을 여는지(`unlocks`)까지 준다."""
+    return experimental_inputs().catalog()
+
+
+# ---------------------------------------------------------------------------
 # 실행
 # ---------------------------------------------------------------------------
 @app.post("/api/runs")
-async def create_run(payload: RunRequest) -> Dict[str, str]:
+async def create_run(payload: RunRequest) -> Dict[str, Any]:
     # 공개 엔드포인트라 동시 실행을 제한한다 — 무료 티어 rate limit과 파드 메모리 보호.
     if len(ACTIVE) >= MAX_ACTIVE_RUNS:
         raise HTTPException(429, f"동시 실행 {MAX_ACTIVE_RUNS}건 초과 — 잠시 후 다시 시도하세요")
 
+    # 실측값은 허용목록을 통과한 것만 스펙에 들어간다. 거부된 키는 조용히 버리지 않고
+    # 응답에 실어 준다 — 오타를 삼키면 "왜 아무 규칙도 안 도는지" 알 수 없다.
+    measured, flags, rejected = experimental_inputs().normalize(
+        payload.measured_params, payload.property_flags)
+
     execution = Run(ROOT, payload.request, smiles=payload.smiles,
-                    required_excipients=payload.required_excipients)
+                    required_excipients=payload.required_excipients,
+                    measured_params=measured, property_flags=flags)
     RUNS[execution.run_id] = execution
     QUEUES[execution.run_id] = []
     ACTIVE.add(execution.run_id)
@@ -167,7 +202,8 @@ async def create_run(payload: RunRequest) -> Dict[str, str]:
                 queue.put_nowait(None)
 
     asyncio.create_task(drive())
-    return {"run_id": execution.run_id}
+    return {"run_id": execution.run_id, "accepted_inputs": len(measured) + len(flags),
+            "rejected_inputs": rejected}
 
 
 @app.get("/api/runs/{run_id}/stream")
@@ -375,7 +411,12 @@ async def submit_confirmation(run_id: str, payload: ConfirmationRequest) -> Dict
     except KeyError:
         raise HTTPException(404, "후보를 찾지 못했습니다.")
 
-    result = {**_evidence_payload(execution, assessment), "unknown_requirements": unknown}
+    result = {
+        **_evidence_payload(execution, assessment),
+        "unknown_requirements": unknown,
+        # 결과가 실제로 입력 계층의 어느 실측값 자리에 꽂혔는지 — 되먹임의 증거.
+        "applied_measurements": execution.applied_results.get(candidate_id, {}),
+    }
     execution.bus.publish(TraceEvent(run_id=run_id, node="evidence",
                                      kind=EventKind.CONFIRMATION, payload=result))
     return result

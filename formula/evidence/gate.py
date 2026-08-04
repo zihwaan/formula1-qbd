@@ -198,6 +198,8 @@ class EvidenceGate:
                 why=row.get("why", ""),
                 risk=row.get("risk_if_missing", ""),
                 stop_criteria=row.get("stop_criteria", ""),
+                result_key=row.get("result_key", ""),
+                result_unit=row.get("result_unit", ""),
                 test_id=row["confirmation_test_id"],
                 test_name=test.get("test_name", ""),
                 test_category=test.get("test_category", ""),
