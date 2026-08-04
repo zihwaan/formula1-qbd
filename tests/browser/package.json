@@ -1,0 +1,8 @@
+{
+  "name": "formula1-browser-tests",
+  "private": true,
+  "description": "브라우저 검증 전용. 여기에 package.json을 두는 이유: 이게 없으면 npm이 상위 디렉토리로 올라가 홈서버 저장소(~/zihwan/package.json)에 playwright-core를 설치해 버린다(실제로 겪음).",
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}
