@@ -49,6 +49,22 @@ def resolve_smiles(api_name: str) -> Optional[str]:
     return KNOWN_SMILES.get(api_name.strip().lower())
 
 
+def smiles_error(smiles: Optional[str]) -> Optional[str]:
+    """사용자가 준 SMILES가 못 읽히면 사유 문자열, 읽히면 None.
+
+    입력 경계에서 바로 되돌려 주려고 분리했다. 오타 하나('O'를 '0'으로)로 구조가
+    비어 버리면 구조 기반 규칙이 하나도 발동하지 않는데, 그걸 60초짜리 실행을 다
+    돌린 뒤에 알려 주면 사용자는 '규칙이 없나 보다'로 읽는다.
+    """
+    text = str(smiles or "").strip()
+    if not text:
+        return None
+    if Chem.MolFromSmiles(text) is None:
+        return (f"SMILES를 해석하지 못했습니다: {text!r} — 오타(예: 산소 O 대신 숫자 0)를 "
+                "확인해 주세요. 구조를 못 읽으면 구조 기반 배합금기 판정이 성립하지 않습니다.")
+    return None
+
+
 def build_profile(
     api_name: str,
     smiles: Optional[str] = None,
@@ -66,6 +82,7 @@ def build_profile(
     profile = ApiProfile(api_name=api_name, smiles=smiles, rdkit_version=rdkit.__version__)
 
     if not smiles:
+        profile.structure_resolved = False
         profile.warnings.append(
             f"'{api_name}'의 SMILES를 알 수 없어 물성 계산을 건너뜀 → 구조 기반 배합금기 판정 불가"
         )
@@ -73,9 +90,13 @@ def build_profile(
 
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
+        # 여기서 이름 사전으로 되돌아가 다른 구조를 대신 쓰지 않는다 — 사용자가 친 구조를
+        # 말없이 다른 분자로 바꾸는 것이야말로 이 시스템이 금지하는 추측이다.
+        profile.structure_resolved = False
         profile.warnings.append(f"SMILES 파싱 실패: {smiles!r}")
         return profile
 
+    profile.structure_resolved = True
     parent, is_salt = strip_salt(mol)
     profile.is_salt = is_salt
     profile.parent_smiles = Chem.MolToSmiles(parent)

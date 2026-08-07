@@ -28,7 +28,7 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 Everything runs **without an API key** — LLM nodes fall back to deterministic stand-ins so
 demos never break. Set `GROQ_API_KEY` (free tier) or `ANTHROPIC_API_KEY` to enable a real LLM path.
 
-## Deployment — this repo is served live at zihwan.com/formula1
+## Deployment — this repo is served live at zihwan.com/f
 
 This clone lives inside the home-server repo at `~/zihwan/formula1` but keeps **its own git
 history** (origin is `github.com/zihwaan/formula1-qbd`); the hub repo does not track it.
@@ -37,7 +37,7 @@ It runs as an OrbStack k8s deployment. Editing a file changes nothing live until
 ```bash
 cd ~/zihwan/formula1 && docker build -t formula1:latest . && kubectl rollout restart deployment/formula1
 kubectl rollout status deployment/formula1 --timeout=180s
-curl -s -o /dev/null -w '%{http_code}\n' https://zihwan.com/formula1/
+curl -s -o /dev/null -w '%{http_code}\n' https://zihwan.com/f/
 ```
 
 FastAPI serves both the API and the no-build SPA, so one image covers front and back.
@@ -45,7 +45,8 @@ Full home-server context (proxy layout, secrets, traps) is in `~/zihwan/CLAUDE.m
 
 Three hosting concerns are baked into `web/server.py` — don't undo them:
 
-- **`BASE_PATH` env** (`/formula1` in k8s, empty locally). The hub proxy strips the prefix, so
+- **`BASE_PATH` env** (`/f` in k8s — must match the hub proxy prefix in `hub/server.js`;
+  empty locally). The hub proxy strips the prefix, so
   FastAPI routes stay rooted at `/`; the `/` handler injects `<base href>` + `window.__BASE__`
   and `app.js` builds every fetch/EventSource URL through `api()`. Local `uvicorn` on :8000 with
   no `BASE_PATH` behaves exactly as before.
@@ -98,7 +99,7 @@ The whole system is **data-driven, not code-driven**. Rules live in CSVs; a sing
    - `schema` → maps this CSV's column names onto the generic strategy's expected keys.
 
 2. **`formula/checkers/strategies.py`** — exactly **eight generic strategy functions**, reused across all rulebooks via `schema` column injection. You almost never add a strategy; you add a CSV + manifest entry that reuses one. All share the signature `(entry, rows, recipe, spec, ctx) -> List[Verdict]` and return a passing verdict if nothing fires (never empty):
-   - `pairwise_membership` — excipient × API functional-group incompatibility (Lactose + secondary_amine → Maillard).
+   - `pairwise_membership` — excipient × API functional-group incompatibility (Lactose + secondary_amine → Maillard). Ingredient names go through `checkers/excipients.py`, **never `==`** (see below).
    - `subset_forbidden` — a forbidden ingredient *set* being a subset of the recipe, optionally gated on `required_conditions`.
    - `threshold` — `param <op> threshold`; operators accept symbol/word forms plus `between` (`"lo;hi"`) and non-numeric `==`. Value source: `measured_param` | `ingredient_mg` | `role_percent` | `property` | `state`.
    - `range` — value outside `[min, max]` from a min/max column pair.
@@ -107,13 +108,16 @@ The whole system is **data-driven, not code-driven**. Rules live in CSVs; a sing
    - `band_lookup` — **produces** a derived value by band/predicate lookup (angle_of_repose 48° → `flow_character="Poor"`; BCS criteria intersection → `bcs_class`). Writes into `entry.provides`.
    - `decision_tree` — evaluates `condition_expression` rows to narrow process routes → `selected_route`.
 
-   Three cross-cutting rules live here and are easy to get wrong:
+   Four cross-cutting rules live here and are easy to get wrong:
    - **`polarity`** — `fail_when` (default) means the row describes a *failure* condition; `pass_when` means it describes a condition that must *hold*. The whole of `03_process/` is `pass_when`. Reading it the other way inverts every verdict.
    - **Per-row `action`** — severity comes from each CSV row's `action` column (7-value `RuleAction`), not from the manifest entry. The manifest `severity` is only a fallback.
    - **Evidence policy** — each row's `verification_status` decides whether it may produce a HARD_FAIL. `NO_SOURCE_FOUND`/`NOT_A_RULE`/`LEGACY` rows are dropped at load; `UNVERIFIED`/`SCHEMA_ONLY` get downgraded to REVIEWER_FLAG. See `VERIFICATION_POLICY` in `contracts.py`.
+   - **Never compare ingredient names with `==`.** The rulebook writes `Lactose monohydrate`; a recipe writes `유당` / `Lactose` / `Lactose Monohydrate, NF`. String equality silently missed all three and INC002 read as 통과 (2026-08-06 사고). Names go through `formula/checkers/excipients.py`, whose match kinds are `exact` (same excipient, different spelling → fire as-is) and `generic` (recipe wrote a family name the rule specialises → **fire anyway**, with "등급 미지정" in the verdict). Family matching is head/tail only — plain subset would make `starch` hit `Sodium starch glycolate`, and a wrong rejection is the same accident in the other direction. The dictionary is data (both excipient masters' en/kr/synonyms columns); `config/excipient_aliases.yaml` holds only grade-token noise and gap-filling aliases, the same role `packaging_categories.yaml` plays for packaging.
 
 3. **`formula/checkers/registry.py`** (`RulebookRegistry`) — loads the manifest and runs the firing checks **in `trigger_priority` order, as stages**. Values produced by one stage (`flow_character` → `selected_route` → `bcs_class`) are injected into the next stage's `applies_when` scope. Never iterate rulebooks in folder order — pediatric safety lives in `05_regulatory/` but runs at priority 21.
    - `run(spec, recipe, ...)` → `GateResult` (verdicts + derived state + skipped-row count). `passed` requires no HARD_FAIL **and** no ESCALATE.
+   - **`spec.properties["structure_known"] is False` → a `STRUCT000` ESCALATE before any stage runs.** Tri-state on purpose (`ApiProfile.structure_resolved`): `None` = the chem layer never ran (hand-built specs, unit tests) and nothing is claimed; `False` = we tried and failed, so every structure-joined rule is *unevaluated*, not passed. Collapsing those two is how a one-character SMILES typo used to green-light a Maillard formulation.
+   - `ctx[CTX_IDENTITIES]` carries the pre-resolved ingredient→canonical-name map so strategies (which have no `base_dir`) do lookups without loading CSVs. It rides in `GateResult.derived`, so `_public_derived()` in `graph.py` strips `_`-prefixed keys before anything reaches an event — derived state is what rules produced, not engine wiring.
    - `run_deterministic_gate(spec, recipe)` → back-compat wrapper returning just `List[Verdict]`.
    - `active_judges(spec, derived)` → `JudgeSpec`s whose `summon_condition` in `reviewer_registry.csv` is true (the dynamic "jury").
 
@@ -223,6 +227,37 @@ README said "우선순위 8단계", which matched nothing — corrected to "13�
   immediately (4s instead of ~3min) with the blocking rule and the rulebook's alternative. That is
   the answer a researcher needs — "이 제약으로는 통과가 없다" — not a silent give-up.
 
+## Silent-pass audit (2026-08-06) — when "no rule fired" was read as "no problem"
+
+A user ran fluoxetine (2° amine, the exact molecule INC002's citation is about) with 유당 and the
+gate returned 통과. Reproduced, and it was three independent defects with one shared shape: **the
+engine's failure to find something was reported as a clean bill of health.** All three are fixed
+and pinned by `tests/test_excipient_matching.py` (23 cases). The lesson generalises past these
+three — any new join between free text and rulebook data needs the same "미탐도 판정이다" review.
+
+- **Name matching was `==`.** `pairwise_membership` compared lowercased strings, so of
+  `Lactose monohydrate` / `lactose monohydrate` / `Lactose Monohydrate, NF` / `Lactose` / `유당` /
+  `유당수화물`, **only the first ever matched INC002.** The rule, its SMARTS, the structural flag,
+  and the HARD_FAIL action were all correct and had been all along — the two sides simply never
+  met. Fixed by `formula/checkers/excipients.py`; negative controls (Mannitol — INC002's own
+  suggested alternative — MCC, `Sodium starch glycolate`) are pinned as hard as the positives.
+- **An unparseable SMILES produced zero structural flags, and zero flags passed.** The user had
+  typed `0` for `O`; `build_profile` returned an empty profile with a warning buried in the chem
+  event, `api_functional_groups` was `[]`, so no structure-joined rule could fire and the gate
+  said 통과. Now `POST /api/runs` 400s on an unreadable SMILES (a 60s run that means nothing is
+  worse than an error), and the gate raises `STRUCT000` ESCALATE for any run whose structure is
+  unresolved — including a name-only API the SMILES dictionary doesn't know. **Never fall back to
+  the name dictionary when a user-supplied SMILES fails to parse**; silently swapping in a
+  different molecule is exactly the guessing this system exists to refuse.
+- **`known_excipients()` had always returned an empty set.** It looked for columns
+  (`excipient_name`, `name`, …) that exist in neither master — the real ones are
+  `excipient_name_en`/`_kr` and `preferred_name_en`/`_ko`/`synonyms`. The 2026-07-28 entry above
+  claims REV005 was made reachable; it was wired up but fed a dead dictionary, so
+  `novel_combination_not_in_rulebook` was permanently False. It now delegates to the resolver.
+  Note the guard added with it: **the API itself is in `recipe.ingredients` and is never in an
+  excipient master**, so without skipping `role == "api"` the fixed signal fires on every run —
+  a signal that is always true is as useless as one that is always false.
+
 ## Demo scenarios and the narration panel
 
 `app.js` holds two coupled pieces that exist so a viewer can *see the architecture* rather than
@@ -263,3 +298,4 @@ read about it. Keep them in sync with the graph — they are the demo.
   - `structural_flags_smarts.csv` is still `validation_status=UNTESTED` even though `scripts/verify_smarts.py` now passes 9/9. FLG002 over-detects guanidine and non-aromatic ring NH as secondary amines.
   - `rulebook_config.csv` has 6 join_key/blocking discrepancies documented in the 개발자 가이드 §9.7. The engine uses `config/rulebook_manifest.yaml` instead, so they're documentation-only.
   - `packaging_compatibility_rules.csv` names prohibited packaging in Korean prose ("고투습 포장"); `config/packaging_categories.yaml` bridges identifiers to those categories. New packaging goes in that YAML, not the CSV.
+  - **`incompatibility_1to1.csv` covers 2° amines for lactose monohydrate only.** INC002 is `secondary_amine`+EXC001, but INC003/INC004 (anhydrous / spray-dried lactose) are `primary_amine` only — so fluoxetine + **무수유당** passes the gate today while fluoxetine + 유당수화물 is rejected, and the mechanism doesn't care about the grade (the Wirth 1998 and Narang 2012 sources are about the amine class). Found while fixing the 2026-08-06 silent pass; **not** patched here because rule rows are the pharmacy team's call. Ask them whether INC003/INC004 should gain `secondary_amine` rows. Generic "유당" still rejects — it head-matches EXC001 — so the gap only shows when a user names the anhydrous grade explicitly.

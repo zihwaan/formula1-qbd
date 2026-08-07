@@ -34,6 +34,16 @@ from formula.orchestrator.events import emit
 from formula.orchestrator.state import MAX_REFLECTION_LOOPS, FormulationState
 
 
+def _public_derived(derived: Dict[str, Any]) -> Dict[str, Any]:
+    """화면·이벤트로 내보낼 파생 state.
+
+    `candidate_id`는 파생값이 아니라 실행 식별자고, `_`로 시작하는 키는 엔진 내부 배선
+    (성분명 사전 등)이다. 둘 다 "룰이 산출한 값"이 아니므로 밖으로 내보내지 않는다.
+    """
+    return {k: v for k, v in (derived or {}).items()
+            if k != "candidate_id" and not str(k).startswith("_")}
+
+
 def _summon_signals(registry: RulebookRegistry, passed: List[Dict[str, Any]]) -> Dict[str, Any]:
     """심사관 소집 조건에 쓰이는 두 신호를 게이트 결과에서 계산한다.
 
@@ -56,18 +66,21 @@ def _summon_signals(registry: RulebookRegistry, passed: List[Dict[str, Any]]) ->
             if value == "escalate" or (value == "soft_flag" and layer == "regulatory"):
                 signals["regulatory_narrative_needed"] = True
 
-    known = registry.known_excipients()
-    if known:
-        for result in passed:
-            recipe = result.get("recipe")
-            names = getattr(recipe, "ingredient_names", None)
-            if not callable(names):
+    for result in passed:
+        recipe = result.get("recipe")
+        for ingredient in (getattr(recipe, "ingredients", None) or []):
+            name = str(getattr(ingredient, "name", "") or "").strip()
+            # 주성분은 부형제 마스터에 있을 리가 없다 — 빼지 않으면 이 신호가 모든
+            # 실행에서 참이 되어 REV005가 상시 소집된다(신호로서 무의미해진다).
+            if not name or getattr(ingredient, "role", "") == "api":
                 continue
-            for name in names():
-                normalized = name.strip().lower()
-                if normalized and normalized not in known:
-                    signals["novel_combination_not_in_rulebook"] = True
-                    break
+            if name.lower() == str(getattr(recipe, "api_name", "") or "").strip().lower():
+                continue
+            # 표준명 사전으로 판별한다 — 소문자 문자열 비교로는 "유당"도 "Lactose, NF"도
+            # 모르는 성분이 되어 역시 REV005가 헛소집된다(같은 결함의 반대 방향).
+            if not registry.is_known_excipient(name):
+                signals["novel_combination_not_in_rulebook"] = True
+                break
     return signals
 
 
@@ -122,7 +135,7 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         # 성분이 아직 없으므로 API 물성만 보는 앞단(우선순위 ≤ 11)만 돌린다 —
         # 배합금기·배합비 규칙을 빈 처방에 돌리는 낭비를 막는다.
         result = registry.run(spec, probe, short_circuit=False, max_priority=11)
-        derived = {k: v for k, v in result.derived.items() if k != "candidate_id"}
+        derived = _public_derived(result.derived)
         strategies = generator.plan_strategies(spec, derived)
         emit("route", EventKind.NODE_EXIT, derived=derived, strategies=strategies)
         return {"strategies": strategies}
@@ -164,7 +177,7 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
                 "candidate_id": recipe.candidate_id,
                 "recipe": recipe,
                 "verdicts": gate.verdicts,
-                "derived": {k: v for k, v in gate.derived.items() if k != "candidate_id"},
+                "derived": _public_derived(gate.derived),
                 "passed": gate.passed,
                 "blockers": [f"{v.rulebook_id}/{v.rule_id}: {v.reason}" for v in gate.blockers],
             })

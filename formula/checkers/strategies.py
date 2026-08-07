@@ -20,6 +20,7 @@ import operator as _op
 from typing import Any, Callable, Dict, List, Optional
 
 from formula.checkers.applies_when import evaluate
+from formula.checkers.excipients import CTX_IDENTITIES, matcher_for
 from formula.contracts import (
     ACTION_TO_STATUS,
     EvidencePolicy,
@@ -206,7 +207,11 @@ def pairwise_membership(entry, rows, recipe: Recipe, spec: FormulationSpec, ctx)
     reason_c = _col(entry, "reason_col", "mechanism")
     sugg_c = _col(entry, "suggestion_col", "alternative_excipient_name")
 
-    ingredients = {n.strip().lower() for n in recipe.ingredient_names()}
+    # 성분명은 문자열 동등 비교로 맞추지 않는다 — 룰북은 "Lactose monohydrate", 처방은
+    # "유당"/"Lactose"/"Lactose Monohydrate, NF"라고 쓴다. 이 셋이 INC002와 못 만나서
+    # 배합금기가 조용히 통과하던 자리다(checkers/excipients.py).
+    matcher = matcher_for(ctx.get(CTX_IDENTITIES) if isinstance(ctx, dict) else None,
+                          recipe.ingredient_names())
     groups = {g.strip().lower() for g in spec.api_functional_groups}
     # 구조 플래그(has_primary_amine)와 룰북 어휘(primary_amine)를 양쪽으로 맞춘다
     groups |= {g[4:] for g in groups if g.startswith("has_")}
@@ -214,20 +219,30 @@ def pairwise_membership(entry, rows, recipe: Recipe, spec: FormulationSpec, ctx)
 
     verdicts: List[Verdict] = []
     for row in rows:
-        excipient = str(row.get(left, "")).strip().lower()
+        excipient = str(row.get(left, "")).strip()
         fgroup = str(row.get(right, "")).strip().lower()
         if not excipient or not fgroup:
             continue
         # api_functional_group == 'any' 는 작용기와 무관하게 그 부형제 자체가 문제인 행
-        if excipient in ingredients and (fgroup == "any" or fgroup in groups):
-            verdicts.append(
-                _violation(
-                    entry, "pairwise_membership", row,
-                    reason=str(row.get(reason_c, "")),
-                    suggestion=str(row.get(sugg_c, "")),
-                    evidence={"excipient": row.get(left), "functional_group": row.get(right)},
-                )
+        if not (fgroup == "any" or fgroup in groups):
+            continue
+        hit = matcher.match(excipient)
+        if hit is None:
+            continue
+        # 계열명 매칭은 발동시키되 그 사실을 판정문에 남긴다 — 등급을 특정해 다시
+        # 돌릴 수 있어야 하고, 반대로 통과를 주면 두루뭉술한 표기가 게이트를 뚫는다.
+        note = ("" if not hit.is_generic else
+                f" [처방의 '{hit.ingredient}'은 등급 미지정 계열명 — "
+                f"룰북의 '{excipient}' 행에 걸렸다. 등급을 명시하면 재판정된다]")
+        verdicts.append(
+            _violation(
+                entry, "pairwise_membership", row,
+                reason=str(row.get(reason_c, "")) + note,
+                suggestion=str(row.get(sugg_c, "")),
+                evidence={"excipient": row.get(left), "functional_group": row.get(right),
+                          "matched_ingredient": hit.ingredient, "match_kind": hit.kind},
             )
+        )
     return verdicts or [_pass(entry, "pairwise_membership")]
 
 
@@ -243,6 +258,11 @@ def subset_forbidden(entry, rows, recipe: Recipe, spec: FormulationSpec, ctx) ->
 
     # 처방 성분 + 작용기 + 속성 플래그를 합쳐 '존재 집합'을 만든다.
     present = {n.strip().lower() for n in recipe.ingredient_names()}
+    # 표준명도 함께 넣는다 — 조합 금기 행이 "Lactose monohydrate"라고 적었는데 처방이
+    # "유당"이면 pairwise와 똑같은 이유로 못 만난다.
+    identities = ctx.get(CTX_IDENTITIES) if isinstance(ctx, dict) else None
+    for canonicals in (identities or {}).values():
+        present |= {str(c).strip().lower() for c in canonicals if str(c).strip()}
     present |= {g.strip().lower() for g in spec.api_functional_groups}
     present |= {k.lower() for k, v in spec.properties.items() if v is True}
     present |= {str(v).strip().lower() for v in ctx.values() if isinstance(v, str)}

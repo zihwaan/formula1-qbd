@@ -75,6 +75,10 @@ class ApiProfile(BaseModel):
     svg: str = ""  # 2D 구조 (UI 표시용)
     rdkit_version: str = ""
     warnings: List[str] = Field(default_factory=list)
+    # 구조를 실제로 얻었는가. None = 화학 계층이 돌지 않음(단위 테스트·수동 스펙),
+    # False = 시도했으나 SMILES가 없거나 파싱 실패 → 구조 기반 판정은 성립하지 않는다.
+    # 이 세 상태를 Bool 하나로 뭉개면 "못 구했다"가 "문제 없다"로 읽힌다.
+    structure_resolved: Optional[bool] = None
 
     # ── 기준서 §1 구조 품질/정규화 ──────────────────────────────────
     # parent를 만들어도 실제 투입되는 등록 형태는 제제 특성에 영향을 주므로 함께 보존한다.
@@ -161,6 +165,10 @@ class FormulationSpec(BaseModel):
         merged.api_profile = profile
         if not merged.api_functional_groups:
             merged.api_functional_groups = profile.functional_groups()
+        # 계산된 사실이므로 setdefault가 아니라 대입이다. 게이트는 이 값이 명시적으로
+        # False일 때만 구조 미확정 이관을 낸다(None = 화학 계층 미가동).
+        if profile.structure_resolved is not None:
+            merged.properties["structure_known"] = profile.structure_resolved
         for name, value in profile.descriptors.items():
             merged.measured_params.setdefault(name, value)
         for flag in profile.flags:

@@ -40,7 +40,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from formula.agents.client import credentials_available, provider, provider_label
 from formula.checkers.registry import RulebookRegistry
-from formula.chem.profile import build_profile
+from formula.chem.profile import build_profile, smiles_error
 from formula.chem.smarts_probe import match_smarts
 from formula.chem.structural_flags import REGISTRY_VERSION, load_flag_definitions
 from formula.evidence.gate import EvidenceGate
@@ -54,7 +54,7 @@ from formula.orchestrator.runner import Run
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = Path(__file__).resolve().parent / "static"
 
-# 리버스 프록시 뒤 서브경로로 서빙할 때의 접두부 (예: "/formula1").
+# 리버스 프록시 뒤 서브경로로 서빙할 때의 접두부 (라이브는 "/f").
 # 프록시가 접두부를 떼고 넘기므로 FastAPI 라우트는 그대로 두고, HTML에만 base를 주입한다.
 # 빈 값이면 단독 실행(http://localhost:8000)과 완전히 동일하게 동작한다.
 _prefix = os.environ.get("BASE_PATH", "").strip().strip("/")
@@ -173,6 +173,13 @@ async def create_run(payload: RunRequest) -> Dict[str, Any]:
     # 공개 엔드포인트라 동시 실행을 제한한다 — 무료 티어 rate limit과 파드 메모리 보호.
     if len(ACTIVE) >= MAX_ACTIVE_RUNS:
         raise HTTPException(429, f"동시 실행 {MAX_ACTIVE_RUNS}건 초과 — 잠시 후 다시 시도하세요")
+
+    # 못 읽는 SMILES는 여기서 되돌린다. 그대로 실행하면 구조 플래그가 하나도 안 서고
+    # 구조 기반 배합금기가 전부 조용히 넘어간다 — 게이트에도 이관 장치를 뒀지만,
+    # 원인이 오타라면 실행을 시작하기 전에 말해 주는 쪽이 옳다.
+    invalid = smiles_error(payload.smiles)
+    if invalid:
+        raise HTTPException(400, invalid)
 
     # 실측값은 허용목록을 통과한 것만 스펙에 들어간다. 거부된 키는 조용히 버리지 않고
     # 응답에 실어 준다 — 오타를 삼키면 "왜 아무 규칙도 안 도는지" 알 수 없다.

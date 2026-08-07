@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────────────────
+# 부형제 성분명 정규화 사전 — 처방의 자유 표기 ↔ 룰북의 표준명
+#
+# incompatibility_1to1.csv 는 부형제를 `excipient_name_en`("Lactose monohydrate")으로
+# 적는다. 반면 처방(Recipe.ingredients)의 이름은 LLM이 쓰거나 사용자가 "반드시 포함할
+# 부형제"에 직접 친 **자유 표기**다 — "유당", "Lactose", "Lactose Monohydrate, NF".
+# 문자열 동등 비교로는 이 둘이 만나지 않아서 배합금기가 **조용히 통과**했다(실제 사고).
+#
+# 이 파일은 약학 지식이 아니라 **엔진 배선**이다 — packaging_categories.yaml 과 같은 성격.
+# 룰북 CSV는 손대지 않는다.
+#
+# 표준명 사전 본체는 이미 데이터에 있다:
+#   database/00_master/excipient_master.csv        excipient_name_en / _kr (100행)
+#   database/reference/excipient_master_iid.csv    preferred_name_en / _ko / synonyms (1796행)
+# 이 파일은 그 둘이 못 덮는 표기만 보충하고, 정규화에서 버릴 토큰을 선언한다.
+# ─────────────────────────────────────────────────────────────────────────
+
+# 성분의 정체가 아니라 **규격·등급 표기**라서 이름 비교에서 버리는 토큰.
+# 주의: 성분을 가르는 수식어(anhydrous, monohydrate, spray-dried …)는 절대 넣지 말 것 —
+# 무수유당(EXC002)과 유당수화물(EXC001)은 서로 다른 행이고 룰도 다르다.
+noise_tokens:
+  # 공정서·규격
+  - usp
+  - nf
+  - usp/nf
+  - ep
+  - bp
+  - jp
+  - ph
+  - eur
+  - pheur
+  - fcc
+  - kp
+  - 대한민국약전
+  - 약전
+  # 등급·품질 표기
+  - grade
+  - 등급
+  - 규격
+  - reagent
+  - pharmaceutical
+  - pharma
+  - 의약품용
+  # 형태 표기 (성분 정체가 아니라 물리적 형태)
+  - powder
+  - powdered
+  - fine
+  - granular
+  - 분말
+  # 상용 등급 약어
+  - dc
+  - sd
+
+# 마스터 두 개가 못 덮는 표기만 여기에. `별칭: [표준 영문명, ...]`
+# 표준명은 excipient_master.csv 의 excipient_name_en 어휘를 쓴다.
+aliases:
+  락토스: [Lactose]
+  락토오스: [Lactose]
+  유당류: [Lactose]
+  밀크슈가: [Lactose]
+  milk sugar: [Lactose]
+  덱스트로스: [Glucose (dextrose)]
+  포도당수화물: [Glucose (dextrose)]
+  dextrose monohydrate: [Glucose (dextrose)]
+  mcc: [Microcrystalline cellulose]
+  미결정셀룰로스: [Microcrystalline cellulose]
+  결정셀룰로오스: [Microcrystalline cellulose]
+  스테아린산마그네슘: [Magnesium stearate]

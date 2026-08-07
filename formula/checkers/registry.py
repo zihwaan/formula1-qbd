@@ -23,6 +23,7 @@ import yaml
 from pydantic import BaseModel, Field
 
 from formula.checkers.applies_when import evaluate, row_matches, spec_context
+from formula.checkers.excipients import CTX_IDENTITIES, ExcipientResolver, excipient_resolver
 from formula.checkers.strategies import STRATEGIES
 from formula.contracts import (
     EvalType,
@@ -30,6 +31,7 @@ from formula.contracts import (
     FormulationSpec,
     JudgeSpec,
     Recipe,
+    RuleAction,
     RulebookEntry,
     Verdict,
     VerdictStatus,
@@ -85,6 +87,15 @@ class RulebookRegistry:
         path = Path(reviewer_registry) if reviewer_registry else default_registry
         self.reviewer_registry_path = path if path.exists() else None
         self.packaging_categories = self._load_packaging_categories()
+        self._excipients: Optional[ExcipientResolver] = None
+
+    @property
+    def excipients(self) -> ExcipientResolver:
+        """부형제 표준명 사전. 마스터 CSV 1,900행을 읽으므로 처음 쓸 때 만든다."""
+        if self._excipients is None:
+            self._excipients = excipient_resolver(
+                self.base_dir, self.manifest_path.parent / "excipient_aliases.yaml")
+        return self._excipients
 
     def _load_packaging_categories(self) -> Dict[str, List[str]]:
         """포장 식별자 → 서술 범주 사전. 별칭도 같은 범주를 가리키도록 평탄화한다."""
@@ -181,6 +192,18 @@ class RulebookRegistry:
         ctx.setdefault("packaging", recipe.packaging)
         ctx.setdefault("packaging_traits", self.packaging_traits(recipe.packaging))
         ctx.setdefault("candidate_id", recipe.candidate_id)
+        # 성분명 사전 조회는 여기서 한 번에 끝내고, 전략 함수에는 순수 dict만 넘긴다.
+        ctx[CTX_IDENTITIES] = self.excipients.identities(recipe.ingredient_names())
+
+        # 구조를 확정하지 못했으면 구조 기반 배합금기는 **판정 자체가 성립하지 않는다.**
+        # 아무 규칙도 발동하지 않은 것을 통과로 세면, SMILES 오타 한 글자가 게이트를
+        # 무력화한다(실제 사고: fluoxetine SMILES의 O를 0으로 친 입력이 유당과 함께
+        # 그대로 통과). 반려가 아니라 이관이다 — 반려 권한은 룰북에만 있다.
+        if spec.properties.get("structure_known") is False:
+            verdict = self._structure_unknown_verdict(spec)
+            result.verdicts.append(verdict)
+            if on_verdict is not None:
+                on_verdict(verdict)
 
         for priority, entries in self._stages():
             if max_priority is not None and priority > max_priority:
@@ -202,6 +225,26 @@ class RulebookRegistry:
                 result.stopped_at_priority = priority
                 break
         return result
+
+    @staticmethod
+    def _structure_unknown_verdict(spec: FormulationSpec) -> Verdict:
+        """구조 미확정 → 사람 이관. `GateResult.passed`는 ESCALATE도 통과로 세지 않는다."""
+        profile = spec.api_profile
+        detail = next((w for w in getattr(profile, "warnings", []) if "SMILES" in w), "")
+        return Verdict(
+            rulebook_id="chem_structure",
+            strategy="structure_resolution",
+            status=VerdictStatus.ESCALATE,
+            action=RuleAction.ESCALATE_TO_HUMAN,
+            rule_id="STRUCT000",
+            layer="chemical",
+            reason=(f"'{spec.api_name}'의 구조를 확정하지 못해 구조 기반 배합금기"
+                    "(아민-환원당 Maillard 등)를 판정할 수 없다. 규칙이 발동하지 않은 것이지"
+                    " 금기가 없다는 뜻이 아니다." + (f" ({detail})" if detail else "")),
+            suggestion="유효한 SMILES를 입력하거나 API 작용기를 직접 지정해 다시 실행하라.",
+            score=0.0,
+            evidence={"api_name": spec.api_name, "smiles": getattr(profile, "smiles", "")},
+        )
 
     def run_deterministic_gate(self, spec: FormulationSpec, recipe: Recipe) -> List[Verdict]:
         """하위호환 API — 판정 목록만 필요할 때. 전 스테이지를 끝까지 실행한다."""
@@ -258,25 +301,18 @@ class RulebookRegistry:
 
     # ------------------------------------------------------------------
     def known_excipients(self) -> set:
-        """부형제 마스터가 아는 성분명(소문자). 룰북 밖 조합을 판별하는 데 쓴다."""
-        if getattr(self, "_known_excipients", None) is not None:
-            return self._known_excipients
+        """부형제 마스터가 아는 성분명(정규화). 룰북 밖 조합을 판별하는 데 쓴다.
 
-        names: set = set()
-        for relative in ("database/00_master/excipient_master.csv",
-                         "database/reference/excipient_master_iid.csv"):
-            path = self.base_dir / relative
-            if not path.exists():
-                continue
-            try:
-                frame = pd.read_csv(path, dtype=str, keep_default_na=False).fillna("")
-            except Exception:
-                continue
-            for column in ("excipient_name", "excipient", "name", "ingredient_name"):
-                if column in frame.columns:
-                    names |= {str(v).strip().lower() for v in frame[column] if str(v).strip()}
-        self._known_excipients = names
-        return names
+        예전 구현은 `excipient_name`/`name` 같은 컬럼을 찾았는데 두 마스터 어디에도 없는
+        이름이라 **항상 빈 집합**이었다 — `novel_combination_not_in_rulebook`이 영원히
+        False가 되어 REV005가 소집될 수 없었다(2026-07-28 감사가 고쳤다고 적어 둔 결함이
+        컬럼명 때문에 되살아나 있었다). 이제 표준명 사전이 정본이다.
+        """
+        return self.excipients.known_names()
+
+    def is_known_excipient(self, name: str) -> bool:
+        """자유 표기('유당', 'Lactose, NF')도 마스터에 있으면 아는 성분으로 센다."""
+        return self.excipients.is_known(name)
 
     # ------------------------------------------------------------------
     def summary(self) -> Dict[str, int]:

@@ -3,7 +3,7 @@
 const $ = (id) => document.getElementById(id);
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-/* 서브경로 배포(zihwan.com/formula1) 대응 — 서버가 index.html에 주입한다.
+/* 서브경로 배포(zihwan.com/f) 대응 — 서버가 index.html에 주입한다.
    단독 실행이면 빈 문자열이라 예전과 똑같이 /api/... 로 나간다. */
 const BASE = window.__BASE__ || "";
 const api = (path) => `${BASE}${path}`;
@@ -787,11 +787,14 @@ async function startRun() {
       }),
     });
     if (!res.ok) {
-      // 429는 허브/파드의 동시 실행 제한. 사용자가 뭘 해야 하는지까지 말해 준다.
+      // 429는 허브/파드의 동시 실행 제한, 400은 입력 오류(예: 못 읽는 SMILES).
+      // 서버가 사유를 적어 보냈으면 그걸 그대로 보여준다 — 사용자가 고칠 수 있는 건
+      // 상태 코드가 아니라 사유다.
       const detail = await res.json().catch(() => ({}));
-      throw new Error(res.status === 429
-        ? (detail.detail || "지금 실행이 몰려 있습니다. 잠시 후 다시 시도해 주세요.")
-        : `서버가 요청을 거부했습니다 (${res.status})`);
+      throw new Error(detail.detail
+        || (res.status === 429
+          ? "지금 실행이 몰려 있습니다. 잠시 후 다시 시도해 주세요."
+          : `서버가 요청을 거부했습니다 (${res.status})`));
     }
     const data = await res.json();
     if (!data.run_id) throw new Error("서버 응답에 run_id가 없습니다");
