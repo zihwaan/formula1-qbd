@@ -1,7 +1,7 @@
 // 정밀 감사 — 실제 결함을 재현 근거와 함께 수집한다.
 import { chromium } from 'playwright-core';
 
-const URL = process.argv[2] || 'https://zihwan.com/formula1/';
+const URL = process.argv[2] || 'https://zihwan.com/f/';
 const browser = await chromium.launch({ executablePath: process.env.CHROME, headless: true });
 const found = [];
 const note = (sev, area, msg) => { found.push({ sev, area, msg }); console.log(`  [${sev}] ${area}: ${msg}`); };

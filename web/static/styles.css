@@ -139,12 +139,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   gap: 12px; padding: 12px 20px; max-width: 1500px; margin: 0 auto;
 }
 .brand {
-  color: #f5f5f5; font-weight: 700; font-size: 0.95rem; text-decoration: none;
+  color: #f5f5f5; font-weight: 700; font-size: 0.95rem;
   letter-spacing: -0.02em; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
 }
-.brand .back { color: #8a8a8a; font-weight: 500; }
-.brand:hover .back { color: #c4c4c4; }
-.brand .sep { color: #555; font-weight: 400; }
 .masthead-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 
 .btn {

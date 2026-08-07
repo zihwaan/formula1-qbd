@@ -1,5 +1,5 @@
 import { chromium } from 'playwright-core';
-const URL = process.argv[2] || 'https://zihwan.com/formula1/';
+const URL = process.argv[2] || 'https://zihwan.com/f/';
 const b = await chromium.launch({ executablePath: process.env.CHROME, headless: true });
 const p = await b.newPage({ viewport: { width: 1500, height: 1050 } });
 const errs=[]; p.on('pageerror',e=>errs.push(e.message)); p.on('console',m=>{if(m.type()==='error')errs.push(m.text());});

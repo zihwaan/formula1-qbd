@@ -1,4 +1,4 @@
-# Formula 1 — QbD 제형 설계 검증 엔진 (zihwan.com/formula1)
+# Formula 1 — QbD 제형 설계 검증 엔진 (zihwan.com/f)
 #
 # 배포 방식은 이 저장소가 사는 홈서버 규약을 따른다: 로컬에서 `formula1:latest`를 빌드하고
 # k8s가 `imagePullPolicy: Never`로 그 이미지를 그대로 집어 간다(레지스트리 push 없음).
