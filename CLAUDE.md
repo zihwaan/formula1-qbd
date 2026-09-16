@@ -70,10 +70,26 @@ The Groq path differs from Anthropic in ways that caused real failures:
 - **`_TokenBudget` meters TPM client-side — this is what keeps stand-in scores off the screen.**
   LangGraph fans generators and judges out in parallel, so without metering they hit Groq at once,
   collect 429s, and every judge falls back to a fabricated score that still renders as an opinion.
-  The budget makes callers *queue* for a model with headroom (buckets are per-model, ~26k TPM
-  combined) instead of failing. Measured: 4/4 judges fake before, 0 after — including two
-  concurrent runs. Cost is latency: a full run is ~60s, not 11s. **Don't "speed it up" by removing
-  the wait** — that trades real judgements for fake ones.
+  The budget makes callers *queue* for a model with headroom instead of failing. Measured: 4/4
+  judges fake before, 0 after — including two concurrent runs. Cost is latency: a full run is
+  ~60s, not 11s. **Don't "speed it up" by removing the wait** — that trades real judgements for
+  fake ones.
+- **`GROQ_TPM` model IDs must actually exist on Groq right now — verify with
+  `GET /openai/v1/models`, don't trust an old list.** Found 2026-09-16: `GROQ_TPM` had pinned
+  `llama-3.3-70b-versatile` and `llama-3.1-8b-instant`, both of which Groq had since removed
+  (404 `model_not_found`). Worse, `_groq_with_fallback` treated any non-429/413/5xx
+  `HTTPStatusError` — including 404 — as fatal and raised `LLMUnavailable` on the spot instead of
+  blocking that model and trying the next one. Since the dead models were always tried first (in
+  `GROQ_TPM` dict order), **every single LLM call in the deployed pod was silently falling back to
+  the deterministic stand-in**, load-bearing free-tier headroom was effectively zero, and nothing
+  in the code path surfaced this beyond the UI's honest "stand-in used" tag — which is easy to
+  read as "just Groq being rate-limited" rather than "every model is 404ing." Fixed two ways,
+  and you need both: (1) `GROQ_TPM` now pins `openai/gpt-oss-120b` + `openai/gpt-oss-20b` (both
+  verified live, 8,000 TPM each — combined budget is smaller than the old on-paper ~26k across
+  three models, but the old number counted two dead models, so *real* usable budget roughly
+  doubled, 8k → 16k). (2) `_groq_with_fallback` now blocks-and-retries on 404 too, not just
+  429/413/5xx — so a single deprecated model can never again take the whole call down. Re-verify
+  the live model list occasionally; Groq's free-tier catalog changes without notice.
 - Reserved tokens are reconciled with `usage.total_tokens` (`settle`) so over-reservation doesn't
   starve the next call. `GROQ_WAIT_BUDGET` caps how long a caller waits before giving up.
 - The judge's score-extraction call must not resend the whole evaluation prompt — that doubled
@@ -81,7 +97,8 @@ The Groq path differs from Anthropic in ways that caused real failures:
 - **Structured output is `json_object` + schema in the system prompt**, not strict `json_schema`
   (which rejects the `$ref`/`anyOf` shapes Pydantic emits), with a validation-error retry hint.
 - **gpt-oss reasoning tokens come out of the completion budget** → `reasoning_effort` is pinned
-  `low`, otherwise reasoning eats the cap and `content` arrives empty.
+  `low`, otherwise reasoning eats the cap and `content` arrives empty. Applies to any model whose
+  ID contains `"gpt-oss"` (substring match), so `openai/gpt-oss-20b` gets it automatically too.
 
 Deterministic stand-ins still exist for the no-key case, but they must never masquerade as real
 judgements: the UI tags them (`.judge-note.stand-in` + "규칙 기반 대체 점수 · LLM 미사용") and the
@@ -187,8 +204,10 @@ theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one ser
 - **A dropped SSE stream must not lose the run.** `stream_run` replays `bus.history` to any new
   subscriber, so `connect()` retries up to 3 times, clearing the view first and letting the replay
   rebuild it. Observed live: a QUIC-layer disconnect used to strand the user on a half-finished run.
-- Verify with a real browser, not curl: `scratchpad/verify.mjs` (33 interaction checks) and
-  `scratchpad/audit.mjs` (XSS injection, double-run, stand-in exposure, a11y, 9 viewport widths).
+- Verify with a real browser, not curl: `tests/browser/verify.mjs` (33 interaction checks),
+  `tests/browser/audit.mjs` (XSS injection, double-run, stand-in exposure, a11y, 9 viewport widths),
+  `tests/browser/evidence.mjs` (dual-loop regression), and `tests/browser/scenarios.mjs` (the 3 demo
+  scenario cards actually take the path their on-screen `goal` text claims — see `tests/browser/README.md`).
 
 ### Supporting pieces
 
@@ -216,6 +235,90 @@ Everything above this line is a **single design run**: one `Run` object, one Lan
 **Known simplification — read this before "fixing" `confirm_cause`:** creating and re-validating the child candidate needs the *original* `FormulationSpec` and generator context, which lives on the in-memory `Run` object (`RUNS[run_id]`), not in `ProjectState`. If the pod restarted between design and root-cause confirmation, `confirm_project_cause` finds no `execution` in `RUNS` and — correctly — does **not** guess; it returns the persisted `REFLECTING` state with the child candidate stuck at `AWAITING_REGENERATION` and lets a human decide (see the comment in that handler). It does **not** currently auto-resume by starting a fresh design run — that would silently discard the parent/child lineage and `RevisionDirective`. Fixing this for real means persisting enough of `FormulationSpec` into `ProjectState` to reconstruct a `Run`, which hasn't been done.
 
 **Known simplification — `backtrack_target`:** `confirm_cause(..., backtrack_target=...)` accepts a phase name (`PHASE_6_PROCESS` is the default) and records it on the `RevisionDirective`, but nothing currently *routes* on it — every confirmed cause takes the same path (`Run.regenerate_child()` → `generator.generate()` with the confirmed cause as free-text instruction → full rulebook + evidence gate re-run). The README's Phase-addressed Backtrack Router (different confirmed-cause categories returning to different design phases — Gate 3A vs. Phase 6 vs. Phase 4) is not implemented; today "backtracking" always means "regenerate this one candidate and re-validate everything," which covers the MVP scope (1–2 ingredient/process-variable changes per revision) but not a genuinely different re-entry point.
+
+## Robin-informed prompt audit (2026-09-16) — what was actually read and applied
+
+FutureHouse published Robin's prompts verbatim (`Future-House/robin` on GitHub, `robin/prompts.py`,
+835 lines) alongside the [Nature paper](https://www.nature.com/articles/s41586-026-10652-y). We
+cloned it and diffed our own prompts against it line by line rather than reasoning from the paper's
+abstract — the changes below are traceable to specific strings in that file, cited in each prompt's
+docstring/comment at the point of use. README §9 has the user-facing version of this table.
+
+- **`formula/feedback/labloop.py` — `Directive.hypotheses` is now `list[CompetingHypothesis]`, not a
+  single `hypothesis: str`.** Robin's `CANDIDATE_GENERATION_SYSTEM_MESSAGE` forces "exactly N
+  **distinct** ideas" as a JSON array; the old `Directive` had one `hypothesis` string that
+  `_diagnosis_for()` in `web/server.py` then **duplicated** across `H1`/`H2`/`H3` for the lifecycle
+  diagnosis card — so the "경쟁 가설(competing hypotheses)" UI was showing the same sentence three
+  times with the same test attached to each. Fixed the schema (`CompetingHypothesis.statement` +
+  `.supports` + `.test_ids` + `.why`, max 3), the prompt (`DIRECTIVE_SYSTEM` now explicitly bans
+  restating one cause as multiple hypotheses and requires each hypothesis to carry a test that can
+  distinguish it from the others), the deterministic fallback (`_direct_fallback` now builds one
+  `CompetingHypothesis` per off-target metric instead of one flat `NextExperiment` list), and
+  `_diagnosis_for()` (maps `directive["hypotheses"]` straight through instead of duplicating).
+  Verified live against real Groq output (ibuprofen dissolution+impurity deviation): 3–4 genuinely
+  different mechanistic hypotheses (crystal form change / cross-contamination / pH-sensitivity),
+  not paraphrases of one idea. Pinned by `tests/test_labloop.py`.
+- **Also from Robin, same file: "don't force an answer."** `FOLLOWUP_SYSTEM_MESSAGE`: *"It is not
+  necessary to propose a follow-up experiment if there is nothing significant to follow up on."*
+  `DIRECTIVE_SYSTEM` now says the same thing for hypothesis count — if there's really only one
+  competing cause, emit one hypothesis, not three padded-out variants. Separately (found while
+  wiring this, not from Robin): when there's no deviation at all, the old code fabricated a filler
+  hypothesis ("이탈이 없어 다음 단계 확정이 필요하다") inside the *hypotheses* array — semantically
+  wrong, since that's not a competing cause of anything. Moved it out to a `progression_hypothesis`
+  that only populates the legacy flat `hypothesis`/`experiments` fields the one-shot `/wetlab` panel
+  reads, and left `hypotheses` genuinely empty in that case.
+- **`formula/agents/judge.py` — `SYSTEM_BASE` gained an explicit, ordered rubric.** Robin's
+  `CANDIDATE_RANKING_SYSTEM_PROMPT` numbers its criteria and says "Prioritize your evaluation based
+  on these key criteria" (evidence strength first, novelty last, explicitly "not on the persuasive
+  quality or wording"). Our judges score one candidate at a time (absolute 0.0–1.0), not A-vs-B, so
+  we kept the *ordering* but adapted it to single-candidate scoring: evidence strength/relevance →
+  residual risk severity → feasibility → novelty (never a score booster on its own). Also added "판단
+  근거가 없으면 suggestion을 비워 둔다" (Robin's "don't force it" pattern applied to the free-text
+  `suggestion` field, so judges stop padding it with generic filler when there's nothing specific to
+  flag).
+- **`formula/agents/generator.py` — rationale must cite the retrieved evidence, not restate
+  boilerplate.** Robin's candidate-generation flow is already two-stage (literature queries first,
+  then generation conditioned on the retrieved review) — our generator already had that shape via
+  RAG (`_context()` runs before generation), so nothing architectural changed there. What was
+  missing was the explicit instruction to *use* it: `SYSTEM` now tells the model its `rationale`
+  must reflect specifics from the retrieved excipient-master/incompatibility context, not generic
+  claims ("안정성이 좋아서") the next-stage judge can't verify against anything.
+- **`formula/agents/reflect.py` and `formula/agents/intake.py` — left unchanged on purpose.**
+  `reflect.py`'s directive is already tightly bound to structured rulebook `suggestion` fields (it
+  doesn't re-derive causes), and `intake.py` already says "확신이 없으면 비워 둔다." Both already
+  satisfy the "don't force it" pattern Robin's prompts repeat; editing them for the sake of coverage
+  would have been changing working prompts without a concrete finding behind it.
+- **Deliberately *not* adopted, and why — both are about the same underlying constraint:**
+  1. **Free-text assay/test proposals.** Robin's `FOLLOWUP_CONTENT_MESSAGE` lets the model name any
+     assay type ("RNA-seq", "Flow Cytometry", …). We go the other way on purpose — confirmation
+     tests must be a real `test_id` from `confirmation_test_master.csv`'s 66 rows, checked at
+     `_resolve_hypotheses()` and dropped if not found. This is *stricter* than Robin, not a gap:
+     free text can't carry a reproducible ICH/USP citation the way a catalog row can.
+  2. **Pairwise tournament ranking.** Robin ranks N hypotheses by sampling random pairs, asking an
+     LLM "which is better" for each pair (`CANDIDATE_RANKING_PROMPT_FORMAT`, JSON `Winner`/`Loser`),
+     then fitting a Bradley–Terry model (`choix.ilsr_pairwise`) to get a global ranking — more
+     robust than one-shot absolute scoring at scale, and worth understanding, but it multiplies LLM
+     call count by up to `C(n,2)` pairs. Given the free-tier TPM fragility documented above (and
+     that a *pinned model ID being 404 was silently killing every judge call* until this same audit
+     found it), adding a call-count multiplier to the judging path was assessed as too risky to ship
+     alongside everything else in this pass. `formula/agents/consensus.py`'s deterministic weighted
+     mean stays as-is; revisit pairwise ranking as its own change once the (now-fixed) single-call
+     path has run stable in production for a while.
+- **Found while verifying this, not part of the prompt work itself, but arguably the highest-value
+  finding of the pass:** see the Groq 404/fallback bug documented in "LLM providers" above — without
+  fixing it, none of the prompt changes in this section could have been verified against real model
+  output, because every call was silently degrading to the deterministic stand-in.
+- Confirmation-test category mapping had a latent bug surfaced by writing `tests/test_labloop.py`:
+  `METRIC_TO_CATEGORY` pointed `tablet_hardness_N`/`friability_percent`/`disintegration_time_min`/
+  `moisture_content_percent`/`content_uniformity_rsd` at category strings (`"Process"`,
+  `"Compaction"`, `"Tabletting"`, `"Stability"`, `"Blend uniformity"`, `"Packaging"`, `"Impurities"`)
+  that **don't exist anywhere in `confirmation_test_master.csv`** — verified by enumerating the
+  CSV's actual `test_category` values. Corrected the mappings to real categories (`"Water
+  determination"` for moisture, `"Impurity analysis"` for impurities, etc.). `tablet_hardness_N`/
+  `friability_percent` genuinely have no matching confirmation test in this catalog (it's a
+  biopharmaceutics/BCS-confirmation catalog, not a compendial mechanical-QC one) — left that gap
+  honest rather than force a wrong category match; `LifecycleService._fallback_diagnosis` already
+  has a considered real-test fallback (`T_DISCRIM`, discriminatory dissolution) for that case.
 
 ## Design-intent audit (2026-07-28) — gaps found by measuring, and what changed
 

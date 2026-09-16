@@ -488,20 +488,27 @@ async def _diagnosis_for(project_id: str, result_id: str,
     directive = await asyncio.to_thread(
         direct_next, report, ROOT, result.get("observations", []),
     )
-    experiments = directive.get("experiments", [])[:3]
+    # direct_next()는 서로 다른 원인을 설명하는 가설을 배열로 낸다(가설당 그것만 가르는
+    # 시험이 붙어 있다) — 한 가설 문장을 지표 수만큼 복제하지 않는다. 가설이 하나도 안
+    # 남았으면(예: 시험 카탈로그와 못 붙음) None을 반환해 호출부가 lifecycle의 최종
+    # 폴백(_fallback_diagnosis)으로 넘어가게 한다.
+    raw_hypotheses = directive.get("hypotheses") or []
+    if not raw_hypotheses:
+        return None
     hypotheses = []
-    for index, row in enumerate(failed[:3], 1):
-        tests = [e["test_id"] for e in experiments if e.get("test_id")][:3]
+    for index, h in enumerate(raw_hypotheses, 1):
+        supports = h.get("supports") or []
+        primary_spec = next((by_metric[m] for m in supports if m in by_metric), None)
         hypotheses.append({
             "hypothesis_id": f"H{index}",
-            "statement": (directive.get("hypothesis") or
-                          f"{row['metric']} 이탈 원인을 구별해야 합니다."),
-            "supports": [row["metric"]], "contradicts": [],
-            "missing_evidence": tests, "discriminating_test_ids": tests,
-            "revision_hint": by_metric[row["metric"]].justification,
+            "statement": h.get("statement") or "이탈 원인을 구별해야 합니다.",
+            "supports": supports, "contradicts": [],
+            "missing_evidence": h.get("discriminating_test_ids", []),
+            "discriminating_test_ids": h.get("discriminating_test_ids", []),
+            "revision_hint": primary_spec.justification if primary_spec else h.get("statement", ""),
             "status": "PROPOSED",
         })
-    return {"hypotheses": hypotheses, "test_catalog": experiments,
+    return {"hypotheses": hypotheses, "test_catalog": directive.get("experiments", []),
             "agent_source": directive.get("source", "deterministic-fallback")}
 
 

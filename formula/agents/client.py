@@ -47,10 +47,16 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 # **`max_tokens`도 이 한도에 포함된다** — 프롬프트가 짧아도 max_tokens만 크면 413이 난다
 # ("Request too large ... on tokens per minute (TPM): Limit 8000, Requested 8264").
 # 그래서 헤드룸이 가장 큰 모델을 앞에 세우고, 요청마다 예산에 맞춰 max_tokens를 깎는다.
+#
+# 2026-09-16 갱신: `llama-3.3-70b-versatile`·`llama-3.1-8b-instant`가 Groq 카탈로그에서
+# 내려가 404(model_not_found)를 낸다 — 실측(https://api.groq.com/openai/v1/models)으로
+# 확인. 이 두 모델이 항상 목록 맨 앞이었는데 `_groq_with_fallback`이 404를 재시도 대상으로
+# 보지 않아서, 매 호출이 살아있는 세 번째 모델까지 가 보지도 못하고 즉시 LLMUnavailable로
+# 떨어지고 있었다(운영 중이던 배포가 사실상 항상 결정론 폴백만 쓰고 있었다는 뜻). 지금
+# 살아있는 모델로 교체했다 — 404도 재시도하도록 고친 것과 세트로 봐야 한다(아래 참고).
 GROQ_TPM = {
-    "llama-3.3-70b-versatile": 12000,
     "openai/gpt-oss-120b": 8000,
-    "llama-3.1-8b-instant": 6000,
+    "openai/gpt-oss-20b": 8000,
 }
 GROQ_MODELS = list(GROQ_TPM)
 # 한도의 일부는 항상 프롬프트에 양보한다. 응답은 처방 JSON·심사 소견 수준이라 이 정도면 충분하고,
@@ -383,8 +389,11 @@ def _groq_with_fallback(need: Callable[[str], int], call: Callable[[str], Any],
         except httpx.HTTPStatusError as exc:
             last_error = exc
             status = exc.response.status_code
-            if status in (429, 413):
-                # 우리 회계보다 서버가 빡빡했다 — 이 모델은 이번 호출에서 제외하고 다음으로.
+            if status in (404, 429, 413):
+                # 404 = 이 모델이 카탈로그에서 내려갔다(Groq가 무료 티어 모델을 종종 바꾼다).
+                # 429/413 = 우리 회계보다 서버가 빡빡했다. 어느 쪽이든 이 모델 하나만 이번
+                # 호출에서 제외하고 다음 모델로 — 한 모델이 죽었다고 전체가 결정론 폴백으로
+                # 떨어지면 안 된다(2026-09-16, 바로 이 버그로 배포본이 사실상 항상 폴백만 썼다).
                 blocked.add(model)
                 continue
             if status >= 500:

@@ -1243,7 +1243,9 @@ const SCENARIOS = [
       선행 확인시험 결과를 자동 입력해 근거를 채우고 <b>연구자 승인</b>까지 진행한 뒤에야
       배치 결과를 넣습니다. AI가 문장에서 수치를 판독하고, 규칙이 규격 이탈을 판정한 뒤,
       확인시험 마스터 66종에서 <b>다음에 할 실험</b>을 골라 지시합니다 —
-      두 루프의 결과가 서로 다른 계층으로 돌아가는 것이 이 구조의 요지입니다.`,
+      두 루프의 결과가 서로 다른 계층으로 돌아가는 것이 이 구조의 요지입니다.
+      같은 배치 결과는 오른쪽 <b>장기 실행 작업함</b>에도 기록되어, 이탈 원인을 서로 다른
+      가설로 나눠 진단하고 구별시험을 거쳐야만 재설계가 시작되는 흐름을 이어서 볼 수 있습니다.`,
   },
 ];
 
@@ -1314,6 +1316,39 @@ async function continueScenario() {
   $("wl-notes").value = WL_EXAMPLE;
   $("labloop").scrollIntoView({ behavior: "smooth", block: "nearest" });
   setTimeout(() => $("wl-submit").click(), 700);
+
+  // 승인까지 끝났다면 같은 프로젝트가 장기 실행 작업함에서도 실행 가능 상태다.
+  // 배치를 등록하고 같은 결과를 넣어, 이탈이 났을 때 서로 다른 원인 가설로 갈라지는
+  // 진단(경쟁 가설 + 가설별 구별시험)을 오른쪽 작업함에서도 보여준다. 이 부가 단계가
+  // 실패해도(예: 프로토콜이 아직 BLOCKED) 위의 1회성 시연은 이미 끝난 뒤이므로 조용히 넘어간다.
+  if (projectId) {
+    (async () => {
+      try {
+        const batchState = await workflowCall(`/api/projects/${projectId}/batches`, {
+          note: "시연 배치", idempotency_key: workflowKey("scenario-batch"),
+        });
+        const batch = Object.values(batchState.batches || {}).at(-1);
+        if (!batch) return;
+        const resultState = await workflowCall(`/api/projects/${projectId}/lab-results`, {
+          batch_id: batch.batch_id, notes: WL_EXAMPLE, purpose: "batch_cqa",
+          idempotency_key: workflowKey("scenario-result"),
+        });
+        const result = Object.values(resultState.results || {}).at(-1);
+        if (!result) return;
+        await workflowCall(`/api/projects/${projectId}/lab-results/${result.result_id}/confirm`, {
+          researcher: "researcher", idempotency_key: workflowKey("scenario-confirm"),
+        });
+        narrate("workflow-diagnosis", {
+          layer: "장기 실행 작업함", kind: "det",
+          title: "같은 결과가 지속되는 작업함에도 기록됐다",
+          body: `오른쪽 <b>장기 실행 작업함</b>에서 이 배치의 규격 판정과 원인 진단을 확인할 수
+            있습니다. <span class="nr-why">왜 중요한가: 첫 실패에서 바로 처방을 고치지 않고,
+            서로 다른 원인 가설과 각 가설을 갈라낼 구별시험부터 제시합니다 — 가설이 여러 개면
+            실제로 서로 다른 시험이 붙습니다.</span>`,
+        });
+      } catch (e) { /* 부가 패널 — 실패해도 메인 시연 흐름에 영향 없음 */ }
+    })();
+  }
 }
 
 /* 예측 계층 — 교차검증·불확실성·BCS. 값이 없으면 "미연결"을 그대로 보여준다. */
