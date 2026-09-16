@@ -505,25 +505,49 @@
              실제로 반영했다.`,
       art: `
         <div class="f1-arch f1-seq">
-          <div class="f1-cols c2">
-            <div class="f1-box"><b>가져오기 전</b>
-              <span>"왜 실패했을까?"라는 질문에 답 하나를 만들고, 이탈 지표 수만큼
-                그대로 복사해서 보여줬다. 가설이 3개처럼 보여도 실제 이유는 하나뿐이었다.</span></div>
-            <div class="f1-box f1-llm"><b>가져온 뒤</b>
-              <span>Robin이 후보를 만들 때 쓰는 규칙 — "정확히 N개를, <b>서로 실제로 다르게</b>"
-                — 를 그대로 적용했다. 이제는 진짜 다른 원인 후보들을 만들고, 후보마다
-                그것만 가려낼 수 있는 시험을 따로 붙인다.</span></div>
+          <div class="f1-tier">
+            <header><span>Robin 프롬프트 원문에서 그대로 가져온 문장</span>
+              <span>GitHub Future-House/robin · robin/prompts.py</span></header>
+            <div class="f1-said f1-mono">"Generate exactly <b>{num_candidates}</b> distinct
+              ideas"<br>— CANDIDATE_GENERATION_SYSTEM_MESSAGE</div>
+            <div class="f1-cap">우리 코드에 넣은 지시문(<code class="f1-mono">formula/feedback/labloop.py
+              · DIRECTIVE_SYSTEM</code>): <b>"가설은 최대 3개, 서로 실제로 달라야 한다. 같은
+              원인을 다르게 표현한 문장을 별도 가설로 세지 않는다."</b></div>
           </div>
-          <div class="f1-flowmark">▼ 실제 이부프로펜 시나리오로 확인한 결과</div>
-          <div class="f1-io win">용출 미달 + 불순물 초과 → "결정형이 바뀌었을 가능성" ·
-            "제조 중 다른 성분이 섞였을 가능성" · "산도(pH)에 민감해 침전됐을 가능성" —
-            서로 다른 3가지 원인과 각각을 확인할 시험이 나왔다</div>
+          <div class="f1-flowmark">▼ 이 지시문 하나로 무엇이 바뀌었는가 — AI가 실제로 준 응답</div>
+          <div class="f1-versus">
+            <div class="f1-quote bad">
+              <div class="f1-qhead">✕ 가져오기 전 (지난 배포 코드 구조)</div>
+              <div class="f1-said">AI에게는 애초에 "이유 하나만" 요청했다. 그 결과를
+                <span class="f1-mono">H1 / H2 / H3</span> 세 칸에 <b>그대로 복사</b>했다:
+                <br>H1 = <i>"붕해 지연 또는 결합력 과다로 방출이 억제됐을 가능성"</i>
+                <br>H2 = <i>"붕해 지연 또는 결합력 과다로 방출이 억제됐을 가능성"</i>
+                <br>H3 = <i>"붕해 지연 또는 결합력 과다로 방출이 억제됐을 가능성"</i></div>
+              <span class="f1-badge bad">세 칸이 한 문자열을 가리킴</span>
+              <div class="f1-cap">화면은 "경쟁 가설 3개"처럼 보이지만 코드를 보면
+                <code class="f1-mono">directive.get("hypothesis")</code> 하나를 세 번 읽은 것 —
+                구별시험을 셋 다 똑같이 받으니 애초에 가를 수도 없었다.</div>
+            </div>
+            <div class="f1-quote good">
+              <div class="f1-qhead">✓ 가져온 뒤 (지금 배포된 버전 · 실제 응답)</div>
+              <div class="f1-said">이부프로펜 정제 시나리오(용출 미달 + 불순물 초과)에 Groq가
+                실제로 낸 응답:
+                <br>H1 = <i>"API 결정형(다형체)이 바뀌어 용해도가 낮아졌을 가능성"</i>
+                <br>H2 = <i>"제조 중 다른 성분과 교차오염됐을 가능성"</i>
+                <br>H3 = <i>"제형이 pH에 민감해 시험 중 침전됐을 가능성"</i></div>
+              <span class="f1-badge good">서로 다른 test_id가 따로 붙음</span>
+              <div class="f1-cap">가설마다 <b>그 가설만 지지·배제하는 확인시험</b>이 다르게
+                배정된다 — 2026-09-16 실제 실행 로그에서 그대로 가져온 문장이다.</div>
+            </div>
+          </div>
         </div>`,
-      note: `Robin 프롬프트에는 "필요 없으면 만들지 않는다"는 문장도 있었다 — 후속 실험을 억지로
-             제안하지 말라는 뜻이다. 같은 원칙을 가져와, 경쟁할 원인이 정말 하나뿐이면 가설도
-             하나만 내고 개수를 채우려고 가짜 원인을 만들지 않게 했다. 무엇을 가져왔고 무엇을
-             일부러 가져오지 않았는지(예: 시험 이름을 자유롭게 짓는 방식은 오히려 더 엄격하게
-             막았다)는 README "Robin의 프롬프트에서 무엇을, 왜 가져왔는가"에 전부 적어 뒀다.`,
+      note: `Robin 프롬프트에는 "필요 없으면 만들지 않는다"는 문장(<code class="f1-mono">FOLLOWUP_SYSTEM_MESSAGE</code>)도
+             있었다 — 후속 실험을 억지로 제안하지 말라는 뜻이다. 같은 원칙을 가져와, 경쟁할 원인이
+             정말 하나뿐이면 가설도 하나만 내고 개수를 채우려고 가짜 원인을 만들지 않게 했다.
+             반대로 <b>가져오지 않은 것</b>도 있다 — Robin은 확인시험 이름을 AI가 자유롭게
+             짓게 하지만, 우리는 실제 확인시험 66종 목록 밖의 시험은 화면에 나가기 전에
+             버린다(Robin보다 더 엄격한 제약). 무엇을 가져왔고 무엇을 일부러 안 가져왔는지는
+             README "Robin의 프롬프트에서 무엇을, 왜 가져왔는가"에 항목별로 전부 적어 뒀다.`,
     },
 
     {
