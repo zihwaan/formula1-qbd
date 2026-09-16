@@ -28,7 +28,7 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 Everything runs **without an API key** — LLM nodes fall back to deterministic stand-ins so
 demos never break. Set `GROQ_API_KEY` (free tier) or `ANTHROPIC_API_KEY` to enable a real LLM path.
 
-## Deployment — this repo is served live at zihwan.com/f
+## Deployment — this repo is served live at zihwan.com/formula1
 
 This clone lives inside the home-server repo at `~/zihwan/formula1` but keeps **its own git
 history** (origin is `github.com/zihwaan/formula1-qbd`); the hub repo does not track it.
@@ -37,7 +37,7 @@ It runs as an OrbStack k8s deployment. Editing a file changes nothing live until
 ```bash
 cd ~/zihwan/formula1 && docker build -t formula1:latest . && kubectl rollout restart deployment/formula1
 kubectl rollout status deployment/formula1 --timeout=180s
-curl -s -o /dev/null -w '%{http_code}\n' https://zihwan.com/f/
+curl -s -o /dev/null -w '%{http_code}\n' https://zihwan.com/formula1/
 ```
 
 FastAPI serves both the API and the no-build SPA, so one image covers front and back.
@@ -45,7 +45,7 @@ Full home-server context (proxy layout, secrets, traps) is in `~/zihwan/CLAUDE.m
 
 Three hosting concerns are baked into `web/server.py` — don't undo them:
 
-- **`BASE_PATH` env** (`/f` in k8s — must match the hub proxy prefix in `hub/server.js`;
+- **`BASE_PATH` env** (`/formula1` in k8s — must match the hub proxy prefix in `hub/server.js`;
   empty locally). The hub proxy strips the prefix, so
   FastAPI routes stay rooted at `/`; the `/` handler injects `<base href>` + `window.__BASE__`
   and `app.js` builds every fetch/EventSource URL through `api()`. Local `uvicorn` on :8000 with
@@ -200,6 +200,22 @@ theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one ser
   3. `labloop.direct_next()` — **LLM constrained by data.** Picks the next experiments *only from the 66 real rows of* `database/reference/confirmation_test_master.csv`, so every directive carries its ICH/USP citation. Any `test_id` outside that pool is discarded before it reaches the UI — the model cannot invent a test. This closes the roadmap item "확인시험 마스터(66종)를 wet-lab 루프에 연결".
   `POST /api/runs/{id}/wetlab` runs all three and returns `{findings, read, directive}`. Form-supplied `measurements` override the LLM's reading — a human-stated number always wins.
 - **`docs/architecture_image_prompt.md`** — detailed prompts for AI-generating the full horizontal system architecture diagram (not code).
+
+## Lab-in-the-loop v1.0 — the long-running state machine (`formula/lifecycle/`)
+
+Everything above this line is a **single design run**: one `Run` object, one LangGraph execution, one process's memory, done in seconds to a couple of minutes. Real formulation development is not — approval, batch manufacture, results, and diagnosis are spread over days to weeks, and the thing that remembers "what phase this project is in and whose turn it is" has to outlive the process. `formula/lifecycle/` is that layer. It sits **on top of** `Run`/`graph.py`, not instead of it: a design run still produces candidates + gate results + an evidence assessment exactly as before, and `LifecycleService.sync_design()` is what promotes that one-shot output into a durable `ProjectState`.
+
+- **`models.py`** — `WorkflowStatus` (17 values — `DESIGNING` … `COMPLETED`/`ESCALATED`/`INFEASIBLE`), `EventEnvelope` (the only shape written to the event log — `event_type`, `idempotency_key`, `created_by`), `ProjectState` (candidates/protocols/batches/results/diagnoses keyed by id, plus four **separate** loop counters — `rule_revision_attempt`, `evidence_round`, `lab_iteration`, `diagnostic_round` — never a single shared counter, so a wall of rule failures doesn't get confused with a wall of diagnostic rounds in the escalation reason).
+- **`store.py`** (`WorkflowStore`) — SQLite (`FORMULA1_DB_PATH`, default `/tmp/formula1/formula1.db`), three tables: `projects` (current `state_json` snapshot + `state_version`), `workflow_events` (append-only, `idempotency_key UNIQUE` is the dedup mechanism — a retried request produces zero new rows and returns the already-saved state), `decisions` (the audit ledger). `save()` takes `expected_version` and does a conditional `UPDATE … WHERE state_version=?`; a mismatch raises rather than silently overwriting a concurrent transition. **This DB is separate from any pod-restart-durable volume today** — it's `/tmp` inside the container, so a pod restart currently loses in-flight long-running projects. Fine for the competition demo; would need a PVC (like the k8s pattern MoneyMate/TradeMate already use) before this matters in practice.
+- **`service.py`** (`LifecycleService`) — the only place state transitions happen. Each public method (`approve_protocol`, `register_batch`, `submit_results`, `confirm_results`, `approve_tests`, `confirm_cause`, …) is one HTTP action's worth of authority and ends by calling `_save()`, which writes both the new `EventEnvelope` and a `DecisionRecord` (`ruleset`, `candidate_id`, `inputs`, `status`) in the same transaction. **The one invariant that matters most:** `confirm_results()` never lets a spec failure go straight to redesign — it always routes through `DIAGNOSING` (a `_fallback_diagnosis()` or, when the caller supplies one, the LLM-backed diagnosis from `_diagnosis_for()` in `web/server.py`) and only `confirm_cause()` is allowed to create a child candidate. A `PROPOSED` hypothesis has no authority; only `CONFIRMED` does.
+- **`protocol.py`** (`ProtocolCompiler` + `ProtocolValidator`) — compiles a candidate + its CQA specs into a protocol draft from `formula/protocol/templates/*.yaml` (currently `direct_compression` and `wet_granulation_aqueous`; process string routing is a substring match on `"wet"`). The validator checks mass balance (`sum(ingredient amounts) ≈ target_unit_weight_mg`), that every ingredient amount resolved, that critical steps carry a `source_ref`, and that CQA specs exist — `BLOCKED` vs `READY_FOR_REVIEW`, never a silent pass. **Equipment is currently a named placeholder only** (`registered-lab-blender`, …) — there's no equipment-capability-master with numeric RPM/temperature/capacity ranges to validate against yet, unlike mass balance which is fully enforced.
+- **`spec_engine.py`** (`CandidateSpecEngine`) — snapshots per-candidate CQA targets at design time (`snapshot()`) so a later comparison never mixes one candidate's acceptance criteria with another's, and evaluates measurements against that frozen snapshot (`evaluate()`). **The snapshot's source values are still the single legacy `database/legacy/wetlab_feedback_rules.csv`** — every candidate gets the same numeric targets today; what's real is the *isolation* (each candidate owns its own copy, versioned), not yet genuine per-product target derivation from QTPP. A `database/reference/candidate_target_specs.csv` sourced with the pharmacy team is the natural next step — don't fabricate per-candidate numbers in the meantime.
+
+**Wiring into `web/server.py`:** `/api/projects/*` is the durable API (`create_project`, `start_project_design`, `get_project_state`, `get_project_events`, `get_project_trace`, `approve_project_protocol`, `register_project_batch`, `submit_project_lab_result`, `confirm_project_lab_result`, `approve_project_tests`, `confirm_project_cause`). The pre-existing one-shot `/api/runs/*` endpoints (`create_run`, `submit_confirmation`, `approve_protocol`) now also call into `lifecycle()` as a best-effort side channel so the old single-screen demo flow keeps working without callers knowing a project exists — see `_drive_execution()`, which calls `lifecycle().sync_design(execution)` in its `finally` block after the SSE stream ends.
+
+**Known simplification — read this before "fixing" `confirm_cause`:** creating and re-validating the child candidate needs the *original* `FormulationSpec` and generator context, which lives on the in-memory `Run` object (`RUNS[run_id]`), not in `ProjectState`. If the pod restarted between design and root-cause confirmation, `confirm_project_cause` finds no `execution` in `RUNS` and — correctly — does **not** guess; it returns the persisted `REFLECTING` state with the child candidate stuck at `AWAITING_REGENERATION` and lets a human decide (see the comment in that handler). It does **not** currently auto-resume by starting a fresh design run — that would silently discard the parent/child lineage and `RevisionDirective`. Fixing this for real means persisting enough of `FormulationSpec` into `ProjectState` to reconstruct a `Run`, which hasn't been done.
+
+**Known simplification — `backtrack_target`:** `confirm_cause(..., backtrack_target=...)` accepts a phase name (`PHASE_6_PROCESS` is the default) and records it on the `RevisionDirective`, but nothing currently *routes* on it — every confirmed cause takes the same path (`Run.regenerate_child()` → `generator.generate()` with the confirmed cause as free-text instruction → full rulebook + evidence gate re-run). The README's Phase-addressed Backtrack Router (different confirmed-cause categories returning to different design phases — Gate 3A vs. Phase 6 vs. Phase 4) is not implemented; today "backtracking" always means "regenerate this one candidate and re-validate everything," which covers the MVP scope (1–2 ingredient/process-variable changes per revision) but not a genuinely different re-entry point.
 
 ## Design-intent audit (2026-07-28) — gaps found by measuring, and what changed
 

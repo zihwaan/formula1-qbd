@@ -1,0 +1,13 @@
+template_id: wet-granulation-aqueous-v1
+version: 1
+target_unit_weight_mg: 250
+equipment:
+  granulator: registered-lab-granulator
+  dryer: registered-lab-dryer
+  tablet_press: registered-lab-tablet-press
+steps:
+  - {order: 1, name: 원료 확인과 예비혼합, critical: false, source_ref: "template:wet-granulation-aqueous-v1"}
+  - {order: 2, name: 결합액 조제와 과립, critical: true, source_ref: "template:wet-granulation-aqueous-v1"}
+  - {order: 3, name: 건조와 정립, critical: true, source_ref: "template:wet-granulation-aqueous-v1"}
+  - {order: 4, name: 후혼합과 활택, critical: true, source_ref: "template:wet-granulation-aqueous-v1"}
+  - {order: 5, name: 타정과 공정 중 검사, critical: true, source_ref: "template:wet-granulation-aqueous-v1"}

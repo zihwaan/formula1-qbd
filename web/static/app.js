@@ -3,7 +3,7 @@
 const $ = (id) => document.getElementById(id);
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-/* 서브경로 배포(zihwan.com/f) 대응 — 서버가 index.html에 주입한다.
+/* 서브경로 배포(zihwan.com/formula1) 대응 — 서버가 index.html에 주입한다.
    단독 실행이면 빈 문자열이라 예전과 똑같이 /api/... 로 나간다. */
 const BASE = window.__BASE__ || "";
 const api = (path) => `${BASE}${path}`;
@@ -31,6 +31,7 @@ function clearNotice() {
 }
 
 let runId = null;
+let projectId = null;
 let source = null;
 const candidates = new Map();   // candidate_id → {recipe, verdicts[], judges[], gate}
 const assessments = new Map();  // candidate_id → 근거 충족 판정 (evidence 이벤트)
@@ -484,6 +485,7 @@ async function submitConfirmation(candidateId) {
     narrateEvidenceLoop(updated);
     renderCandidates();
     renderEvidence();
+    loadWorkflow();
   } catch (err) {
     notice(err.message, "error", true);
     btn.disabled = false;
@@ -515,6 +517,7 @@ async function approveProtocol(candidateId) {
     });
     renderCandidates();
     renderEvidence();
+    loadWorkflow();
   } catch (err) {
     notice(err.message, "error", true);
     btn.disabled = false;
@@ -745,6 +748,7 @@ function finishRun(summary) {
   } else {
     clearNotice();
   }
+  if (projectId) setTimeout(loadWorkflow, 500);
   continueScenario();
 }
 
@@ -804,6 +808,10 @@ async function startRun() {
         + data.rejected_inputs.join(", "), "warn");
     }
     runId = data.run_id;
+    projectId = data.project_id || null;
+    if (projectId) {
+      try { localStorage.setItem("f1:last_project", projectId); } catch (e) { /* 무시 */ }
+    }
     connect(api(`/api/runs/${runId}/stream`));
   } catch (err) {
     setRunning(false);
@@ -859,6 +867,159 @@ $("wl-submit").onclick = async () => {
     btn.textContent = "결과 해석 + 다음 실험 지시";
   }
 };
+
+/* ── 장기 실행 Lab-in-the-loop 작업함 ───────────────────────────────
+   기존 SSE는 설계 한 번을 보여 주고, 이 패널은 그 뒤 수일간 이어지는 프로젝트 상태를
+   SQLite에서 읽는다. 결과는 연구자가 확인하기 전에는 규격 엔진에 들어가지 않는다. */
+const WF_LABELS = {
+  DESIGNING: "후보 설계 중", RULE_VALIDATING: "규칙 검증 중", EVIDENCE_CHECK: "근거 확인 중",
+  WAITING_FOR_EVIDENCE: "선행 근거 대기", REVIEWING: "후보 비교 중",
+  PROTOCOL_DRAFT: "프로토콜 보완 필요", WAITING_FOR_APPROVAL: "프로토콜 승인 대기",
+  READY_FOR_LAB: "실험 실행 가능", WAITING_FOR_RESULT: "배치 결과 대기",
+  RESULT_CONFIRMATION: "결과값 사람 확인 대기", CQA_EVALUATION: "후보별 규격 판정 중",
+  DIAGNOSING: "실패 원인 진단 중", WAITING_FOR_CONFIRMATION_TEST: "구별시험 결과 대기",
+  REFLECTING: "확인된 원인으로 재설계", COMPLETED: "목표 충족", ESCALATED: "전문가 이관",
+  INFEASIBLE: "고정 제약 충돌",
+};
+const WF_GROUP = {
+  DESIGNING: 0, RULE_VALIDATING: 0, EVIDENCE_CHECK: 1, WAITING_FOR_EVIDENCE: 1,
+  REVIEWING: 1, PROTOCOL_DRAFT: 2, WAITING_FOR_APPROVAL: 2, READY_FOR_LAB: 3,
+  WAITING_FOR_RESULT: 4, RESULT_CONFIRMATION: 5, CQA_EVALUATION: 5,
+  DIAGNOSING: 6, WAITING_FOR_CONFIRMATION_TEST: 6, REFLECTING: 7, COMPLETED: 7,
+};
+
+function workflowKey(prefix) {
+  const suffix = (globalThis.crypto && crypto.randomUUID)
+    ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+  return `${prefix}:${projectId}:${suffix}`;
+}
+
+async function workflowCall(path, body) {
+  const res = await fetch(api(path), {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `요청 실패 (${res.status})`);
+  }
+  const state = await res.json();
+  renderWorkflow(state);
+  return state;
+}
+
+async function loadWorkflow() {
+  if (!projectId) return;
+  try {
+    const res = await fetch(api(`/api/projects/${encodeURIComponent(projectId)}/state`));
+    if (!res.ok) return;
+    renderWorkflow(await res.json());
+  } catch (e) { /* 설계 화면의 부가 패널이므로 연결 실패 시 조용히 둔다 */ }
+}
+
+function renderWorkflow(state) {
+  const panel = $("workflow");
+  panel.hidden = false;
+  const body = $("wf-body");
+  const protocols = Object.values(state.protocols || {});
+  const batches = Object.values(state.batches || {});
+  const results = Object.values(state.results || {});
+  const diagnoses = Object.values(state.diagnoses || {});
+  const protocol = protocols.at(-1);
+  const batch = batches.at(-1);
+  const result = results.at(-1);
+  const diagnosis = diagnoses.at(-1);
+  const active = WF_GROUP[state.status] ?? -1;
+  const steps = ["설계", "근거", "프로토콜", "승인", "실험", "값 확인", "원인 구별", "재검증"];
+  const pending = (state.pending_actions || []).map((a) =>
+    `<div class="wf-action"><b>다음 할 일 · ${esc(a.type)}</b>${esc(a.label)}</div>`).join("");
+  const lineage = Object.values(state.candidates || {}).filter((c) => c.parent_candidate_id)
+    .map((c) => `${esc(c.parent_candidate_id)} → ${esc(c.candidate_id)} (v${esc(c.version)})`).join(" · ");
+  let controls = "";
+
+  if (state.status === "WAITING_FOR_APPROVAL" && protocol) {
+    controls = `<div class="wf-controls"><button id="wf-approve" type="button">프로토콜 승인</button></div>`;
+  } else if (state.status === "READY_FOR_LAB" && protocol) {
+    controls = `<div class="wf-controls"><input id="wf-batch-note" placeholder="배치 메모 (선택)">
+      <button id="wf-batch" type="button">실제 배치 등록</button></div>`;
+  } else if (state.status === "WAITING_FOR_RESULT" && batch) {
+    controls = `<div class="wf-controls"><textarea id="wf-result-notes" rows="3"
+      placeholder="예) 30분 용출 62%, 경도 38N, 마손도 1.2%"></textarea>
+      <button id="wf-result" type="button">결과 초안 제출</button></div>`;
+  } else if (state.status === "RESULT_CONFIRMATION" && result) {
+    const values = Object.entries(result.measurements || {}).map(([k, v]) =>
+      `<div><code>${esc(k)}</code> = ${esc(v)}</div>`).join("");
+    controls = `<div class="wf-card"><b>판정 전 확인할 값</b>${values || "수치 없음"}
+      <div class="wf-controls"><button id="wf-confirm-result" type="button">원자료와 대조 완료 · 값 확정</button></div></div>`;
+  } else if (state.status === "DIAGNOSING" && diagnosis) {
+    const hypotheses = diagnosis.hypotheses || [];
+    const evidenceReady = hypotheses.some((h) => h.status === "EVIDENCE_RECEIVED");
+    controls = `<div class="wf-card"><b>경쟁 원인 가설</b>
+      ${hypotheses.map((h) => `<div class="wf-action"><b>${esc(h.hypothesis_id)} · ${esc(h.status)}</b>
+        ${esc(h.statement)}<div class="wf-tests">${(h.discriminating_test_ids || []).map((id) =>
+          `<label><input type="checkbox" class="wf-test" value="${esc(id)}" checked> <code>${esc(id)}</code></label>`).join("")}</div></div>`).join("")}
+      <div class="wf-controls">${evidenceReady
+        ? `<button id="wf-confirm-cause" data-cause="${esc(hypotheses.find((h) => h.status === "EVIDENCE_RECEIVED").hypothesis_id)}" type="button">확인시험 근거 검토 완료 · 원인 확정</button>`
+        : `<button id="wf-approve-tests" type="button">구별시험 계획 승인</button>`}</div></div>`;
+  } else if (state.status === "WAITING_FOR_CONFIRMATION_TEST" && diagnosis && batch) {
+    const hypothesis = (diagnosis.hypotheses || [])[0] || {};
+    controls = `<div class="wf-controls"><textarea id="wf-confirm-notes" rows="3"
+      placeholder="승인된 확인시험의 관찰과 수치를 입력하세요"></textarea>
+      <button id="wf-confirm-test" data-hypothesis="${esc(hypothesis.hypothesis_id || "")}" type="button">확인시험 결과 초안 제출</button></div>`;
+  }
+
+  body.innerHTML = `<div class="wf-state"><b>${esc(state.status)}</b>
+      <span>${esc(WF_LABELS[state.status] || state.status)} · 상태 버전 ${esc(state.state_version)}</span></div>
+    <div class="wf-flow">${steps.map((s, i) => `<div class="wf-step ${i === active ? "on" : ""}">${esc(s)}</div>`).join("")}</div>
+    ${pending}${controls}${lineage ? `<div class="wf-lineage">후보 계보 · ${lineage}</div>` : ""}`;
+
+  if ($("wf-approve")) $("wf-approve").onclick = async () => {
+    try { await workflowCall(`/api/projects/${projectId}/protocols/${protocol.protocol_id}/approve`,
+      { approver: "researcher", idempotency_key: workflowKey("approve") }); }
+    catch (e) { notice(e.message, "error", true); }
+  };
+  if ($("wf-batch")) $("wf-batch").onclick = async () => {
+    try { await workflowCall(`/api/projects/${projectId}/batches`, {
+      protocol_id: protocol.protocol_id, note: $("wf-batch-note").value,
+      idempotency_key: workflowKey("batch"),
+    }); } catch (e) { notice(e.message, "error", true); }
+  };
+  if ($("wf-result")) $("wf-result").onclick = async () => {
+    const notes = $("wf-result-notes").value.trim();
+    if (!notes) return notice("실험 결과를 입력해 주세요.", "warn");
+    try { await workflowCall(`/api/projects/${projectId}/lab-results`, {
+      batch_id: batch.batch_id, notes, purpose: "batch_cqa",
+      idempotency_key: workflowKey("result"),
+    }); } catch (e) { notice(e.message, "error", true); }
+  };
+  if ($("wf-confirm-result")) $("wf-confirm-result").onclick = async () => {
+    try { await workflowCall(`/api/projects/${projectId}/lab-results/${result.result_id}/confirm`, {
+      researcher: "researcher", idempotency_key: workflowKey("result-confirm"),
+    }); } catch (e) { notice(e.message, "error", true); }
+  };
+  if ($("wf-approve-tests")) $("wf-approve-tests").onclick = async () => {
+    const ids = [...document.querySelectorAll(".wf-test:checked")].map((el) => el.value);
+    try { await workflowCall(`/api/projects/${projectId}/diagnoses/${diagnosis.diagnosis_id}/approve-tests`, {
+      test_ids: ids, researcher: "researcher", idempotency_key: workflowKey("tests"),
+    }); } catch (e) { notice(e.message, "error", true); }
+  };
+  if ($("wf-confirm-test")) $("wf-confirm-test").onclick = async (e) => {
+    const notes = $("wf-confirm-notes").value.trim();
+    if (!notes) return notice("확인시험 결과를 입력해 주세요.", "warn");
+    try { await workflowCall(`/api/projects/${projectId}/lab-results`, {
+      batch_id: batch.batch_id, notes, purpose: "confirmation_test",
+      hypothesis_id: e.currentTarget.dataset.hypothesis, idempotency_key: workflowKey("confirm-test"),
+    }); } catch (err) { notice(err.message, "error", true); }
+  };
+  if ($("wf-confirm-cause")) $("wf-confirm-cause").onclick = async (e) => {
+    try { await workflowCall(`/api/projects/${projectId}/causes/${e.currentTarget.dataset.cause}/confirm`, {
+      researcher: "researcher", backtrack_target: "PHASE_6_PROCESS",
+      idempotency_key: workflowKey("cause"),
+    }); } catch (err) { notice(err.message, "error", true); }
+  };
+}
+
+$("wf-refresh").onclick = loadWorkflow;
 
 /* ── 아키텍처 해설 ───────────────────────────────────────────────────
    실행 이벤트를 받아 "지금 어느 계층이 무엇을 왜 하는지"를 순서대로 쌓는다.
@@ -1355,6 +1516,10 @@ $("btn-theme").onclick = () => {
   loadSmartsPresets();
   loadInputCatalog();
   setRunning(false);
+  try {
+    projectId = localStorage.getItem("f1:last_project") || null;
+    if (projectId) loadWorkflow();
+  } catch (e) { projectId = null; }
   try {
     const res = await fetch(api("/api/meta"));
     if (!res.ok) throw new Error(`상태 조회 실패 (${res.status})`);

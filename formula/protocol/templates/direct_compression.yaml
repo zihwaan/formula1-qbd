@@ -1,0 +1,11 @@
+template_id: direct-compression-v1
+version: 1
+target_unit_weight_mg: 250
+equipment:
+  blender: registered-lab-blender
+  tablet_press: registered-lab-tablet-press
+steps:
+  - {order: 1, name: 원료 확인과 체질, critical: false, source_ref: "template:direct-compression-v1"}
+  - {order: 2, name: API와 부형제 예비혼합, critical: true, source_ref: "template:direct-compression-v1"}
+  - {order: 3, name: 활택제 최종혼합, critical: true, source_ref: "template:direct-compression-v1"}
+  - {order: 4, name: 타정과 공정 중 검사, critical: true, source_ref: "template:direct-compression-v1"}

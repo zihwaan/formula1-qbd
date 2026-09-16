@@ -10,6 +10,7 @@ import asyncio
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+from formula.agents import generator
 from formula.checkers.registry import RulebookRegistry
 from formula.contracts import (
     ConfirmationResult,
@@ -174,6 +175,45 @@ class Run:
         if assessment is None:
             raise KeyError(candidate_id)
         return self.evidence_gate.approve(assessment, approver)
+
+    def regenerate_child(self, parent_candidate_id: str, child_candidate_id: str,
+                         directive: Dict[str, Any]):
+        """확인된 실험 원인으로 자식 후보 1건을 만들고 두 게이트를 전부 다시 실행한다.
+
+        첫 실패를 곧바로 여기로 보내면 안 된다. API는 Lifecycle이 ROOT_CAUSE_CONFIRMED로
+        전이한 뒤에만 이 메서드를 호출한다.
+        """
+        spec = self.final.get("spec")
+        parent = next((c for c in self.final.get("candidates", [])
+                       if c.candidate_id == parent_candidate_id), None)
+        if spec is None or parent is None:
+            raise KeyError(parent_candidate_id)
+        instruction = str(directive.get("instruction") or "확인된 원인을 반영해 재설계")
+        recipe = generator.generate(
+            spec, parent.strategy or parent.process or "DC", self.base_dir,
+            child_candidate_id, instruction,
+        )
+        gate = self.registry.run(spec, recipe, short_circuit=False)
+        gate_result = {
+            "candidate_id": recipe.candidate_id,
+            "recipe": recipe,
+            "verdicts": gate.verdicts,
+            "derived": {k: v for k, v in gate.derived.items()
+                        if k != "candidate_id" and not str(k).startswith("_")},
+            "passed": gate.passed,
+            "blockers": [f"{v.rulebook_id}/{v.rule_id}: {v.reason}" for v in gate.blockers],
+        }
+        assessment = None
+        if gate.passed:
+            assessment = self.evidence_gate.assess(spec, recipe, gate_result["derived"])
+            self.evidence_store[recipe.candidate_id] = {
+                "assessment": assessment, "spec": spec, "recipe": recipe,
+                "derived": gate_result["derived"],
+            }
+        self.final.setdefault("candidates", []).append(recipe)
+        self.final.setdefault("results", []).append(gate_result)
+        self.final["final_candidate"] = recipe.candidate_id
+        return recipe, gate_result, assessment
 
 
 async def run(base_dir: Path, request: str, smiles: Optional[str] = None) -> Run:

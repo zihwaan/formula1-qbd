@@ -442,6 +442,58 @@
     },
 
     {
+      nav: "실패해도 바로 안 고친다",
+      kicker: "Lab-in-the-loop v1.0 · 장기 실행 작업함",
+      title: "첫 실패에서는 처방을 바꾸지 않는다",
+      lead: `실제 실험은 하루 만에 안 끝난다. 배치를 만들고, 시험하고, 결과를 확인하고, 필요하면
+             추가 시험까지 하는 데 며칠에서 몇 주가 걸린다. 그사이 서버가 재시작되거나 브라우저를
+             닫아도 <b>"다음에 뭘 해야 하는지"는 그대로 남아 있어야 한다</b> — 그래서 승인·배치·
+             결과·진단을 프로세스 메모리가 아니라 DB에 하나씩 기록하고, 그때그때 필요한 사람의
+             결정을 기다리는 <b>장기 실행 작업함</b>을 추가했다. 그리고 이 작업함이 지키는 규칙이
+             하나 있다 — <b>용출이 미달했다고 해서 그 자리에서 처방을 고치지 않는다.</b> 용출
+             미달은 원인이 여러 개일 수 있는 증상이지, 원인 자체가 아니기 때문이다.`,
+      art: `
+        <div class="f1-arch f1-seq">
+          <div class="f1-io">연구자 승인 → 배치 제조(벤치) → 결과 제출(원자료 · 수치 · 관찰)</div>
+          <div class="f1-flowmark">▼ 사람이 원자료와 대조해 확정하기 전에는 판정에 쓰지 않는다</div>
+          <div class="f1-tier">
+            <header><span>① 결과 확인</span><span>연구자</span></header>
+            <div class="f1-box"><b>AI가 옮긴 값을 사람이 원자료와 대조</b>
+              <span>확정 전 상태는 "AI가 제안한 값"일 뿐, 규격 판정에 들어가지 않는다</span></div>
+          </div>
+          <div class="f1-flowmark">▼</div>
+          <div class="f1-tier">
+            <header><span>② 규격 판정</span><span>결정론 · Candidate Spec Engine</span></header>
+            <div class="f1-box f1-det"><b>후보 전용 규격과 비교</b>
+              <span>예) 30분 용출 58% — 이 후보에 지정된 목표(예: 80% 이상)에 못 미침 → 이탈</span></div>
+          </div>
+          <div class="f1-flowmark">▼ 이탈 발생 — 곧장 재설계로 가지 않는다</div>
+          <div class="f1-tier">
+            <header><span>③ 진단</span><span>AI · 경쟁 가설 최대 3개</span></header>
+            <div class="f1-box f1-llm"><b>"왜 미달했는가"의 후보를 나열한다</b>
+              <span>예) 결합제 점도 과다로 방출 억제 / 붕해 지연 / 입도 문제 —
+                <b>확정이 아니라 구별해야 할 후보들</b></span></div>
+            <div class="f1-box f1-det"><b>가설마다 구별시험을 붙인다</b>
+              <span>확인시험 마스터 66종 밖의 시험은 제안할 수 없다 — 9장과 같은 제약</span></div>
+          </div>
+          <div class="f1-flowmark">▼ 연구자가 시험을 승인 → 벤치에서 수행 → 결과를 다시 확인</div>
+          <div class="f1-tier">
+            <header><span>④ 원인 확정</span><span>연구자 + 확인시험 결과</span></header>
+            <div class="f1-box"><b>구별시험이 하나의 가설을 지지할 때만 "원인"이 된다</b>
+              <span>확정 전까지는 어느 가설도 처방을 바꿀 권한이 없다</span></div>
+          </div>
+          <div class="f1-flowmark">▼</div>
+          <div class="f1-io win">자식 후보 생성 (v1 → v2, 부모는 그대로 보존) →
+            규칙 게이트 · 근거 게이트 전체를 처음부터 다시 통과해야 한다</div>
+        </div>`,
+      note: `<b>기존 후보를 고치는 게 아니라 새 버전을 만든다.</b> v1은 "왜 실패했는지" 그대로 남아 있는
+             기록이고, v2는 그 원인 하나만 반영한 별도 후보다. 그리고 v2라고 특별 취급하지 않는다
+             — 배합금기 게이트도, 근거 충족 게이트도 처음 설계된 후보와 똑같이 처음부터 다시 돈다.
+             승인·배치 등록·결과 확정·원인 확정은 전부 사람이 누르는 버튼이고, 시스템이 대신
+             넘어가는 단계는 하나도 없다.`,
+    },
+
+    {
       nav: "근거 없는 규칙은 안 돈다",
       kicker: "차별점",
       title: "출처를 못 찾은 규칙은, 실행되지 않는다",
@@ -491,7 +543,7 @@
   const visited = new Set();
 
   function buildRail() {
-    el("guide-count").textContent = `${STEPS.length}단계 · 약 5분`;
+    el("guide-count").textContent = `${STEPS.length}단계 · 약 6분`;
     el("guide-nav").innerHTML = STEPS.map((s, i) => `<li data-i="${i}">${s.nav}</li>`).join("");
     el("guide-dots").innerHTML = STEPS.map((_, i) => `<i data-i="${i}"></i>`).join("");
     document.querySelectorAll("#guide-nav li, #guide-dots i").forEach((node) => {

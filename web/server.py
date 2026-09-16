@@ -27,6 +27,7 @@ import asyncio
 import hashlib
 import os
 import re
+import uuid
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -45,16 +46,19 @@ from formula.chem.smarts_probe import match_smarts
 from formula.chem.structural_flags import REGISTRY_VERSION, load_flag_definitions
 from formula.evidence.gate import EvidenceGate
 from formula.experimental_inputs import ExperimentalInputs
-from formula.contracts import ConfirmationResult, EventKind, TraceEvent, WetLabResult
+from formula.contracts import (
+    ConfirmationResult, EventKind, FeedbackFinding, FeedbackReport, TraceEvent, WetLabResult,
+)
 from formula.feedback.interpreter import WetLabInterpreter
 from formula.feedback.labloop import direct_next, read_notes
+from formula.lifecycle import LifecycleService, WorkflowStatus
 from formula.orchestrator.events import event_to_sse
 from formula.orchestrator.runner import Run
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = Path(__file__).resolve().parent / "static"
 
-# 리버스 프록시 뒤 서브경로로 서빙할 때의 접두부 (라이브는 "/f").
+# 리버스 프록시 뒤 서브경로로 서빙할 때의 접두부 (라이브는 "/formula1").
 # 프록시가 접두부를 떼고 넘기므로 FastAPI 라우트는 그대로 두고, HTML에만 base를 주입한다.
 # 빈 값이면 단독 실행(http://localhost:8000)과 완전히 동일하게 동작한다.
 _prefix = os.environ.get("BASE_PATH", "").strip().strip("/")
@@ -75,6 +79,7 @@ ACTIVE: set = set()
 _registry: Optional[RulebookRegistry] = None
 _evidence_gate: Optional[EvidenceGate] = None
 _experimental_inputs: Optional[ExperimentalInputs] = None
+_lifecycle: Optional[LifecycleService] = None
 
 
 def registry() -> RulebookRegistry:
@@ -97,6 +102,14 @@ def experimental_inputs() -> ExperimentalInputs:
     if _experimental_inputs is None:
         _experimental_inputs = ExperimentalInputs(ROOT)
     return _experimental_inputs
+
+
+def lifecycle() -> LifecycleService:
+    """장기 실행 상태는 프로세스 메모리가 아니라 SQLite에서 읽는다."""
+    global _lifecycle
+    if _lifecycle is None:
+        _lifecycle = LifecycleService(ROOT)
+    return _lifecycle
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +169,83 @@ class ApprovalRequest(BaseModel):
     approver: str = Field(default="researcher", max_length=60)
 
 
+class ProjectCreateRequest(BaseModel):
+    request: str = Field(min_length=1, max_length=2000)
+    qtpp: Dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str = Field(default="", max_length=120)
+
+
+class ProjectApprovalRequest(BaseModel):
+    protocol_id: str = Field(default="", max_length=100)
+    approver: str = Field(default="researcher", max_length=60)
+    idempotency_key: str = Field(default="", max_length=120)
+
+
+class BatchRequest(BaseModel):
+    batch_id: str = Field(default="", max_length=100)
+    protocol_id: str = Field(default="", max_length=100)
+    note: str = Field(default="", max_length=1000)
+    idempotency_key: str = Field(default="", max_length=120)
+
+
+class LabResultRequest(BaseModel):
+    result_id: str = Field(default="", max_length=100)
+    batch_id: str = Field(max_length=100)
+    purpose: str = Field(default="batch_cqa", pattern="^(batch_cqa|confirmation_test)$")
+    hypothesis_id: str = Field(default="", max_length=100)
+    measurements: Dict[str, float] = Field(default_factory=dict)
+    notes: str = Field(default="", max_length=3000)
+    observations: List[str] = Field(default_factory=list, max_length=30)
+    raw_data_refs: List[str] = Field(default_factory=list, max_length=30)
+    method_refs: Dict[str, str] = Field(default_factory=dict)
+    idempotency_key: str = Field(default="", max_length=120)
+
+
+class ResultConfirmRequest(BaseModel):
+    researcher: str = Field(default="researcher", max_length=60)
+    measurements: Dict[str, float] = Field(default_factory=dict)
+    idempotency_key: str = Field(default="", max_length=120)
+
+
+class TestApprovalRequest(BaseModel):
+    test_ids: List[str] = Field(default_factory=list, max_length=3)
+    researcher: str = Field(default="researcher", max_length=60)
+    idempotency_key: str = Field(default="", max_length=120)
+
+
+class CauseConfirmRequest(BaseModel):
+    researcher: str = Field(default="researcher", max_length=60)
+    backtrack_target: str = Field(default="PHASE_6_PROCESS", max_length=80)
+    idempotency_key: str = Field(default="", max_length=120)
+
+
+class DesignRunRequest(BaseModel):
+    request: str = Field(default="", max_length=2000)
+    smiles: Optional[str] = Field(default=None, max_length=500)
+    required_excipients: List[str] = Field(default_factory=list, max_length=8)
+    measured_params: Dict[str, float] = Field(default_factory=dict)
+    property_flags: Dict[str, bool] = Field(default_factory=dict)
+
+
+async def _drive_execution(execution: Run) -> None:
+    """SSE 이벤트를 중계하고 마지막 설계 상태를 영속 워크플로에 연결한다."""
+    try:
+        async for event in execution.stream():
+            for queue in QUEUES.get(execution.run_id, []):
+                queue.put_nowait(event)
+    finally:
+        try:
+            await asyncio.to_thread(lifecycle().sync_design, execution)
+        except Exception as exc:
+            execution.bus.publish(TraceEvent(
+                run_id=execution.run_id, node="lifecycle", kind=EventKind.ERROR,
+                payload={"error": f"장기 상태 저장 실패: {exc}"},
+            ))
+        ACTIVE.discard(execution.run_id)
+        for queue in QUEUES.get(execution.run_id, []):
+            queue.put_nowait(None)
+
+
 # ---------------------------------------------------------------------------
 # 입력 카탈로그
 # ---------------------------------------------------------------------------
@@ -189,6 +279,12 @@ async def create_run(payload: RunRequest) -> Dict[str, Any]:
     execution = Run(ROOT, payload.request, smiles=payload.smiles,
                     required_excipients=payload.required_excipients,
                     measured_params=measured, property_flags=flags)
+    project = lifecycle().create(
+        payload.request,
+        run_id=execution.run_id,
+        qtpp={"smiles": payload.smiles, "required_excipients": payload.required_excipients},
+        idempotency_key=f"run:{execution.run_id}:project",
+    )
     RUNS[execution.run_id] = execution
     QUEUES[execution.run_id] = []
     ACTIVE.add(execution.run_id)
@@ -198,18 +294,9 @@ async def create_run(payload: RunRequest) -> Dict[str, Any]:
         stale_id, _ = RUNS.popitem(last=False)
         QUEUES.pop(stale_id, None)
 
-    async def drive() -> None:
-        try:
-            async for event in execution.stream():
-                for queue in QUEUES.get(execution.run_id, []):
-                    queue.put_nowait(event)
-        finally:
-            ACTIVE.discard(execution.run_id)
-            for queue in QUEUES.get(execution.run_id, []):
-                queue.put_nowait(None)
-
-    asyncio.create_task(drive())
-    return {"run_id": execution.run_id, "accepted_inputs": len(measured) + len(flags),
+    asyncio.create_task(_drive_execution(execution))
+    return {"run_id": execution.run_id, "project_id": project.project_id,
+            "accepted_inputs": len(measured) + len(flags),
             "rejected_inputs": rejected}
 
 
@@ -260,7 +347,218 @@ async def replay_run(run_id: str, delay: float = 0.06) -> EventSourceResponse:
 async def get_run(run_id: str) -> Dict[str, Any]:
     if run_id not in RUNS:
         raise HTTPException(404, "run 없음")
-    return RUNS[run_id].summary()
+    summary = RUNS[run_id].summary()
+    project = lifecycle().store.by_run(run_id)
+    if project:
+        summary["project_id"] = project.project_id
+        summary["workflow"] = project.public()
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# 장기 실행 프로젝트 API — 파드 재시작 뒤에도 승인·실험·진단을 이어 간다.
+# ---------------------------------------------------------------------------
+@app.post("/api/projects")
+async def create_project(payload: ProjectCreateRequest) -> Dict[str, Any]:
+    project = lifecycle().create(payload.request, qtpp=payload.qtpp,
+                                 idempotency_key=payload.idempotency_key)
+    return project.public()
+
+
+@app.post("/api/projects/{project_id}/design-runs")
+async def start_project_design(project_id: str, payload: DesignRunRequest) -> Dict[str, Any]:
+    if len(ACTIVE) >= MAX_ACTIVE_RUNS:
+        raise HTTPException(429, f"동시 실행 {MAX_ACTIVE_RUNS}건 초과 — 잠시 후 다시 시도하세요")
+    try:
+        project = lifecycle().state(project_id)
+    except KeyError:
+        raise HTTPException(404, "project 없음")
+    request = payload.request.strip() or project.request
+    invalid = smiles_error(payload.smiles)
+    if invalid:
+        raise HTTPException(400, invalid)
+    measured, flags, rejected = experimental_inputs().normalize(
+        payload.measured_params, payload.property_flags)
+    execution = Run(ROOT, request, smiles=payload.smiles,
+                    required_excipients=payload.required_excipients,
+                    measured_params=measured, property_flags=flags)
+    try:
+        project = lifecycle().bind_run(project_id, execution.run_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    RUNS[execution.run_id] = execution
+    QUEUES[execution.run_id] = []
+    ACTIVE.add(execution.run_id)
+    asyncio.create_task(_drive_execution(execution))
+    return {"project_id": project_id, "run_id": execution.run_id,
+            "state": project.status.value, "rejected_inputs": rejected}
+
+
+@app.get("/api/projects/{project_id}/state")
+async def get_project_state(project_id: str) -> Dict[str, Any]:
+    try:
+        return lifecycle().state(project_id).public()
+    except KeyError:
+        raise HTTPException(404, "project 없음")
+
+
+@app.get("/api/projects/{project_id}/events")
+async def get_project_events(project_id: str, after: int = 0) -> Dict[str, Any]:
+    try:
+        lifecycle().state(project_id)
+    except KeyError:
+        raise HTTPException(404, "project 없음")
+    return {"project_id": project_id, "events": lifecycle().store.events(project_id, after)}
+
+
+@app.get("/api/projects/{project_id}/trace")
+async def get_project_trace(project_id: str) -> Dict[str, Any]:
+    try:
+        return lifecycle().trace(project_id)
+    except KeyError:
+        raise HTTPException(404, "project 없음")
+
+
+@app.post("/api/projects/{project_id}/protocols/{protocol_id}/approve")
+async def approve_project_protocol(project_id: str, protocol_id: str,
+                                   payload: ProjectApprovalRequest) -> Dict[str, Any]:
+    try:
+        state = lifecycle().approve_protocol(
+            project_id, payload.approver, protocol_id or payload.protocol_id,
+            payload.idempotency_key,
+        )
+    except KeyError:
+        raise HTTPException(404, "project 없음")
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return state.public()
+
+
+@app.post("/api/projects/{project_id}/batches")
+async def register_project_batch(project_id: str, payload: BatchRequest) -> Dict[str, Any]:
+    try:
+        state = lifecycle().register_batch(project_id, payload.model_dump(), payload.idempotency_key)
+    except KeyError:
+        raise HTTPException(404, "project 없음")
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return state.public()
+
+
+@app.post("/api/projects/{project_id}/lab-results")
+async def submit_project_lab_result(project_id: str, payload: LabResultRequest) -> Dict[str, Any]:
+    data = payload.model_dump()
+    if payload.notes:
+        parsed = await asyncio.to_thread(read_notes, payload.notes, ROOT)
+        data["measurements"] = {**parsed.measurements, **payload.measurements}
+        data["observations"] = [*parsed.observations, *payload.observations]
+        data["parser_confidence"] = 1.0 if not parsed.unreadable else 0.7
+    try:
+        state = lifecycle().submit_results(project_id, data, payload.idempotency_key)
+    except KeyError:
+        raise HTTPException(404, "project 없음")
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return state.public()
+
+
+async def _diagnosis_for(project_id: str, result_id: str,
+                         corrections: Dict[str, float]) -> Optional[Dict[str, Any]]:
+    state = lifecycle().state(project_id)
+    result = state.results.get(result_id)
+    if not result:
+        return None
+    measurements = corrections or result.get("measurements", {})
+    specs = state.candidate_specs.get(result["candidate_id"], [])
+    evaluations = lifecycle().spec_engine.evaluate(specs, measurements)
+    failed = [row for row in evaluations if not row["passed"]]
+    if not failed:
+        return None
+    by_metric = {spec.metric: spec for spec in specs}
+    findings = []
+    for row in evaluations:
+        spec = by_metric[row["metric"]]
+        findings.append(FeedbackFinding(
+            metric=row["metric"], measured=row["measured"], operator=spec.operator,
+            target=spec.target_value, off_target=not row["passed"],
+            interpretation=spec.justification if not row["passed"] else "",
+        ))
+    report = FeedbackReport(candidate_id=result["candidate_id"], findings=findings,
+                            reflection_needed=True, summary="후보별 CQA 이탈 진단")
+    directive = await asyncio.to_thread(
+        direct_next, report, ROOT, result.get("observations", []),
+    )
+    experiments = directive.get("experiments", [])[:3]
+    hypotheses = []
+    for index, row in enumerate(failed[:3], 1):
+        tests = [e["test_id"] for e in experiments if e.get("test_id")][:3]
+        hypotheses.append({
+            "hypothesis_id": f"H{index}",
+            "statement": (directive.get("hypothesis") or
+                          f"{row['metric']} 이탈 원인을 구별해야 합니다."),
+            "supports": [row["metric"]], "contradicts": [],
+            "missing_evidence": tests, "discriminating_test_ids": tests,
+            "revision_hint": by_metric[row["metric"]].justification,
+            "status": "PROPOSED",
+        })
+    return {"hypotheses": hypotheses, "test_catalog": experiments,
+            "agent_source": directive.get("source", "deterministic-fallback")}
+
+
+@app.post("/api/projects/{project_id}/lab-results/{result_id}/confirm")
+async def confirm_project_lab_result(project_id: str, result_id: str,
+                                     payload: ResultConfirmRequest) -> Dict[str, Any]:
+    try:
+        diagnosis = await _diagnosis_for(project_id, result_id, payload.measurements)
+        state = lifecycle().confirm_results(
+            project_id, result_id, payload.researcher, payload.measurements or None,
+            diagnosis, payload.idempotency_key,
+        )
+    except KeyError:
+        raise HTTPException(404, "project 또는 result 없음")
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return state.public()
+
+
+@app.post("/api/projects/{project_id}/diagnoses/{diagnosis_id}/approve-tests")
+async def approve_project_tests(project_id: str, diagnosis_id: str,
+                                payload: TestApprovalRequest) -> Dict[str, Any]:
+    try:
+        state = lifecycle().approve_tests(project_id, diagnosis_id, payload.test_ids,
+                                          payload.researcher, payload.idempotency_key)
+    except KeyError:
+        raise HTTPException(404, "project 또는 diagnosis 없음")
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return state.public()
+
+
+@app.post("/api/projects/{project_id}/causes/{cause_id}/confirm")
+async def confirm_project_cause(project_id: str, cause_id: str,
+                                payload: CauseConfirmRequest) -> Dict[str, Any]:
+    try:
+        state = lifecycle().confirm_cause(project_id, cause_id, payload.researcher,
+                                          payload.backtrack_target, payload.idempotency_key)
+        placeholder = state.active_candidate_id or ""
+        record = state.candidates[placeholder]
+        execution = RUNS.get(state.run_id)
+        if execution is None:
+            # 원인·변경안·자식 후보는 이미 영속화됐다. 기존 설계 컨텍스트가 메모리에 없으면
+            # 과학적 입력을 추정하지 않고 명시적으로 재실행을 요청한다.
+            # 저장된 REFLECTING 상태와 RevisionDirective를 그대로 돌려준다. 새 프로세스에서
+            # 임의로 원 후보를 복원하지 않고, 사용자가 design-runs를 재개하면 이어서 처리한다.
+            return state.public()
+        recipe, gate_result, assessment = await asyncio.to_thread(
+            execution.regenerate_child, record["parent_candidate_id"], placeholder,
+            record["revision_directive"],
+        )
+        state = lifecycle().sync_child(state.run_id, placeholder, recipe, gate_result, assessment)
+    except KeyError:
+        raise HTTPException(404, "project 또는 cause 없음")
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    return state.public()
 
 
 # ---------------------------------------------------------------------------
@@ -426,6 +724,10 @@ async def submit_confirmation(run_id: str, payload: ConfirmationRequest) -> Dict
     }
     execution.bus.publish(TraceEvent(run_id=run_id, node="evidence",
                                      kind=EventKind.CONFIRMATION, payload=result))
+    try:
+        lifecycle().sync_evidence(run_id, candidate_id, assessment)
+    except KeyError:
+        pass  # 구버전 인메모리 run은 장기 프로젝트가 없을 수 있다.
     return result
 
 
@@ -443,6 +745,19 @@ async def approve_protocol(run_id: str, payload: ApprovalRequest) -> Dict[str, A
         raise HTTPException(409, str(exc))
 
     result = _evidence_payload(execution, assessment)
+    project = lifecycle().store.by_run(run_id)
+    if project:
+        try:
+            # EvidenceGate의 승인과 실행 프로토콜 승인은 별개지만, 기존 단일 버튼은 두
+            # 검토를 연속 수행하는 하위호환 경로로 유지한다.
+            project = lifecycle().sync_evidence(run_id, candidate_id, assessment)
+            protocol_id = next((pid for pid, p in reversed(list(project.protocols.items()))
+                                if p.get("candidate_id") == candidate_id), "")
+            if project.status == WorkflowStatus.WAITING_FOR_APPROVAL and protocol_id:
+                project = lifecycle().approve_protocol(project.project_id, payload.approver, protocol_id)
+            result["workflow"] = project.public()
+        except ValueError as exc:
+            raise HTTPException(409, str(exc))
     execution.bus.publish(TraceEvent(run_id=run_id, node="evidence",
                                      kind=EventKind.APPROVAL, payload=result))
     return result

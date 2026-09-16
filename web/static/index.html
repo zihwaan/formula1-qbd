@@ -169,6 +169,19 @@
              선행 근거가 비면 실행 가능한 공정 프로토콜 대신 확인시험 요청을 낸다. -->
         <div id="evidence" class="evidence" hidden></div>
 
+        <!-- 영속 Lab-in-the-loop 작업함. 설계 run이 끝난 뒤에도 project 상태는 DB에 남고,
+             이 패널에서 승인·배치·결과확인·진단시험·재설계를 이어 간다. -->
+        <section class="workflow" id="workflow" hidden aria-live="polite">
+          <header>
+            <div>
+              <h3>장기 실행 작업함 <small>Lab-in-the-loop v1.0</small></h3>
+              <p>브라우저나 서버가 다시 시작돼도 이 프로젝트의 다음 할 일이 보존됩니다.</p>
+            </div>
+            <button id="wf-refresh" class="ghost" type="button">새로고침</button>
+          </header>
+          <div id="wf-body"></div>
+        </section>
+
         <!-- ── Lab-in-the-loop (실험 후 루프) ──────────────────────────
              AI가 배치 결과를 판독·해석하고 **다음 실험을 지시**한다.
              사람은 벤치에서 그 실험을 수행하고 결과를 다시 넣는다. -->
