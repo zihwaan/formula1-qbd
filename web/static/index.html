@@ -84,7 +84,7 @@
     </section>
 
     <main class="grid">
-      <!-- ── 좌: 분자 / 스펙 ─────────────────────────────────────────── -->
+      <!-- ── 좌: 분자 / 스펙 (참고 자료 · 바깥) ───────────────────────── -->
       <aside class="panel" id="panel-chem">
         <h2>API 물리화학 <small>RDKit</small></h2>
         <div id="chem-empty" class="empty">설계를 실행하면 구조와 descriptor가 표시됩니다.</div>
@@ -129,35 +129,11 @@
         </details>
       </aside>
 
-      <!-- ── 중앙: 에이전트 그래프 + 트레이스 ──────────────────────────── -->
-      <section class="center">
-        <div class="panel graph-panel">
-          <h2>에이전트 흐름 <small>노드가 실행되면 점등 · 심사관은 조건에 맞을 때만 소집</small></h2>
-          <svg id="graph" viewBox="0 0 980 300" preserveAspectRatio="xMidYMid meet"></svg>
-          <div class="legend">
-            <span><i class="sw det"></i>결정론 (오차 0%)</span>
-            <span><i class="sw llm"></i>LLM 판단</span>
-            <span><i class="sw jud"></i>동적 소집 심사관</span>
-            <span><i class="sw loop"></i>되먹임 (반려 · 확인시험 · 배치 결과)</span>
-          </div>
-        </div>
-
-        <!-- 실행에 맞춰 흐르는 아키텍처 해설 — 지금 어느 계층이 무엇을 왜 하는지 -->
-        <div class="panel narration-panel">
-          <h2>지금 무슨 일이 일어나고 있나 <small>실행 단계마다 어느 계층이 무엇을 왜 하는지</small></h2>
-          <div id="scenario-goal" class="scenario-goal" hidden></div>
-          <div id="narration" class="narration" role="log" aria-live="polite">
-            <div class="empty">시나리오를 누르거나 설계를 실행하면 단계별 해설이 여기에 흐릅니다.</div>
-          </div>
-        </div>
-        <div class="panel trace-panel">
-          <h2>실행 트레이스 <small>규칙 발동을 클릭하면 원본 CSV 행과 출처를 봅니다</small></h2>
-          <div id="trace" class="trace" role="log" aria-live="polite" aria-relevant="additions"></div>
-        </div>
-      </section>
-
-      <!-- ── 우: 후보 / 합의 / wet-lab ────────────────────────────────── -->
-      <aside class="panel" id="panel-cands">
+      <!-- ── 중앙(메인): 후보 확인·근거 입력·승인·배치·결과 입력 ─────────
+           연구자가 실제로 값을 입력하고 버튼을 누르는 자리라서 가운데 넓은 칸에 둔다.
+           그래프·해설·트레이스는 "지켜보는" 화면이라 오른쪽 좁은 칸으로 옮겼다
+           (2026-09 UI 재배치 — 입력이 메인, 관측은 바깥). -->
+      <section class="panel main-col" id="panel-cands" aria-label="후보 확인과 다음 행동">
         <h2>후보 처방 <small id="cand-count"></small></h2>
         <div id="cands" class="cands">
           <div class="empty">아직 생성된 후보가 없습니다.</div>
@@ -201,7 +177,35 @@
           </div>
           <div id="wl-out"></div>
         </details>
-      </aside>
+      </section>
+
+      <!-- ── 우: 에이전트 그래프 · 해설 · 트레이스 (관측 · 바깥) ─────────
+           클릭할 것도, 값을 넣을 것도 없는 "지켜보는" 화면이라 좁은 칸으로 뺐다. -->
+      <section class="center observe-col" aria-label="실행 관측 (그래프·해설·트레이스)">
+        <div class="panel graph-panel">
+          <h2>에이전트 흐름 <small>노드가 실행되면 점등 · 심사관은 조건에 맞을 때만 소집</small></h2>
+          <svg id="graph" viewBox="0 0 980 300" preserveAspectRatio="xMidYMid meet"></svg>
+          <div class="legend">
+            <span><i class="sw det"></i>결정론 (오차 0%)</span>
+            <span><i class="sw llm"></i>LLM 판단</span>
+            <span><i class="sw jud"></i>동적 소집 심사관</span>
+            <span><i class="sw loop"></i>되먹임 (반려 · 확인시험 · 배치 결과)</span>
+          </div>
+        </div>
+
+        <!-- 실행에 맞춰 흐르는 아키텍처 해설 — 지금 어느 계층이 무엇을 왜 하는지 -->
+        <div class="panel narration-panel">
+          <h2>지금 무슨 일이 일어나고 있나 <small>실행 단계마다 어느 계층이 무엇을 왜 하는지</small></h2>
+          <div id="scenario-goal" class="scenario-goal" hidden></div>
+          <div id="narration" class="narration" role="log" aria-live="polite">
+            <div class="empty">시나리오를 누르거나 설계를 실행하면 단계별 해설이 여기에 흐릅니다.</div>
+          </div>
+        </div>
+        <div class="panel trace-panel">
+          <h2>실행 트레이스 <small>규칙 발동을 클릭하면 원본 CSV 행과 출처를 봅니다</small></h2>
+          <div id="trace" class="trace" role="log" aria-live="polite" aria-relevant="additions"></div>
+        </div>
+      </section>
     </main>
   </div>
 

@@ -179,6 +179,20 @@ The dashboard follows the **zihwan.com design language**: grayscale chrome + Pre
 mirroring `~/zihwan/wealthmate/frontend/src/tokens.css`, light/dark via `data-theme` with the
 theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one service applies to all).
 
+- **`.grid`'s three columns are input/action in the middle, observation on the outside (2026-09
+  reorder)** — track widths in `.grid` (`300px minmax(0,1fr) 340px`) are positional, not tied to
+  any element: whichever DOM child comes 2nd gets the wide `1fr` track. `index.html` puts
+  `#panel-cands` (candidates, evidence-gate inputs, the workflow panel, the lab-in-the-loop
+  textarea — everywhere a researcher actually types or clicks) as the 2nd child so it's the wide
+  center column, and `.center` (graph/narration/trace — pure observation, nothing to click) as the
+  3rd child so it's the narrow right column. `#panel-chem` (reference data) stays 1st/left/narrow.
+  **If you add a new panel, decide which side of that split it belongs on and place it in source
+  order accordingly** — don't reach for CSS `order` to fake position, because that would desync
+  visual order from tab/reading order. `.cands` uses `repeat(auto-fit, minmax(260px,1fr))` so
+  candidate cards go multi-column in the wide track; `.evidence`/`.workflow`/`.labloop` cap at
+  `max-width: 720px` so prose doesn't stretch to unreadable line lengths even though their
+  container is wide.
+
 - **Colour is reserved for rule verdicts.** `--status-good/warn/serious/critical` mark
   통과/주의/이관/반려 only. Protocol readiness reuses that vocabulary rather than inventing colours:
   hold = warn + dashed border, approved = good, review = plain — dashed/solid carries the state so
