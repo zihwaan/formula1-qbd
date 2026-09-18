@@ -204,6 +204,35 @@
     },
 
     {
+      nav: "화면도 같은 원칙을 따른다",
+      kicker: "UI 재배치 · 2026-09-18",
+      title: "값을 넣고 버튼을 누르는 자리가 화면 한가운데다",
+      lead: `이 시스템의 뼈대는 <b>AI가 제안하고, 규칙이 판정하고, 연구자가 결정한다</b>는 역할
+             분담이다. 그런데 예전 화면은 이 역할 분담과 반대로 배치돼 있었다 — 클릭할 것도
+             입력할 것도 없이 <b>지켜보기만 하는</b> 그래프·해설·트레이스가 화면 한가운데 가장
+             넓은 자리를 차지하고, 정작 연구자가 값을 넣고 승인·배치·진단 버튼을 누르는 자리는
+             오른쪽 좁은 칸에 몰려 있었다. 역할 분담을 화면 배치에도 그대로 적용해 뒤집었다.`,
+      art: `
+        <div class="f1-arch f1-seq">
+          <div class="f1-cols c2">
+            <div class="f1-box"><b>이전 배치</b>
+              <span>가운데(가장 넓음) = 에이전트 그래프·아키텍처 해설·실행 트레이스
+                — 지켜보기만 하는 화면<br>
+                오른쪽(좁음) = 후보 확인·근거 입력·승인·배치 등록·진단 — 실제로 클릭·입력하는 화면</span></div>
+            <div class="f1-box f1-det"><b>지금 배치</b>
+              <span>가운데(가장 넓음) = 후보 확인·근거 입력·승인·배치 등록·진단 —
+                값을 넣고 버튼을 누르는 화면<br>
+                오른쪽(좁음) = 에이전트 그래프·아키텍처 해설·실행 트레이스 — 지켜보는 화면</span></div>
+          </div>
+          <div class="f1-flowmark">▼ 왼쪽 칸(분자 구조·특성값 같은 참고 자료)은 그대로 좁은 칸에 남는다</div>
+          <div class="f1-io win">입력·행동 = 메인(가운데) · 참고 자료 · 관측 = 바깥(양옆)</div>
+        </div>`,
+      note: `데이터와 기능은 하나도 바뀌지 않았다 — 근거 게이트·장기 실행 작업함·배치 결과 루프가
+             하던 일은 그대로다. 화면에서 <b>어디에 놓였는지</b>만 바뀌었고, 넓어진 자리에 맞춰
+             후보 카드가 한 줄에 여러 장 나란히 놓이도록만 손봤다.`,
+    },
+
+    {
       nav: "입구: 분자 계산",
       kicker: "입력 계층",
       title: "검사를 시작하려면, 이 약의 작용기부터 알아야 한다",
@@ -600,7 +629,7 @@
   const visited = new Set();
 
   function buildRail() {
-    el("guide-count").textContent = `${STEPS.length}단계 · 약 7분`;
+    el("guide-count").textContent = `${STEPS.length}단계 · 약 8분`;
     el("guide-nav").innerHTML = STEPS.map((s, i) => `<li data-i="${i}">${s.nav}</li>`).join("");
     el("guide-dots").innerHTML = STEPS.map((_, i) => `<i data-i="${i}"></i>`).join("");
     document.querySelectorAll("#guide-nav li, #guide-dots i").forEach((node) => {
