@@ -285,6 +285,51 @@
     },
 
     {
+      nav: "분류부터: BCS/DCS ★",
+      kicker: "v3 · 페이즈 게이트",
+      title: "처방을 만들기 전에 이 약이 어떤 부류인지부터 정한다",
+      lead: `2026-09-18부터 후보를 만들기 <b>전에</b> 한 단계가 더 들어간다. 용해도·투과도로
+             약을 분류하는 BCS/DCS, 무정형인지 결정형인지(고체상), 가용화가 필요한지, 필요하면
+             어떤 공정(예: 분무건조 ASD)을 쓸지 — 이 네 가지를 먼저 정해야 <b>어떤 전략을
+             후보로 올릴지</b>가 정해진다. 실측값이 없어도 멈추지 않는다. <b>계산값 → 예측값 →
+             측정값</b> 3단계 중 있는 것까지만 쓰고, 나머지는 "잠정(provisional)"이라고
+             정직하게 표시한 채로 계속 진행한다.`,
+      art: `
+        <div class="f1-arch f1-seq">
+          <div class="f1-io">RDKit descriptor + 사용자가 넣은 실측값</div>
+          <div class="f1-flowmark">▼</div>
+          <div class="f1-tier">
+            <header><span>3단계 값 모델</span><span>있는 데까지만 쓴다</span></header>
+            <div class="f1-cols c3">
+              <div class="f1-box f1-det"><b>A · 계산값</b>
+                <span>RDKit descriptor — 결정론, 항상 있음</span></div>
+              <div class="f1-box"><b>B · 예측값</b>
+                <span>ESOL·GSE 같은 닫힌 형태 공식. logS 두 예측이 1 log 이상 벌어지면
+                  "신뢰 낮음" 신호로 처리</span></div>
+              <div class="f1-box f1-jud"><b>C · 측정값</b>
+                <span>실험이 있어야만 나옴 — 없으면 데이터 요청으로</span></div>
+            </div>
+          </div>
+          <div class="f1-flowmark">▼ Gate 3A → 3B → 4 → 4B, 이 순서로 돈다</div>
+          <div class="f1-stack f1-seq">
+            <div class="f1-lvl"><span class="n">3A</span><span>BCS/DCS 용해도·투과도 분류</span><em>bcs_solubility_provisional</em></div>
+            <div class="f1-lvl"><span class="n">3B</span><span>고체상 — 결정형/무정형, advisory</span><em>polymorph_control_note</em></div>
+            <div class="f1-lvl key"><span class="n">4</span><span>가용화 전략이 필요한가</span><em>sig_enabling_required</em></div>
+            <div class="f1-lvl"><span class="n">4B</span><span>필요하면 어떤 ASD 공정인가</span><em>asd_process</em></div>
+          </div>
+          <div class="f1-flowmark">▼ 여기서 켜진 신호로 전략을 채점한다(strategy_families.csv)</div>
+          <div class="f1-io win">경쟁 전략 목록 — 예: 미분화(MICRO) · 고체분산체(ASD_SDD)</div>
+        </div>`,
+      note: `이 게이트에는 <b>반려 권한이 없다.</b> "금기가 있는가"를 묻는 배합금기 게이트와
+             다르게, 여기는 "전략 후보를 얼마나 넓게/좁게 볼 것인가"만 정한다. 값을 모르면
+             — 예를 들어 녹는점(Tm)도 결정형 정보도 없으면 — <b>예측 공식으로 잠정 분류하고
+             그대로 진행</b>한다. 대신 "이 값이 있으면 전략이 더 좁아진다"는 요청을
+             <span class="f1-mono">데이터 요청</span> 패널에 남긴다. 연구자가 값을 넣으면
+             같은 전략 집합이면 신뢰도만 다시 계산하고(LLM 호출 없음), 전략 집합 자체가
+             바뀌면 그때만 새로 설계한다 — 값 하나 들어왔다고 매번 처음부터 다시 돌리지 않는다.`,
+    },
+
+    {
       nav: "검사 순서",
       kicker: "실행 순서",
       title: "규칙표를 아무 순서로나 돌릴 수는 없다",
@@ -324,8 +369,9 @@
           <div class="f1-beat"><div class="who">RDKit</div><div class="what"><div class="card">
             구조 플래그 검출 <span class="f1-mono">Fluoxetine → ['has_secondary_amine']</span></div></div></div>
 
-          <div class="f1-beat"><div class="who">route</div><div class="what"><div class="card">
-            유동성 등급으로 공정 후보를 좁힌다 <span class="f1-mono">경쟁 전략: DC, WG</span></div></div></div>
+          <div class="f1-beat"><div class="who">phase_gates</div><div class="what"><div class="card">
+            분류 신호가 없으면(값 불충분) 레거시 휴리스틱으로 물러난다
+            <span class="f1-mono">경쟁 전략: DC, WG</span></div></div></div>
 
           <div class="f1-beat"><div class="who">설계</div><div class="what"><div class="card">
             가장 흔한 희석제로 초안을 만든다
@@ -364,162 +410,35 @@
     },
 
     {
-      nav: "실행 전: 알아야 실행한다 ★",
-      kicker: "근거 충족 게이트",
-      title: "금기가 없다는 것과, 실행해도 된다는 것은 다르다",
-      lead: `규칙표는 <b>알고 있는 값</b>에 대해서만 위반을 판정한다. 값 자체가 없으면 규칙은 아무것도
-             잡지 못하고, 그 침묵이 “안전하다”로 읽힌다. 신약 주성분에서는 이게 일상이다 —
-             수분 안정성도, 배합적합성도, 실험 용해도도 없는 상태로 개발이 시작되기 때문이다.
-             그래서 규칙 게이트 뒤에 <b>질문을 하나 더</b> 둔다.`,
+      nav: "v2에서 v3로 ★",
+      kicker: "설계가 바뀐 지점 · 2026-09-18",
+      title: "승인·배치·진단으로 이어지던 워크플로는 걷어내고, 후보 목록에서 멈춘다",
+      lead: `이전 버전(v2)에는 여기서부터 근거 충족 게이트 → 연구자 승인 → 배치 등록 → 결과 제출 →
+             AI 진단 → 원인 확정까지 이어지는 <b>장기 실행 워크플로</b>가 있었다. v3 설계
+             문서는 이 시스템이 답해야 할 질문을 <b>"이 약을 어떻게 분류하고, 어떤 전략
+             후보를 낼 것인가"</b>로 다시 좁혔고, 처방 이후의 승인·제조·진단 워크플로는
+             범위 밖으로 뺐다 — 그래서 이번 배포에서 그 워크플로를 껐다.`,
       art: `
         <div class="f1-arch f1-seq">
           <div class="f1-cols c2">
-            <div class="f1-box f1-det"><b>규칙 게이트</b>
-              <span>금기·규제 위반이 있는가 → 있으면 <b>반려</b> (재설계로)</span></div>
-            <div class="f1-box f1-det"><b>근거 게이트</b>
-              <span>실행할 만큼 아는가 → 모르면 <b>보류</b> (확인시험 먼저)</span></div>
-          </div>
-          <div class="f1-flowmark">▼ 후보마다 근거 결손을 계산한다 (LLM 호출 0회)</div>
-
-          <div class="f1-tier">
-            <header><span>요구는 시점으로 나뉜다</span><span>16종 · 데이터로 관리</span></header>
-            <div class="f1-cols c3">
-              <div class="f1-box f1-det"><b>프로토콜 전 필수</b>
-                <span>수계 공정인데 수분 안정성 없음 · 난용성 전략인데 실험 용해도 없음 ·
-                  BCS가 예측 기반 · 아민 + 환원당인데 배합적합성 없음</span></div>
-              <div class="f1-box"><b>병행 수행</b>
-                <span>판별력 있는 용출법 확립 · 시료 용액 안정성.
-                  <b>중단/변경 기준</b>을 함께 낸다</span></div>
-              <div class="f1-box"><b>배치 후 조건부</b>
-                <span>입도–용출 상관 · 잔사 고체상 · 불순물 응답계수 —
-                  첫 배치 결과를 본 뒤에</span></div>
-            </div>
-            <div class="f1-cap">요구는 <b>실제 확인시험 66종 안의 시험만</b> 가리킬 수 있다.
-              없는 시험을 가리키는 행은 읽는 단계에서 버려지므로,
-              모든 요청에 방법·판정 기준·ICH/USP 출처가 붙는다.</div>
+            <div class="f1-box"><b>v2가 하던 일</b>
+              <span>근거 게이트(16종 요구) → 연구자 승인 → 실행 가능 프로토콜 → 배치 제조 →
+                결과 판독·판정 → AI 경쟁 가설 진단 → 원인 확정 → 자식 후보</span></div>
+            <div class="f1-box f1-det"><b>v3가 하는 일</b>
+              <span>BCS/DCS·고체상·가용화·ASD 페이즈 게이트 → 전략 채점 → 후보 생성 →
+                룰북 검증 → 후보별 신뢰도 요청(비차단) → <b>권고 후보 목록에서 끝</b></span></div>
           </div>
           <div class="f1-flowmark">▼</div>
-
-          <div class="f1-cols c3">
-            <div class="f1-box"><b>실행 불가 초안</b><span>선행 근거 비어 있음.
-              처방과 근거는 보이지만 실행하면 안 된다</span></div>
-            <div class="f1-box"><b>검토용 프로토콜</b><span>선행 근거 충족.
-              연구자 검토 대기</span></div>
-            <div class="f1-box f1-det"><b>실행 가능 프로토콜</b><span>연구자가 승인함.
-              누가 언제 승인했는지 함께 기록</span></div>
-          </div>
-          <div class="f1-flowmark">▼ 확인시험 결과를 넣으면 그 자리에서 다시 계산</div>
-          <div class="f1-io">적합 → 근거 충족 · <b>부적합 → 근거가 채워진 게 아니라 전제가 부정된 것</b>
-            (그 전략은 배제)</div>
+          <div class="f1-io">근거 게이트·승인·배치·진단 코드는 지우지 않았다 — 주석 처리로 남겨
+            다시 켤 수 있게 했다(<code class="f1-mono">formula/lifecycle/</code>,
+            <code class="f1-mono">formula/evidence/gate.py</code> 사용부)</div>
         </div>`,
-      note: `<b>시스템은 스스로 마지막 칸으로 넘어가지 않는다.</b> 근거가 다 채워져도 승인은 사람이 하고,
-             근거가 빈 상태에서 승인을 요청하면 서버가 거부한다. 이 되먹임은 다음 장의 배치 결과 되먹임과
-             <b>돌아가는 곳이 다르다</b> — 확인시험 결과는 “무엇을 아는가”를 바꾸므로 입력·근거 계층으로,
-             배치 결과는 “무엇이 잘못됐는가”를 알려 주므로 설계·프로토콜 개정으로 간다.`,
-    },
-
-    {
-      nav: "만든 뒤: 다음 실험 지시",
-      kicker: "Lab-in-the-loop",
-      title: "AI가 결과를 읽고, 다음 실험을 지시한다",
-      lead: `근거가 채워지고 연구자가 승인해 프로토콜이 실행 가능해지면, 연구원이 배치를 제조한다.
-             나머지 절반은 그 뒤에 온다.
-             연구원이 실험 결과를 자연어로 적어 넣으면, AI가 수치를 판독하고 규칙이 규격 이탈을
-             판정한 뒤, <b>다음에 무슨 실험을 해야 하는지 AI가 지시한다.</b> 사람은 판단의 병목이
-             아니라 벤치에서 그 실험을 수행하는 쪽으로 들어온다 —
-             <b>lab-in-the-loop</b> 구조다.`,
-      art: `
-        <div class="f1-arch f1-seq">
-          <div class="f1-io">연구원이 쓴 실험 노트 (자연어)</div>
-          <div class="f1-flowmark">▼</div>
-          <div class="f1-tier">
-            <header><span>① 판독</span><span>LLM</span></header>
-            <div class="f1-box f1-llm"><b>문장에서 측정값만 옮긴다</b>
-              <span>"30분 용출 62%, 경도 38N, 불순물 0.9%, 표면 갈변"
-                → dissolution=62 · hardness=38 · impurity=0.9 + 관찰 1건.
-                <b>없는 값은 지어내지 않는다</b> — 못 읽은 표현은 못 읽었다고 표시한다.</span></div>
-          </div>
-          <div class="f1-flowmark">▼</div>
-          <div class="f1-tier">
-            <header><span>② 판정</span><span>결정론 규칙</span></header>
-            <div class="f1-box f1-det"><b>규격 이탈 계산 — 같은 데이터면 같은 결과</b>
-              <span>용출 62% &lt; 80% 이탈 · 경도 38N &lt; 40N 이탈 …
-                규칙표가 이탈마다 원인 해석과 재설계 방향을 함께 갖고 있다.</span></div>
-          </div>
-          <div class="f1-flowmark">▼</div>
-          <div class="f1-tier">
-            <header><span>③ 지시</span><span>LLM + 확인시험 마스터 66종</span></header>
-            <div class="f1-cols c2">
-              <div class="f1-box f1-llm"><b>가설</b>
-                <span>이번 결과를 설명하는 인과를 세운다</span></div>
-              <div class="f1-box f1-det"><b>후보는 실제 66종뿐</b>
-                <span>AI는 그 안에서 고를 뿐 시험을 발명하지 못한다.
-                  목록 밖 test_id는 화면에 나가기 전에 버려진다.</span></div>
-            </div>
-            <div class="f1-sub">
-              <div class="f1-pill-sm">1 · T_DISS_PROFILE — 용출 프로파일 <b>근거 FDA</b></div>
-              <div class="f1-pill-sm">2 · T_M9_DISS — 비교용출 <b>근거 ICH M9 3.2</b></div>
-              <div class="f1-pill-sm">3 · T_FORCED — 강제분해 <b>근거 ICH Q14/Q2</b></div>
-            </div>
-          </div>
-          <div class="f1-flowmark">▼</div>
-          <div class="f1-io win">사람이 벤치에서 수행 → 결과를 다시 넣는다 (루프)</div>
-        </div>`,
-      note: `설계 루프와 <b>역할 분담이 똑같다.</b> 창의(판독·가설·시험 선정)는 AI가, 판정(규격 이탈)은
-             규칙이 맡는다. 그리고 지시의 후보를 실제 확인시험 마스터로 묶어 두었기 때문에,
-             모든 "다음 실험"에는 ICH·USP·FDA 출처가 붙는다 — 지어낸 실험을 지시할 수 없다.`,
-    },
-
-    {
-      nav: "실패해도 바로 안 고친다",
-      kicker: "Lab-in-the-loop v1.0 · 장기 실행 작업함",
-      title: "첫 실패에서는 처방을 바꾸지 않는다",
-      lead: `실제 실험은 하루 만에 안 끝난다. 배치를 만들고, 시험하고, 결과를 확인하고, 필요하면
-             추가 시험까지 하는 데 며칠에서 몇 주가 걸린다. 그사이 서버가 재시작되거나 브라우저를
-             닫아도 <b>"다음에 뭘 해야 하는지"는 그대로 남아 있어야 한다</b> — 그래서 승인·배치·
-             결과·진단을 프로세스 메모리가 아니라 DB에 하나씩 기록하고, 그때그때 필요한 사람의
-             결정을 기다리는 <b>장기 실행 작업함</b>을 추가했다. 그리고 이 작업함이 지키는 규칙이
-             하나 있다 — <b>용출이 미달했다고 해서 그 자리에서 처방을 고치지 않는다.</b> 용출
-             미달은 원인이 여러 개일 수 있는 증상이지, 원인 자체가 아니기 때문이다.`,
-      art: `
-        <div class="f1-arch f1-seq">
-          <div class="f1-io">연구자 승인 → 배치 제조(벤치) → 결과 제출(원자료 · 수치 · 관찰)</div>
-          <div class="f1-flowmark">▼ 사람이 원자료와 대조해 확정하기 전에는 판정에 쓰지 않는다</div>
-          <div class="f1-tier">
-            <header><span>① 결과 확인</span><span>연구자</span></header>
-            <div class="f1-box"><b>AI가 옮긴 값을 사람이 원자료와 대조</b>
-              <span>확정 전 상태는 "AI가 제안한 값"일 뿐, 규격 판정에 들어가지 않는다</span></div>
-          </div>
-          <div class="f1-flowmark">▼</div>
-          <div class="f1-tier">
-            <header><span>② 규격 판정</span><span>결정론 · Candidate Spec Engine</span></header>
-            <div class="f1-box f1-det"><b>후보 전용 규격과 비교</b>
-              <span>예) 30분 용출 58% — 이 후보에 지정된 목표(예: 80% 이상)에 못 미침 → 이탈</span></div>
-          </div>
-          <div class="f1-flowmark">▼ 이탈 발생 — 곧장 재설계로 가지 않는다</div>
-          <div class="f1-tier">
-            <header><span>③ 진단</span><span>AI · 경쟁 가설 최대 3개</span></header>
-            <div class="f1-box f1-llm"><b>"왜 미달했는가"의 후보를 나열한다</b>
-              <span>예) 결합제 점도 과다로 방출 억제 / 붕해 지연 / 입도 문제 —
-                <b>확정이 아니라 구별해야 할 후보들</b></span></div>
-            <div class="f1-box f1-det"><b>가설마다 구별시험을 붙인다</b>
-              <span>확인시험 마스터 66종 밖의 시험은 제안할 수 없다 — 9장과 같은 제약</span></div>
-          </div>
-          <div class="f1-flowmark">▼ 연구자가 시험을 승인 → 벤치에서 수행 → 결과를 다시 확인</div>
-          <div class="f1-tier">
-            <header><span>④ 원인 확정</span><span>연구자 + 확인시험 결과</span></header>
-            <div class="f1-box"><b>구별시험이 하나의 가설을 지지할 때만 "원인"이 된다</b>
-              <span>확정 전까지는 어느 가설도 처방을 바꿀 권한이 없다</span></div>
-          </div>
-          <div class="f1-flowmark">▼</div>
-          <div class="f1-io win">자식 후보 생성 (v1 → v2, 부모는 그대로 보존) →
-            규칙 게이트 · 근거 게이트 전체를 처음부터 다시 통과해야 한다</div>
-        </div>`,
-      note: `<b>기존 후보를 고치는 게 아니라 새 버전을 만든다.</b> v1은 "왜 실패했는지" 그대로 남아 있는
-             기록이고, v2는 그 원인 하나만 반영한 별도 후보다. 그리고 v2라고 특별 취급하지 않는다
-             — 배합금기 게이트도, 근거 충족 게이트도 처음 설계된 후보와 똑같이 처음부터 다시 돈다.
-             승인·배치 등록·결과 확정·원인 확정은 전부 사람이 누르는 버튼이고, 시스템이 대신
-             넘어가는 단계는 하나도 없다.`,
+      note: `그래서 <b>Lab-in-the-loop이라는 이름이 가리키는 대상이 바뀌었다.</b> v2에서는
+             "배치를 만들고 실험 결과를 읽어 다음 실험을 지시하는" 사후 루프였다면, v3에서는
+             "값을 몰라도 후보부터 내고, 전략이 갈리는 지점의 값만 되묻는" 설계 이전 루프다
+             — 다음 장에서 그 루프를 직접 본다. 같은 이름 아래 있던 이전 기능이 궁금하면
+             화면 URL에 <span class="f1-mono">?guide=</span> 대신 코드의 주석 처리된 블록을
+             직접 열어 보면 그대로 남아 있다.`,
     },
 
     {
@@ -617,9 +536,10 @@
   const CTA = `
     <div class="f1-cta">
       <p><b>이제 직접 돌려 보세요.</b> 입력줄 아래 <b>시연 시나리오</b> 버튼이 각각 다른 경로를
-        밟습니다 — 규칙이 제약을 반려하는 경우, 인구군에 따라 심사관이 바뀌는 경우 등.<br>
+        밟습니다 — 규칙이 제약을 반려하는 경우, 인구군에 따라 심사관이 바뀌는 경우, 값을 몰라도
+        후보부터 나오고 갈리는 지점만 되묻는 경우 등.<br>
         트레이스의 규칙 발동을 클릭하면 <b>원본 CSV 행과 출처 문헌</b>이 열리고,
-        오른쪽 <b>Lab-in-the-loop</b>에 실험 결과를 자연어로 넣으면 다음 실험을 지시합니다.</p>
+        가운데 <b>데이터 요청</b> 패널에 수치를 넣고 제출하면 그 자리에서 신뢰도를 다시 계산합니다.</p>
       <button type="button" id="guide-finish">설명 닫고 실행하기 →</button>
     </div>`;
 

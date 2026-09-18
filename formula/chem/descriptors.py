@@ -31,6 +31,10 @@ _DISPATCH: Dict[str, tuple[str, Callable[[Chem.Mol], Any]]] = {
     # CalcCrippenDescriptors는 (logP, MR) 2-tuple을 돌려준다 — MR은 두 번째 원소
     "DSC008": ("molar_refractivity", lambda m: rdMolDescriptors.CalcCrippenDescriptors(m)[1]),
     "DSC009": ("primary_amine_fragments", Descriptors.fr_NH2),
+    # v3 derived_quantities.csv(DQ011, ESOL)가 쓰는 항 — RDKit에 기성 함수가 없어 직접 계산한다.
+    "DSC010": ("aromatic_proportion",
+              lambda m: (sum(1 for a in m.GetAtoms() if a.GetIsAromatic())
+                        / max(m.GetNumHeavyAtoms(), 1))),
 }
 
 DEFAULT_CSV = "database/00_master/rdkit_descriptor_definitions.csv"

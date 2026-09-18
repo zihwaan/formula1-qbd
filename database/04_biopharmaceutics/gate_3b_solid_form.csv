@@ -1,0 +1,8 @@
+rule_id,condition_expression,assign,action,rationale,source_citation,verification_status,seed_review_status,notes
+G3B001,ionizable == False,"solid_form_zone=non_ionizable;solid_form_options=cocrystal|amorphous",ALLOW,이온화 가능기가 없으면 염 형성 경로는 닫힌다,Serajuddin 2007 Adv Drug Deliv Rev 59:603,VERIFIED_SECONDARY,pending_team_review,
+G3B002,delta_pka is not None and delta_pka > 4,solid_form_zone=salt_likely,ALLOW,CSD 6465건 분석에서 ΔpKa > 4는 거의 항상 염,Cruz-Cabeza 2012 CrystEngComm 14:6362,VERIFIED_SECONDARY,pending_team_review,원 알고리즘 md의 ≥3 기준을 원문 값으로 정정
+G3B003,delta_pka is not None and delta_pka >= -1 and delta_pka <= 4,solid_form_zone=continuum,REVIEWER_FLAG,−1~4 구간은 염/공결정이 연속적으로 섞임(프로톤 이동 확률이 ΔpKa에 선형 비례),Cruz-Cabeza 2012,VERIFIED_SECONDARY,pending_team_review,REV007 소집 신호
+G3B004,delta_pka is not None and delta_pka < -1,solid_form_zone=cocrystal_likely,ALLOW,ΔpKa < −1은 거의 항상 공결정(비이온화),Cruz-Cabeza 2012,VERIFIED_SECONDARY,pending_team_review,
+G3B005,ionizable == True and delta_pka is None,solid_form_zone=undetermined,ALLOW,짝이온(counterion) pKa 미지정 → 판정 보류,—,VERIFIED_PRIMARY,pending_team_review,논리 규칙
+G3B006,is_salt == True,salt_stability_watch=True,REVIEWER_FLAG,"염 형태는 미세환경 pH가 pHmax를 넘으면 불균등화(disproportionation) 위험. 약염기 염의 pHmax = pKa + log(S0/Ssalt) < pKa",Serajuddin 2007,VERIFIED_SECONDARY,pending_team_review,수치 역치 없이 경고만(advisory)
+G3B007,true,polymorph_control_note=ICH_Q6A_DT4,ALLOW,다형 조사와 규격 설정 필요성 판단은 ICH Q6A Decision Tree #4를 따른다,ICH Q6A (1999) Decision Tree #4,VERIFIED_PRIMARY,pending_team_review,DT#4는 다형(polymorphism) 관리 결정트리이며 염 선택 기준은 아님

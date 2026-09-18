@@ -194,6 +194,13 @@ class Recipe(BaseModel):
     strategy: str = ""  # 이 후보를 만든 설계 전략 (DC / WG / 가용화 …)
     rationale: str = ""  # 설계 에이전트의 근거 서술
 
+    # ── v3 — 후보 신뢰도 태그 (Formula1_v3/IMPLEMENTATION_GUIDE.md §4.2) ─────
+    # confidence는 계산값이지 LLM 판단이 아니다: pending_refinements가 비어 있으면
+    # grounded, 하나라도 있으면 provisional이다(불변식 I-10). LLM은 이 필드를
+    # 직접 쓰지 않는다 — DRQ_REFINE 노드가 data_request_triggers.csv 평가 결과로 채운다.
+    confidence: str = "grounded"  # "grounded" | "provisional"
+    pending_refinements: List[str] = Field(default_factory=list)  # DRQ_### id 목록
+
     # --- 체커가 사용하는 조회 헬퍼 ---
     def ingredient_names(self) -> set[str]:
         return {ing.name for ing in self.ingredients}
@@ -548,6 +555,9 @@ class EventKind(str, Enum):
     ERROR = "error"
     PREDICTIONS = "predictions"
     LITERATURE = "literature"
+    # v3 — 페이즈 게이트(BCS/DCS·고체상·가용화 전략)와 lab-in-the-loop 데이터 요청
+    PHASE_GATE = "phase.gate"
+    DATA_REQUEST = "data.request"
 
 
 class TraceEvent(BaseModel):
@@ -559,6 +569,26 @@ class TraceEvent(BaseModel):
     node: str  # "gate" | "judge:REV001" | "generator:B" ...
     kind: EventKind
     payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# v3 — 데이터 요청 (Formula1_v3/IMPLEMENTATION_GUIDE.md §2.3·§3.3)
+#
+# "차단하지 않는 lab-in-the-loop": RDKit이 계산 못 하는 값이 전략을 실제로 좁히는
+# 지점에서만 구체적인 측정을 요청한다. 요청은 그래프를 절대 멈추지 않는다(불변식 I-9) —
+# 지금 아는 것으로 최선의 후보를 먼저 내고, 값이 오면 다음 턴에 좁힌다.
+# ---------------------------------------------------------------------------
+class PendingRequest(BaseModel):
+    """`data_request_triggers.csv` 한 행이 지금 유효할 때 만들어지는 요청 1건."""
+
+    trigger_id: str
+    urgency: str  # "narrows_strategy" | "refines_confidence"
+    measurement_ids: List[str] = Field(default_factory=list)  # measurement_catalog.csv 참조
+    result_keys: List[str] = Field(default_factory=list)  # 화면 입력 필드가 채울 ctx 키
+    label: str = ""
+    why: str = ""
+    fallback: str = ""  # 거절해도 무엇으로 계속하는지(fallback_if_declined)
+    strategy: str = ""  # refines_confidence일 때만 — 어느 후보에 붙는 요청인지
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,8 @@ Formula 1 is a QbD (Quality-by-Design) validation engine for pharmaceutical **fo
 
 **There are two deterministic gates, and conflating them is the mistake to avoid.** `gate` (rulebook) asks *is there a contraindication in what we know*; `evidence` (`formula/evidence/`) asks *do we know enough to execute this strategy at all*. A rulebook pass means "no explicit violation found", not "safe" — a novel API often has no data, so nothing fires. The evidence gate therefore holds execution (draft, not executable) instead of rejecting, and asks for the confirmation tests that would settle it. Rejection authority stays with the rulebook; hold authority is the evidence gate's.
 
+**As of 2026-09-18 the evidence gate and everything downstream of it (approval, batch, lifecycle) is commented out, not deleted** — see "v3 phase-gate pivot" below. The paragraph above still describes what that code does and the invariant it enforces; it's just not wired into the live graph right now. What *is* live in its place is `formula/biopharm/` (phase gates before generation) plus a non-blocking data-request pattern — read that section before touching anything in this area, since "evidence" and "phase gate" are easy to conflate and they answer different questions (evidence: can we execute this *specific candidate's protocol*; phase gate: what *strategies* should even be generated).
+
 The README.md (Korean) is the authoritative design doc — update it in the same commit when the design story changes. (An older revision of this file called the LangGraph/judge layer "roadmap, not built"; it has been built and is what the live pod runs.)
 
 ## Commands
@@ -236,6 +238,13 @@ theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one ser
 
 ## Lab-in-the-loop v1.0 — the long-running state machine (`formula/lifecycle/`)
 
+**⚠️ Commented out as of 2026-09-18, not deleted — see "v3 phase-gate pivot" below.** Everything
+in this section describes real, working code that the live pod does *not* currently run. It's kept
+here (rather than deleted) because the wiring described below — `/api/projects/*`,
+`_drive_execution()`'s `lifecycle().sync_design(...)` call, `create_run`/`get_run`'s lifecycle
+lookups — still exists in `web/server.py`, just commented out line-range by line-range so it can be
+restored without re-deriving it.
+
 Everything above this line is a **single design run**: one `Run` object, one LangGraph execution, one process's memory, done in seconds to a couple of minutes. Real formulation development is not — approval, batch manufacture, results, and diagnosis are spread over days to weeks, and the thing that remembers "what phase this project is in and whose turn it is" has to outlive the process. `formula/lifecycle/` is that layer. It sits **on top of** `Run`/`graph.py`, not instead of it: a design run still produces candidates + gate results + an evidence assessment exactly as before, and `LifecycleService.sync_design()` is what promotes that one-shot output into a durable `ProjectState`.
 
 - **`models.py`** — `WorkflowStatus` (17 values — `DESIGNING` … `COMPLETED`/`ESCALATED`/`INFEASIBLE`), `EventEnvelope` (the only shape written to the event log — `event_type`, `idempotency_key`, `created_by`), `ProjectState` (candidates/protocols/batches/results/diagnoses keyed by id, plus four **separate** loop counters — `rule_revision_attempt`, `evidence_round`, `lab_iteration`, `diagnostic_round` — never a single shared counter, so a wall of rule failures doesn't get confused with a wall of diagnostic rounds in the escalation reason).
@@ -249,6 +258,115 @@ Everything above this line is a **single design run**: one `Run` object, one Lan
 **Known simplification — read this before "fixing" `confirm_cause`:** creating and re-validating the child candidate needs the *original* `FormulationSpec` and generator context, which lives on the in-memory `Run` object (`RUNS[run_id]`), not in `ProjectState`. If the pod restarted between design and root-cause confirmation, `confirm_project_cause` finds no `execution` in `RUNS` and — correctly — does **not** guess; it returns the persisted `REFLECTING` state with the child candidate stuck at `AWAITING_REGENERATION` and lets a human decide (see the comment in that handler). It does **not** currently auto-resume by starting a fresh design run — that would silently discard the parent/child lineage and `RevisionDirective`. Fixing this for real means persisting enough of `FormulationSpec` into `ProjectState` to reconstruct a `Run`, which hasn't been done.
 
 **Known simplification — `backtrack_target`:** `confirm_cause(..., backtrack_target=...)` accepts a phase name (`PHASE_6_PROCESS` is the default) and records it on the `RevisionDirective`, but nothing currently *routes* on it — every confirmed cause takes the same path (`Run.regenerate_child()` → `generator.generate()` with the confirmed cause as free-text instruction → full rulebook + evidence gate re-run). The README's Phase-addressed Backtrack Router (different confirmed-cause categories returning to different design phases — Gate 3A vs. Phase 6 vs. Phase 4) is not implemented; today "backtracking" always means "regenerate this one candidate and re-validate everything," which covers the MVP scope (1–2 ingredient/process-variable changes per revision) but not a genuinely different re-entry point.
+
+## v3 phase-gate pivot (2026-09-18) — what changed and what's now commented out
+
+A second design document (`Formula1_v3/IMPLEMENTATION_GUIDE.md`, not in this repo — it's the
+reference spec, delivered as a zip) redefined this system's output boundary as **"candidate
+formulation list"** — no executable protocols, no approval workflow, no batch feedback loop. It
+also specifies a phase-gate layer (BCS/DCS classification, solid-form, enabling-strategy, ASD
+process) that runs *before* candidate generation, plus a lab-in-the-loop pattern built around
+non-blocking data requests rather than the pre-experiment/post-batch dual loop above. Implemented
+literally per that spec, with everything it supersedes commented out rather than deleted.
+
+- **New package `formula/biopharm/`** — `derived.py` (`compute_derived_quantities`: fixed-point
+  iteration over `database/00_master/derived_quantities.csv`, because derived values can depend on
+  other derived values and CSV row order doesn't guarantee an evaluation order — §8.1 of the guide
+  calls this out explicitly as a repeat of the same mistake in a different place if you let code
+  order stand in for a data dependency), `gates.py` (`run_biopharm_gates`: runs Gate
+  3A → 3B → 4 → 4B in that order against the four new `database/04_biopharmaceutics/gate_*.csv`
+  files — G4 reads G3A's `dcs_subclass`, G4B reads G4's `sig_enabling_required`, so the order is
+  load-bearing), `triggers.py` (`evaluate_triggers`: reads
+  `database/reference/data_request_triggers.csv`, split by `urgency` into `narrows_strategy`
+  — evaluated once per spec, before generation — and `refines_confidence` — evaluated once per
+  passed candidate), `seed.py` (see the NameError trap below).
+- **New package `formula/planner/`** — `strategy_planner.py` reads
+  `database/06_config/strategy_families.csv` and scores candidate strategies against the phase-gate
+  signals (`applies_when` + `score_expression`, both evaluated through the existing restricted-eval
+  machinery in `formula/checkers/applies_when.py`). Replaces the old `generator.plan_strategies()`
+  shallow heuristic ("BCS class II/IV → add one solubilization strategy") as the primary path;
+  that heuristic is kept as the fallback when the planner returns nothing (no strategy scores above
+  `min_score_to_generate` — data gap, not a bug) so a design run never dies with zero candidates.
+- **The single most important bug this surfaced:** CSV condition expressions like
+  `"tm_c is None"` treat an *unknown value* as the condition itself. If `tm_c` was never written to
+  the eval context at all (not even as `None`), `eval("tm_c is None", ...)` doesn't evaluate to
+  `True` — it raises `NameError`, and `formula.checkers.applies_when.evaluate()`'s fail-closed
+  design (by necessity — these expressions come from CSV rows, not code) swallows *any* exception
+  as "rule didn't fire." So a condition designed to mean "we don't know this yet" was silently
+  reading as "condition is false" instead, and gates that should fire on a cold-start (nothing
+  measured) scenario were staying dark. `formula/biopharm/seed.py`'s `seed_known_keys()` fixes this
+  by pre-populating every variable name any v3 CSV might reference (unioned from
+  `measurement_catalog.csv` output fields, `derived_quantities.csv` provides, and all four gate
+  CSVs' assign keys) as `None` before any gate runs — never overwriting a real value, only filling
+  the "name exists, value unknown" gap. Verified against the guide's own X1 documented scenario
+  (real RDKit descriptors for ibuprofen, `dose_mg=200` supplied): before the fix, 2 gate signals
+  fired and the planner returned nothing; after, 5 signals fired and the planner produced
+  `MICRO(3.0) + ASD_SDD(2.0)` — matching the guide's worked example almost exactly. Pinned by
+  `tests/test_biopharm_v3.py::test_unseeded_ctx_reproduces_the_namerror_swallow_bug` and the
+  `known_keys` coverage test — if a future CSV schema change adds a new "X is None"-style variable
+  that isn't sourced from one of those three files, this is the class of bug that will recur.
+- **`node_phase_gates`** (`formula/orchestrator/graph.py`, replaces the old `node_route`) runs
+  between `intake` and `generate`: seeds the eval context, computes derived quantities, runs the
+  existing route-probe decision tree (kept — G6R process routing is unchanged), runs the four
+  biopharm gates, evaluates `narrows_strategy` triggers, then calls the strategy planner. Emits a
+  `PHASE_GATE` event per fired gate signal and a `DATA_REQUEST` event for the narrows-strategy
+  batch (payload has no `candidate_id` — it's a spec-level request, not per-candidate; the frontend
+  renders it once at `run.end` via `summary.pending_requests`, not inline).
+- **`node_drq_refine`** (replaces `node_evidence` in the graph wiring — `node_evidence` itself is
+  still fully defined in `graph.py`, just not registered as a node or reachable by any edge) runs
+  after `gate`, before `summon`: for each candidate that passed the rulebook, evaluates
+  `refines_confidence` triggers and sets `recipe.confidence` (`"grounded"` iff
+  `pending_refinements == []`, invariant I-10) and `recipe.pending_refinements` in place. **Never
+  rejects** — a low-confidence candidate still goes to judging and consensus; confidence is a label
+  on the output, not a gate.
+- **`Run.reassess_with_measurements()`** (`formula/orchestrator/runner.py`) implements the guide's
+  §4.1 "recompute pattern, not true LangGraph interrupt": when new measurements arrive via
+  `POST /api/runs/{id}/measurements`, it does **not** re-run the graph. It recomputes the
+  phase-gate context, re-plans strategies, and compares the new `plan_signature` (sorted, joined
+  strategy codes) against the previous round's. Same signature → refresh confidence tags only, zero
+  LLM calls. Different signature → regenerate candidates from `generator.generate()` for the new
+  strategy set and rebuild consensus. Verified live end-to-end against the pod image (real ibuprofen
+  run, real Groq calls): submitting `tm_c`/`crystalline_form_id`/`water_content_percent` dropped
+  `pending_requests` from 3 to 1 with `regenerated: false` — the plan signature (`ASD_SDD|MICRO`)
+  didn't change, so only the confidence tags were refreshed.
+- **What got commented out, not deleted, in `web/server.py`:** the entire `/api/projects/*`
+  cluster, the evidence/wetlab cluster (`GET /api/runs/{id}/evidence`,
+  `POST /api/runs/{id}/confirmation`, `POST /api/runs/{id}/approve`, `POST /api/runs/{id}/wetlab`),
+  `_drive_execution()`'s `lifecycle().sync_design(...)` call, and `create_run`/`get_run`'s
+  lifecycle store lookups. `create_run`'s response no longer has `project_id` — just `{run_id,
+  accepted_inputs, rejected_inputs}`. New: `POST /api/runs/{id}/measurements`
+  (`MeasurementsRequest`), which is the only new endpoint.
+- **Frontend (`web/static/`):** the old `#evidence`/`.workflow`/`.labloop` markup and the
+  ~200-line dead JS block behind it (`WL_EXAMPLE`, `workflowKey/workflowCall/loadWorkflow`,
+  `$("wl-example").onclick`, `$("wf-refresh").onclick`) were **top-level statements that bind to
+  DOM elements** — removing the elements without removing these would have thrown at script-parse
+  time and broken the entire live site (`app.js` fails top-to-bottom on first uncaught error, so a
+  dead reference near the top kills every render function below it, including ones unrelated to
+  lab-in-the-loop). Replaced with `#drq`/`renderDataRequests()` — numeric inputs per pending
+  `result_key`, a submit button that posts to `/api/runs/{id}/measurements` and re-renders in
+  place, and a skip button. `renderEvidence()`/`renderWetlab()`/`submitConfirmation()`/
+  `approveProtocol()` are left defined (their event listener cases — `case "evidence"`,
+  `case "wetlab"` — are technically still wired in the SSE switch) but are dead code in practice:
+  nothing server-side emits those event kinds anymore, so they're unreachable, not commented out.
+  **Also fixed, found only by grepping for every removed element/function name across the whole
+  file:** a stale `localStorage.getItem("f1:last_project")` check in `init()` that would call the
+  now-nonexistent `loadWorkflow()` for any *returning visitor* who'd used the site before this
+  deploy — invisible to a fresh-browser/incognito test, would have thrown `ReferenceError` on page
+  load for exactly the users least likely to report it. Fixed by removing the stale key instead.
+- **New tests:** `tests/test_biopharm_v3.py` (14 tests — `seed_known_keys` coverage and the
+  NameError-swallow regression above, fixed-point derivation correctness and the
+  measured-value-never-overwritten invariant, gate firing, planner non-emptiness and exception
+  isolation, invariants I-9/I-11/I-12 for data requests). Full suite: 142/142 passing
+  (128 pre-existing + 14 new).
+- **Demo scenario 3 (`web/static/app.js` `SCENARIOS[2]`, id `"labloop"`)** rewritten around the new
+  behavior, and its click handler now pre-fills `#inputs-body input[data-key="dose_mg"]` before
+  starting the run (`scenario.measuredParams`). This isn't cosmetic: `node_phase_gates` can't
+  derive `dose_solubility_volume`/`dose_solubility_volume_fassif` (needed for most G3A conditions)
+  without `dose_mg`, and without those, the ibuprofen scenario produces **zero** narrows-strategy
+  data requests — the `#drq` panel the scenario exists to demonstrate would just never appear.
+  Caught by `tests/browser/scenarios.mjs` (also rewritten for the new assertions) actually failing
+  against the live-image smoke test before the fix, not by inspection — re-run that script after
+  touching `SCENARIOS` or the phase-gate CSVs, same rule as every other scenario in this file.
 
 ## Robin-informed prompt audit (2026-09-16) — what was actually read and applied
 
@@ -399,15 +517,22 @@ read about it. Keep them in sync with the graph — they are the demo.
 - **`SCENARIOS`** — three cards that **run on click** (no separate 실행 press). Each one was
   executed and kept for the path it actually takes: `guardrail` (pinned lactose → INC002 →
   `infeasible` verdict, ~5s), `team` (pediatric → REV001 summoned, others not), `labloop`
-  (light design run, then auto-fills the lab note and submits, chaining into lab-in-the-loop).
+  (design run with `dose_mg=200` pre-filled → phase gates fire narrows-strategy requests →
+  `continueScenario()` auto-fills one and submits to `/api/runs/{id}/measurements`).
   If you change a request string, **re-run it** and confirm the claimed path still fires — a
   scenario that doesn't demonstrate what its card promises is worse than no scenario.
-  `labloop`'s request is deliberately cheap (`성인용 이부프로펜`): its point is the two loops, and
-  a request that summons 3–4 judges spends the whole free-tier budget on the design phase
-  (judges × candidates × 2 calls), which pushes the directive onto the rule-based path.
-  Since 2026-08-03 `continueScenario()` walks **both** loops in order — auto-fills the confirmation
-  results, approves, and only then submits the lab note. The order is the architectural claim
-  ("근거 먼저, 배치는 그다음"), so don't reorder it for speed.
+  `labloop`'s request is deliberately cheap (`성인용 이부프로펜`): its point is the phase-gate
+  data-request loop, and a request that summons 3–4 judges spends the whole free-tier budget on
+  the design phase (judges × candidates × 2 calls), which pushes the directive onto the
+  rule-based path. **`measuredParams: { dose_mg: 200 }` on the scenario object is load-bearing,
+  not decorative** — the click handler writes it into `#inputs-body input[data-key="dose_mg"]`
+  before calling `startRun()`, because without `dose_mg` the phase gates can't derive
+  `dose_solubility_volume`(`_fassif`) and the scenario produces zero narrows-strategy requests,
+  i.e. an empty `#drq` panel and nothing for `continueScenario()` to fill in. Since 2026-09-18
+  (v3 phase-gate pivot, see above) this scenario no longer walks the old confirmation/approval/
+  wetlab loop — that workflow is commented out. `tests/browser/scenarios.mjs` was rewritten to
+  match; its old assertions (`#wl-out`, `#wf-body`, "경쟁 원인 가설") targeted UI that no longer
+  exists and would fail against the current build.
 - **`narrateEvent()` → `narrate()`** — turns the event stream into ordered commentary. Every card
   carries the **owning layer** (`P3 · 룰북 결정론`, `P5 · 심사 LLM`, …) and a **`왜 중요한가`** line
   explaining why that layer exists. That pairing is the point: graph lighting alone doesn't tell

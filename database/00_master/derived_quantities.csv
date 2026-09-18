@@ -1,0 +1,24 @@
+quantity_id,stage,provides,expression,requires,unit,precedence,source_citation,verification_status,seed_review_status,notes
+DQC001,constant,storage_temp_c,25,,°C,1,ICH Q1A(R2) long-term 25 °C/60 %RH (climatic zone II),VERIFIED_PRIMARY,pending_team_review,zone IVb 시장이면 30으로 교체. 입력 storage_temp_c가 있으면 그 값이 우선
+DQC002,constant,bcs_volume_ml,250,,mL,1,ICH M9 (2019) high solubility 정의,VERIFIED_PRIMARY,pending_team_review,
+DQC003,constant,dcs_volume_ml,500,,mL,1,Butler & Dressman 2010 J Pharm Sci 99:4940,VERIFIED_SECONDARY,pending_team_review,
+DQC004,constant,peff_reference_cm_s,0.0001,,cm/s,1,Butler & Dressman 2010 (Peff > 1e-4 cm/s이면 유효 부피가 비례 증가한다고 가정),VERIFIED_SECONDARY,pending_team_review,
+DQC005,constant,pf_max_plausible,10,,-,1,팀 내부 잠정값,PROVISIONAL,pending_team_review,"자리표시값. 인체 공장 Peff 문헌 분포(예: Lennernäs 2007 Xenobiotica 리뷰)로 팀이 보정해야 함. 이 값만으로 HARD_FAIL 불가"
+DQ001,derive,dose_solubility_volume,dose_mg / solubility_mg_per_ml,dose_mg;solubility_mg_per_ml,mL,2,ICH M9 (2019),VERIFIED_PRIMARY,pending_team_review,"solubility_mg_per_ml = pH 1.2–6.8, 37 °C 중 최저값. 사용자가 dose_solubility_volume을 직접 넣었으면 그 값이 우선(precedence 1)"
+DQ002,derive,d0,dose_solubility_volume / bcs_volume_ml,dose_solubility_volume,-,3,Amidon et al. 1995 Pharm Res 12:413,VERIFIED_SECONDARY,pending_team_review,D0 ≤ 1 ⇔ dose_solubility_volume ≤ 250 mL (표시용)
+DQ003,derive,dose_solubility_volume_fassif,dose_mg / solubility_fassif_mg_per_ml,dose_mg;solubility_fassif_mg_per_ml,mL,2,Butler & Dressman 2010,VERIFIED_SECONDARY,pending_team_review,
+DQ004,derive,permeability_factor,"fmax(1.0, peff_human_cm_s / peff_reference_cm_s)",peff_human_cm_s,-,2,Butler & Dressman 2010,VERIFIED_SECONDARY,pending_team_review,"Caco-2 Papp→인체 Peff 환산값이면 예측값 지위(provenance=predicted)"
+DQ005,derive,slad_mg,solubility_fassif_mg_per_ml * dcs_volume_ml * permeability_factor,solubility_fassif_mg_per_ml;permeability_factor,mg,3,Butler & Dressman 2010,VERIFIED_SECONDARY,pending_team_review,"PF를 모르면 계산하지 않는다. PF=1로 채우면 IIa가 수학적으로 불가능해진다(가이드 §5.2 함정)"
+DQ006,derive,pf_required_for_iia,dose_mg / (solubility_fassif_mg_per_ml * dcs_volume_ml),dose_mg;solubility_fassif_mg_per_ml,-,3,Butler & Dressman 2010 식의 역산,VERIFIED_SECONDARY,pending_team_review,IIa가 되려면 필요한 최소 PF
+DQ007,derive,tg_est_c,(2.0/3.0) * (tm_c + 273.15) - 273.15,tm_c,°C,2,Kauzmann 1948 Chem Rev 43:219 (Tg/Tm ≈ 2/3 경험칙),PROVISIONAL,pending_team_review,경험적 상관. 화합물별 편차 큼 → 스크리닝 우선순위 용도로만
+DQ008,derive,tg_effective_c,tg_c,tg_c,°C,1,측정값,VERIFIED_PRIMARY,pending_team_review,실측 Tg가 있으면 추정보다 우선
+DQ009,derive,tg_effective_c,tg_est_c,tg_est_c,°C,2,DQ007,PROVISIONAL,pending_team_review,실측 Tg가 없을 때만
+DQ010,derive,tg_margin_k,tg_effective_c - storage_temp_c,tg_effective_c;storage_temp_c,K,3,Hancock Shamblin Zografi 1994 Pharm Res 11:471,VERIFIED_SECONDARY,pending_team_review,"원래 기준은 ASD 혼합물의 Tg(Tg,mix)다. API 단독 Tg로 판단하면 보수적(polymer의 antiplasticizing 효과 미반영)"
+DQ011,derive,logs_esol,0.16 - 0.63 * clogp - 0.0062 * molecular_weight + 0.066 * rotatable_bonds - 0.74 * aromatic_proportion,clogp;molecular_weight;rotatable_bonds;aromatic_proportion,log(mol/L),2,Delaney 2004 J Chem Inf Comput Sci 44:1000,VERIFIED_SECONDARY,pending_team_review,"원 논문은 Daylight ClogP 사용. RDKit Crippen logP로 대체하면 오차 증가 → 예측값 지위(confidence=low)"
+DQ012,derive,logs_gse,0.5 - 0.01 * (tm_c - 25) - clogp,tm_c;clogp,log(mol/L),2,Jain & Yalkowsky 2001 J Pharm Sci 90:234,VERIFIED_SECONDARY,pending_team_review,"Tm 실측이 있을 때만. logKow 실측이 있으면 clogp 대신 사용"
+DQ016,derive,logs_pred_min,"fmin(logs_esol, logs_gse)",logs_esol;logs_gse,log(mol/L),3,DQ011·DQ012의 보수적 결합,VERIFIED_PRIMARY,pending_team_review,"둘 다 있으면 최소값(더 낮은 용해도 쪽)을 취한다. 원문 근거가 있는 예측값만 결합 — SolTranNet·ADMET-AI 등 외부 모델은 v3에서 기본 의존성이 아니다(§4.4)"
+DQ017,derive,logs_pred_min,logs_esol,logs_esol,log(mol/L),4,DQ011 단독 사용(GSE는 Tm 필요),VERIFIED_PRIMARY,pending_team_review,Tm 미지 상태에서는 ESOL만 사용 가능
+DQ018,derive,logs_pred_min,logs_gse,logs_gse,log(mol/L),4,DQ012 단독 사용,VERIFIED_PRIMARY,pending_team_review,"이론상 ESOL이 항상 먼저 계산 가능하므로 실제로는 거의 발동하지 않는 방어적 규칙"
+DQ013,derive,solubility_est_mg_per_ml,(10 ** logs_pred_min) * molecular_weight,logs_pred_min;molecular_weight,mg/mL,5,단위 환산 (mol/L × g/mol = g/L = mg/mL),VERIFIED_PRIMARY,pending_team_review,logs_pred_min(ESOL·GSE 중 보수적값)에서 계산. RDKit + 폐쇄형 경험식만으로 산출되는 predicted 계층
+DQ014,derive,lipid_fill_g,dose_mg / lipid_solubility_mg_per_g,dose_mg;lipid_solubility_mg_per_g,g,2,단위 환산 (mg ÷ mg/g = g),VERIFIED_PRIMARY,pending_team_review,
+DQ015,derive,delta_pka,api_pka_base - counterion_pka,api_pka_base;counterion_pka,-,2,Cruz-Cabeza 2012 CrystEngComm 14:6362 (ΔpKa = pKa(염기의 짝산) − pKa(산)),VERIFIED_SECONDARY,pending_team_review,"산성 API는 delta_pka = counterion_pka(짝산) − api_pka_acid 로 별도 행 추가"

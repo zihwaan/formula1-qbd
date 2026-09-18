@@ -39,37 +39,29 @@ trace = await p.locator('#trace').textContent();
 ck('REV001(소아 안전) 소집', trace.includes('REV001'), '');
 ck('REV002~006 중 무관한 심사관은 소집 안 됨(고령자 REV006 미소집)', !trace.includes('REV006'), '');
 
-// ── 시나리오 2: 실행 전 근거 → 배치 → 다음 실험 (+ 장기 작업함) ──
-console.log('\n[시나리오 3 · 실행 전 근거 → 배치 → 다음 실험]');
+// ── 시나리오 2: 값을 몰라도 후보부터, 갈리는 지점만 되묻는다(v3 데이터 요청) ──
+console.log('\n[시나리오 3 · 값을 몰라도 후보부터, 갈리는 지점만 되묻는다]');
 await p.locator('.scenario').nth(2).click();
 await waitDone();
 await p.waitForTimeout(1500);
 
-// continueScenario()가 자동으로: 확인시험 제출 → 승인 → wetlab 제출을 순서대로 누른다.
-// wetlab 결과가 뜰 때까지 기다린다.
-await p.waitForFunction(() => {
-  const el = document.getElementById('wl-out');
-  return el && el.textContent.includes('다음 실험 지시');
-}, null, { timeout: 60000 }).catch(() => {});
-const wlText = await p.locator('#wl-out').textContent().catch(() => '');
-ck('구 wetlab 패널에 다음 실험 지시가 나온다', wlText.includes('다음 실험 지시'), '');
+// finishRun()이 renderDataRequests()로 #drq를 채우고, continueScenario()가 자동으로
+// 첫 숫자 필드에 예시값을 넣어 #drq-submit을 누른다 — 그래프는 다시 돌지 않는다.
+const drqVisible = await p.evaluate(() => !document.getElementById('drq').hidden);
+ck('데이터 요청 패널이 보인다(후보는 이미 나온 채로)', drqVisible);
+const reqCount = await p.locator('#drq-body .drq-req').count();
+ck('대기 중인 데이터 요청이 1건 이상 렌더된다', reqCount >= 1, `${reqCount}건`);
+const candsBeforeBadge = await p.locator('#cands .drq-badge').count();
+ck('후보 카드에 신뢰도 배지(grounded/provisional)가 보인다', candsBeforeBadge >= 1, `${candsBeforeBadge}개`);
 
-// 신규 장기 실행 작업함 — 배치 등록 → 결과 제출 → 확인 → 진단(경쟁 가설)까지 백그라운드로 이어진다.
+// 자동 제출 완료를 기다린다 — #drq-out에 재계산 결과 문구가 뜬다.
 await p.waitForFunction(() => {
-  const el = document.getElementById('wf-body');
-  return el && (el.textContent.includes('경쟁 원인 가설') || el.textContent.includes('DIAGNOSING')
-    || el.textContent.includes('실패 원인 진단 중'));
-}, null, { timeout: 90000 }).catch(() => {});
-const wfVisible = await p.evaluate(() => !document.getElementById('workflow').hidden);
-ck('장기 실행 작업함 패널이 보인다', wfVisible);
-const wfText = await p.locator('#wf-body').textContent().catch(() => '');
-console.log('    wf-body 요약:', wfText.replace(/\s+/g, ' ').slice(0, 220));
-const hasDiagnosis = wfText.includes('경쟁 원인 가설');
-ck('경쟁 원인 가설 카드가 보인다(진단까지 도달)', hasDiagnosis);
-if (hasDiagnosis) {
-  const hypoBlocks = await p.locator('#wf-body .wf-action').count();
-  ck('가설 카드가 1개 이상 렌더된다', hypoBlocks >= 1, `${hypoBlocks}개`);
-}
+  const el = document.getElementById('drq-out');
+  return el && el.textContent.includes('plan_signature');
+}, null, { timeout: 60000 }).catch(() => {});
+const drqOutText = await p.locator('#drq-out').textContent().catch(() => '');
+ck('예시값 제출 → 재계산 결과가 그 자리에 뜬다(그래프 재실행 없음)',
+  drqOutText.includes('전략') && drqOutText.includes('plan_signature'), drqOutText.slice(0, 160));
 
 console.log('\n[콘솔/페이지 오류]');
 ck('오류 0건', errs.length === 0, errs.slice(0, 5).join(' | '));

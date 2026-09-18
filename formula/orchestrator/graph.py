@@ -1,19 +1,31 @@
-"""LangGraph StateGraph — 설계 → 규칙 검증 → 근거 검증 → 심사 → 합의 → 반성 루프.
+"""LangGraph StateGraph — v3: 페이즈 게이트 → 설계 → 규칙 검증 → 데이터 요청 → 심사 → 합의.
 
-    intake ─→ route ─→ generate ──(Send ×N)──→ gate ─┬─(통과)→ evidence ─→ summon ──(Send ×M)──→ consensus ─→ END
-                          ↑                          │
-                          └──────── reflect ←────────┘ (HARD_FAIL, 최대 5회)
+    intake ─→ phase_gates ─→ generate ──(Send ×N)──→ gate ─┬─(통과)→ drq_refine ─→ summon ──(Send ×M)──→ consensus ─→ END
+                                ↑                          │
+                                └──────── reflect ←────────┘ (HARD_FAIL, 최대 5회)
 
-**게이트가 둘인 이유.** `gate`는 "지금 아는 정보 안에 금기·규제 위반이 있는가"를 묻고,
-`evidence`는 "금기가 없더라도 이 전략을 실행할 만큼 실제로 알고 있는가"를 묻는다. 룰북 통과는
-안전 확정이 아니라 *명시적 위반을 발견하지 못했다*는 뜻이고, 신약 API는 정보 자체가 없어서
-위반이 안 잡히는 경우가 많다. 그래서 근거 게이트는 후보를 반려하지 않고 **실행을 보류**한다 —
-반려 권한은 룰북에, 보류 권한은 근거 게이트에 둔다.
+Formula1_v3/IMPLEMENTATION_GUIDE.md를 그대로 배선한 것이다. **출력 경계가 후보 처방
+목록에서 끝난다** — `evidence`(근거 충족 게이트)·실행 가능 프로토콜·연구자 승인·배치
+피드백 루프는 이 그래프에서 더 이상 호출하지 않는다(§1 "여기서 끝난다"). 그 계층의
+코드(`formula/evidence/gate.py`, `formula/lifecycle/`)는 지우지 않고 그대로 남아 있다 —
+와이어링만 빠졌다. 되돌릴 필요가 생기면 `node_evidence`를 다시 그래프에 연결하면 된다.
+
+**`phase_gates`가 하는 일** (P0~P1~G3A~G3B~G4~G4B~G6R~DRQ_NARROW를 한 노드로 묶었다):
+RDKit이 계산 가능한 파생값(`derived_quantities.csv`)을 전부 채우고, BCS/DCS·고체상·
+가용화 전략·ASD 공정 신호(Gate 3A/3B/4/4B)를 순서대로 평가한 뒤, 판정이 실제로 갈리는
+지점에서만 구체적 실측을 요청한다(`data_request_triggers.csv`, urgency=narrows_strategy).
+**이 요청은 그래프를 절대 막지 않는다**(불변식 I-9) — `strategy_planner.plan()`은 요청
+결과와 무관하게 항상 진행한다.
+
+**`drq_refine`가 하는 일**(구 `evidence` 자리): 룰 게이트를 통과한 후보마다
+`data_request_triggers.csv`(urgency=refines_confidence)를 평가해 `pending_refinements`를
+채운다. 비어 있으면 `confidence="grounded"`, 하나라도 있으면 `"provisional"`이다
+(불변식 I-10 — LLM이 이 값을 직접 정하지 않는다).
 
 병렬 팬아웃은 LangGraph의 `Send`로 한다. 설계 후보 N개와 심사관 M명이 동시에 돌고,
 결과는 state의 reducer(operator.add)로 합쳐진다.
 
-**결정론 경계**: route/gate/evidence/consensus 노드는 순수 파이썬이다.
+**결정론 경계**: phase_gates/gate/drq_refine/consensus 노드는 순수 파이썬이다.
 LLM은 generate/judge/reflect에만 있다.
 """
 
@@ -27,11 +39,19 @@ from langgraph.types import Send
 
 from formula.agents import consensus as consensus_mod
 from formula.agents import generator, intake, judge, reflect
+from formula.biopharm import (
+    compute_derived_quantities,
+    evaluate_triggers,
+    run_biopharm_gates,
+    seed_known_keys,
+)
+from formula.checkers.applies_when import spec_context
 from formula.checkers.registry import RulebookRegistry
-from formula.contracts import EventKind, ProtocolReadiness, Recipe
+from formula.contracts import EventKind, ProtocolReadiness, Recipe  # noqa: F401 — evidence 노드가 여전히 참조(주석처리 보류)
 from formula.evidence.gate import EvidenceGate
 from formula.orchestrator.events import emit
 from formula.orchestrator.state import MAX_REFLECTION_LOOPS, FormulationState
+from formula.planner import strategy_planner
 
 
 def _public_derived(derived: Dict[str, Any]) -> Dict[str, Any]:
@@ -122,23 +142,72 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
                                 property_flags=state.get("property_flags"))
         return {"spec": spec, "api_profile": spec.api_profile}
 
-    # ── P1 · 공정 경로 분기 (결정론) ───────────────────────────────────
-    def node_route(state: FormulationState) -> Dict[str, Any]:
-        """후보를 만들기 전에 유동성 등급과 가능한 공정 경로를 먼저 확정한다.
+    # ── P0/P1/G3A/G3B/G4/G4B/G6R/DRQ_NARROW · 페이즈 게이트 (결정론) ───
+    def node_phase_gates(state: FormulationState) -> Dict[str, Any]:
+        """후보를 만들기 전에 파생값·BCS/DCS·고체상·가용화 신호·공정 경로를 확정한다.
 
-        아직 처방이 없으므로 빈 처방으로 경로 규칙만 돌린다 — 이 단계 규칙들은
-        API 물성만 보기 때문에 성분이 없어도 판정이 성립한다.
+        v3 IMPLEMENTATION_GUIDE.md §3~§5. 여기서 만든 ctx(phase_derived)는 이후
+        node_gate가 룰북을 돌릴 때도 시드로 넘어가므로, dose_solubility_volume 같은
+        파생값이 있으면 기존 bcs_classification 같은 규칙도 (실측 조건을 만족하는 한)
+        같은 세션에서 그대로 참조할 수 있다.
         """
-        emit("route", EventKind.NODE_ENTER)
+        emit("phase_gates", EventKind.NODE_ENTER)
         spec = state["spec"]
+        ctx: Dict[str, Any] = spec_context(spec, {})
+        # "tm_c is None" 같은 조건이 NameError로 조용히 죽지 않도록, 알려진 모든 변수
+        # 이름을 먼저 None으로 깔아 둔다 — formula/biopharm/seed.py의 함정 기록 참고.
+        seed_known_keys(ctx, base_dir)
+
+        # P1 — RDKit이 계산 가능한 파생값(D0·SLAD·Tg 여유·logS 등)을 전부 채운다.
+        compute_derived_quantities(ctx, base_dir)
+
+        # G6R — 기존 공정 경로 결정트리(유동성 등급 → DC/DG/WG)를 그대로 재사용한다.
+        # 아직 처방이 없으므로 빈 처방으로 경로 규칙만 돌린다.
         probe = Recipe(api_name=spec.api_name, candidate_id="__route_probe__")
-        # 성분이 아직 없으므로 API 물성만 보는 앞단(우선순위 ≤ 11)만 돌린다 —
-        # 배합금기·배합비 규칙을 빈 처방에 돌리는 낭비를 막는다.
-        result = registry.run(spec, probe, short_circuit=False, max_priority=11)
-        derived = _public_derived(result.derived)
-        strategies = generator.plan_strategies(spec, derived)
-        emit("route", EventKind.NODE_EXIT, derived=derived, strategies=strategies)
-        return {"strategies": strategies}
+        route_result = registry.run(spec, probe, short_circuit=False, derived=dict(ctx), max_priority=11)
+        ctx.update(_public_derived(route_result.derived))
+        # 유동성 데이터가 전혀 없으면 decision_tree 전략이 아무 행도 발동시키지 못해
+        # recommended_routes를 아예 안 남긴다 — strategy_families.csv의
+        # `'DC' in recommended_routes` 같은 멤버십 조건은 None에 대해선 예외가 난다.
+        # 빈 리스트로 두면 "권장 경로 없음"으로 정직하게 읽히고, 조건은 조용히 거짓이 된다.
+        ctx.setdefault("recommended_routes", [])
+        ctx.setdefault("excluded_routes", [])
+
+        # G3A → G3B → G4 → G4B — BCS/DCS·고체상·가용화 전략·ASD 공정 신호.
+        # bcs_class(실측 전용, 불변식 I-1)는 여기서 절대 쓰지 않는다 — bcs_solubility_provisional 등
+        # 전혀 다른 키에만 쓴다.
+        fired = run_biopharm_gates(ctx, base_dir)
+        for signal in fired:
+            emit("phase_gates", EventKind.PHASE_GATE, gate=signal["gate"], rule_id=signal["rule_id"],
+                 assigned=signal["assigned"], action=signal["action"], rationale=signal["rationale"],
+                 citation=signal["citation"])
+
+        # DRQ_NARROW — 전략을 좁히는 데 쓰일 실측 요청. **차단하지 않는다**(불변식 I-9) —
+        # plan()은 이 결과와 무관하게 항상 진행한다.
+        profile = state.get("api_profile")
+        flag_names = profile.flag_names() if profile else []
+        pending_narrow = evaluate_triggers(ctx, "narrows_strategy", base_dir, flags=flag_names)
+        emit("phase_gates", EventKind.DATA_REQUEST, urgency="narrows_strategy",
+             pending=[p.model_dump(mode="json") for p in pending_narrow])
+
+        # PLAN — strategy_families.csv 기반 채점. 아무 전략도 못 살아남으면(데이터 공백)
+        # 레거시 휴리스틱(BCS class 기반)으로 안전하게 물러난다 — 후보 0개로 죽지 않는다.
+        planned = strategy_planner.plan(ctx, base_dir)
+        if planned:
+            strategies = [p.strategy_code for p in planned]
+        else:
+            strategies = generator.plan_strategies(spec, ctx)
+        plan_sig = strategy_planner.signature(planned)
+
+        public_derived = _public_derived(ctx)
+        emit("phase_gates", EventKind.NODE_EXIT, derived=public_derived, strategies=strategies,
+             plan_signature=plan_sig, pending_narrow_count=len(pending_narrow))
+        return {
+            "strategies": strategies,
+            "phase_derived": public_derived,
+            "pending_narrow": [p.model_dump(mode="json") for p in pending_narrow],
+            "plan_signature": plan_sig,
+        }
 
     # ── P2 · 설계 후보 병렬 생성 (LLM) ─────────────────────────────────
     def fan_out_generators(state: FormulationState) -> List[Send]:
@@ -165,6 +234,11 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         emit("gate", EventKind.NODE_ENTER, candidates=len(state.get("candidates", [])))
         spec = state["spec"]
         results: List[Dict[str, Any]] = []
+        # phase_gates가 채운 D0·SLAD·bcs_solubility_provisional·dcs_* 등을 룰북 실행에도
+        # 시드로 넘긴다 — 실측 전용 규칙(bcs_classification 등)은 그대로 실측 조건에 묶여
+        # 있으므로 안전하게 섞일 수 있다(§8.1의 교훈: 파생값은 코드 순서가 아니라
+        # 데이터/상태로 전달해야 한다).
+        phase_derived = state.get("phase_derived") or {}
 
         for recipe in state.get("candidates", []):
             def on_verdict(verdict, candidate_id=recipe.candidate_id):
@@ -172,7 +246,8 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
                     emit("gate", EventKind.RULE_FIRED, candidate_id=candidate_id,
                          **verdict.model_dump(mode="json"))
 
-            gate = registry.run(spec, recipe, short_circuit=False, on_verdict=on_verdict)
+            gate = registry.run(spec, recipe, short_circuit=False, derived=dict(phase_derived),
+                                on_verdict=on_verdict)
             results.append({
                 "candidate_id": recipe.candidate_id,
                 "recipe": recipe,
@@ -224,11 +299,45 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
              assessed=len(assessments), blocked=len(blocked), readiness=readiness)
         return {"evidence": assessments, "readiness": readiness}
 
-    # ── 분기: 통과 후보가 있으면 근거 게이트로, 없으면 반성으로 ──────────
+    # ── DRQ_REFINE · 후보별 신뢰도 요청 (결정론) — v3에서 node_evidence를 대신한다 ──
+    def node_drq_refine(state: FormulationState) -> Dict[str, Any]:
+        """룰 게이트를 통과한 후보마다 "이 후보를 grounded로 부를 만큼 아는가"를 묻는다.
+
+        v3 IMPLEMENTATION_GUIDE.md §3.3·§4.2. 여기서도 **반려하지 않는다** — 근거가
+        없다는 것은 처방이 틀렸다는 뜻이 아니라 아직 확정적으로 말할 수 없다는 뜻이므로,
+        후보는 그대로 심사·합의로 보내고 confidence만 provisional로 표시한다.
+        """
+        emit("drq_refine", EventKind.NODE_ENTER)
+        phase_derived = dict(state.get("phase_derived") or {})
+        planned_by_code = {p.strategy_code: p for p in
+                           strategy_planner.plan(phase_derived, base_dir, max_strategies=99)}
+        profile = state.get("api_profile")
+        flag_names = profile.flag_names() if profile else []
+
+        for result in state.get("results", []):
+            if not result.get("passed"):
+                continue
+            recipe: Recipe = result["recipe"]
+            ctx = {**phase_derived, **(result.get("derived") or {})}
+            family = planned_by_code.get(recipe.strategy)
+            process_steps = family.process_steps if family else ([recipe.process] if recipe.process else [])
+            pending = evaluate_triggers(ctx, "refines_confidence", base_dir,
+                                        strategy=recipe.strategy, process_steps=process_steps,
+                                        flags=flag_names)
+            recipe.pending_refinements = [p.trigger_id for p in pending]
+            recipe.confidence = "grounded" if not pending else "provisional"
+            emit("drq_refine", EventKind.DATA_REQUEST, candidate_id=recipe.candidate_id,
+                 urgency="refines_confidence", confidence=recipe.confidence,
+                 pending=[p.model_dump(mode="json") for p in pending])
+
+        emit("drq_refine", EventKind.NODE_EXIT)
+        return {}
+
+    # ── 분기: 통과 후보가 있으면 신뢰도 요청으로, 없으면 반성으로 ────────
     def route_after_gate(state: FormulationState) -> str:
         results = state.get("results", [])
         if any(r["passed"] for r in results):
-            return "evidence"
+            return "drq_refine"
         failures = [v for r in results for v in r["verdicts"] if v.failed]
 
         # 사용자가 못 박은 성분 자체가 반려 사유라면 재설계로 풀릴 문제가 아니다.
@@ -284,19 +393,21 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         summary = consensus_mod.build_consensus(
             state.get("results", []), state.get("judge_verdicts", []), base_dir)
 
-        # 합의가 고르는 것은 **권고 후보**다. 실행 가능한 프로토콜인지는 근거 게이트가
-        # 따로 정하므로, 선정 결과에 그 상태를 함께 실어 보낸다.
-        assessment = (state.get("evidence") or {}).get(summary.get("winner"))
-        if assessment is not None:
-            summary["readiness"] = assessment.readiness.value
-            summary["evidence_summary"] = assessment.summary
-            summary["protocol"] = evidence_gate.protocol(assessment)
+        # v3: 출력 경계가 여기서 끝난다(§1) — 실행 가능 프로토콜 상태 대신 권고 후보의
+        # confidence 태그(grounded/provisional)와 남은 데이터 요청을 함께 낸다.
+        winner_result = next((r for r in state.get("results", [])
+                              if r.get("candidate_id") == summary.get("winner")), None)
+        if winner_result is not None:
+            winner_recipe: Recipe = winner_result["recipe"]
+            summary["confidence"] = winner_recipe.confidence
+            summary["pending_refinements"] = winner_recipe.pending_refinements
 
         emit("consensus", EventKind.CONSENSUS, **summary)
         emit("consensus", EventKind.NODE_EXIT, winner=summary["winner"])
         return {"consensus": summary,
                 "final_candidate": summary["winner"],
-                "status": "passed" if summary["winner"] else "rejected"}
+                "status": "passed" if summary["winner"] else "rejected",
+                "pending_requests": state.get("pending_narrow", [])}
 
     # ── P7 · 반성 → 재설계 ────────────────────────────────────────────
     def node_reflect(state: FormulationState) -> Dict[str, Any]:
@@ -358,10 +469,12 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         return {"status": "infeasible"}
 
     # ── 그래프 조립 ────────────────────────────────────────────────────
+    # v3: node_evidence/evidence 엣지는 뺐다(§1 출력 경계) — 함수 자체는 위에 그대로
+    # 남겨 뒀다. 되돌리려면 아래 add_node/add_edge 두 줄만 evidence로 복구하면 된다.
     graph = StateGraph(FormulationState)
     for name, fn in [
-        ("intake", node_intake), ("route", node_route), ("generate", node_generate),
-        ("gate", node_gate), ("evidence", node_evidence),
+        ("intake", node_intake), ("phase_gates", node_phase_gates), ("generate", node_generate),
+        ("gate", node_gate), ("drq_refine", node_drq_refine),
         ("summon", node_summon), ("judge", node_judge),
         ("consensus", node_consensus), ("reflect", node_reflect),
         ("escalate", node_escalate), ("exhausted", node_exhausted),
@@ -370,12 +483,12 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         graph.add_node(name, fn)
 
     graph.add_edge(START, "intake")
-    graph.add_edge("intake", "route")
-    graph.add_conditional_edges("route", fan_out_generators, ["generate"])
+    graph.add_edge("intake", "phase_gates")
+    graph.add_conditional_edges("phase_gates", fan_out_generators, ["generate"])
     graph.add_edge("generate", "gate")
     graph.add_conditional_edges("gate", route_after_gate,
-                                ["evidence", "reflect", "escalate", "exhausted", "infeasible"])
-    graph.add_edge("evidence", "summon")
+                                ["drq_refine", "reflect", "escalate", "exhausted", "infeasible"])
+    graph.add_edge("drq_refine", "summon")
     graph.add_conditional_edges("summon", fan_out_judges, ["judge", "consensus"])
     graph.add_edge("judge", "consensus")
     graph.add_conditional_edges("reflect", fan_out_generators, ["generate"])

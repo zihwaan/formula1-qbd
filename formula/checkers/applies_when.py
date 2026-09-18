@@ -25,6 +25,11 @@ _SAFE_GLOBALS: Dict[str, Any] = {
     "all": all,
     "min": min,
     "max": max,
+    # v3 derived_quantities.csv의 expression 컬럼이 쓰는 이름(예: fmin(logs_esol, logs_gse)).
+    # math.fmin/fmax와 달리 None을 만나면 TypeError가 나야 한다 — evaluate_expression이
+    # "값 없음"을 그 예외로 감지해 해당 파생값 계산을 건너뛴다.
+    "fmin": min,
+    "fmax": max,
     "abs": abs,
     "float": float,
     "int": int,
@@ -114,6 +119,16 @@ def evaluate(expr: str, context: Dict[str, Any]) -> bool:
     except Exception:
         # 조건식 오류 시 보수적으로 발동시키지 않는다(관측 가능한 실패보다 스킵이 안전).
         return False
+
+
+def evaluate_expression(expr: str, context: Dict[str, Any]) -> Any:
+    """산술식을 평가해 값을 돌려준다(`evaluate`는 bool만 돌려준다 — 용도가 다르다).
+
+    `derived_quantities.csv`의 `expression` 컬럼용. 필요한 변수가 context에 없거나
+    None이면 예외가 나고, 호출부(`formula/biopharm/derived.py`)는 이를 "아직 계산할 수
+    없음"으로 해석해 조용히 건너뛴다 — 잘못된 기본값(0 등)을 넣지 않는다(fail-closed).
+    """
+    return eval(normalize_expression(expr), _SAFE_GLOBALS, context)  # noqa: S307
 
 
 def row_matches(row: Dict[str, Any], row_filter: Optional[str]) -> bool:

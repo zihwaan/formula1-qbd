@@ -1,0 +1,4 @@
+rule_id,condition_expression,assign,action,rationale,source_citation,verification_status,seed_review_status,notes
+G4B001,sig_enabling_required == True and tm_c is not None and tm_c < 180 and thermally_stable_near_tm == True,asd_process=HME,ALLOW,열안정·저융점이면 용매 없는 HME 가능(잔류용매 관리 불필요),Williams et al. 2013; 180 °C는 실무 경험칙,PROVISIONAL,pending_team_review,
+G4B002,sig_enabling_required == True and tm_c is not None and (tm_c >= 180 or thermally_stable_near_tm == False),asd_process=SDD,ALLOW,고융점 또는 열불안정이면 분무건조(SDD). 레시피의 process_steps에 spray_drying이 들어가면 ICH Q3C 잔류용매 규칙이 발동,Williams et al. 2013; ICH Q3C(R8),PROVISIONAL,pending_team_review,solvent_used는 여기서 세팅하지 않는다(후보별 has_step으로 판단)
+G4B003,sig_enabling_required == True and tm_c is None,asd_process=SDD;asd_process_basis=default_no_tm,REVIEWER_FLAG,Tm 없음 → 열 노출이 적은 SDD를 기본값으로 두고 근거 요청,팀 설계 결정,PROVISIONAL,pending_team_review,

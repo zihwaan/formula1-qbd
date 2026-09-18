@@ -47,6 +47,13 @@ groups:
     label: 생물약제학 (BCS)
     note: 두 값이 모두 있어야 BCS 등급이 **실측 기반**으로 확정된다. 추정으로는 확정하지 않는다(기준서 §13).
     fields:
+      - key: dose_mg
+        label: 1회 투여 용량
+        unit: mg
+        type: number
+        min: 0
+        placeholder: "예: 150"
+        unlocks: "v3 페이즈 게이트의 출발점(D0·SLAD·CD 몰비 등 거의 모든 파생값이 이 값부터 시작한다). 비우면 용량 기반 판정을 건너뛴다"
       - key: dose_solubility_volume
         label: 용량/용해도 부피
         unit: mL

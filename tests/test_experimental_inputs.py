@@ -76,6 +76,12 @@ def test_catalog_keys_are_used_by_rulebook_or_evidence(catalog, gate):
                     # (route_decision_tree의 `moisture_sensitive == True` 처럼).
                     rulebook_params.update(
                         (row.get("condition_expression") or "").replace("==", " ").split())
+                    # v3 페이즈 게이트 CSV(derived_quantities·gate_3a~4b·data_request_triggers)는
+                    # 컬럼명이 다르다 — requires/expression/assign은 세미콜론 구분이라
+                    # 공백 split 전에 세미콜론도 공백으로 바꿔야 개별 키가 분리된다.
+                    for column in ("requires", "expression", "assign", "satisfied_when"):
+                        rulebook_params.update(
+                            (row.get(column) or "").replace(";", " ").replace("=", " ").split())
         except Exception:
             continue
 

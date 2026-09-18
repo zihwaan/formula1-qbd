@@ -234,7 +234,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .cands { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 /* 근거·작업함·배치 루프는 카드형이 아니라 순서대로 읽는 안내문이라, 폭이 지나치게
    넓으면 한 줄이 너무 길어져 읽기 어렵다 — 본문 줄 길이만 제한(전체 배경은 그대로 확장). */
-.evidence, .workflow, .labloop { max-width: 720px; }
+.evidence, .workflow, .labloop, .drq { max-width: 720px; }
 /* 규칙 ID·시험 ID·측정 키 같은 긴 토큰은 줄바꿈 지점이 없어서 열의 **최소 너비**를 밀어낸다.
    좁은 화면에서 그 한 토큰 때문에 페이지 전체가 가로로 스크롤되므로, 다른 방법이 없을 때만
    토큰 안에서 끊게 한다(`anywhere`는 break-word와 달리 min-content 계산에도 반영된다).
@@ -589,6 +589,41 @@ table.desc td:last-child { text-align: right; font-family: var(--font-mono); col
 .wf-tests { display: grid; gap: 6px; margin-top: 8px; }
 .wf-tests label { display: flex; gap: 7px; align-items: flex-start; color: var(--ink-2); }
 .wf-lineage { margin-top: 8px; color: var(--ink-muted); font-size: 10.5px; }
+
+/* ── v3 데이터 요청 (lab-in-the-loop, 비차단) ───────────────────────── */
+.drq {
+  margin-top: 14px; padding: 14px; border: 1px solid var(--border);
+  border-radius: var(--radius-m); background: var(--surface-1); font-size: 12px;
+}
+.drq > header h3 { margin: 0; }
+.drq > header h3 small { display: block; margin-top: 2px; color: var(--ink-muted); font-weight: 500; }
+.drq > header p { margin: 5px 0 12px; color: var(--ink-muted); font-size: 11px; line-height: 1.55; word-break: keep-all; }
+.drq-req {
+  margin-top: 8px; padding: 10px 12px; border-radius: var(--radius-s);
+  background: var(--page); border: 1px dashed var(--status-warn);
+}
+.drq-req b { display: block; margin-bottom: 3px; color: var(--ink-1); font-size: 12px; }
+.drq-req .tier { font-family: var(--font-mono); font-size: 10px; color: var(--status-warn); margin-right: 6px; }
+.drq-req .why { color: var(--ink-2); font-size: 11px; line-height: 1.6; }
+.drq-req .measures { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.drq-num { display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--ink-2); }
+.drq-num input {
+  width: 110px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-s);
+  background: var(--surface-1); color: var(--ink-1);
+}
+.drq-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.drq-actions button {
+  padding: 8px 16px; border-radius: var(--radius-pill); border: 1px solid transparent;
+  background: var(--accent-fixed); color: var(--on-accent-fixed); font-weight: 650; font-size: 12.5px;
+}
+.drq-actions button.ghost { background: transparent; border-color: var(--border); color: var(--ink-1); }
+.drq-badge {
+  display: inline-block; font-size: 9.5px; font-weight: 700; padding: 1px 7px;
+  border-radius: var(--radius-pill); margin-left: 6px; vertical-align: 1px;
+}
+.drq-badge.grounded { color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 45%, var(--border)); }
+.drq-badge.provisional { color: var(--status-warn); border: 1px solid color-mix(in srgb, var(--status-warn) 45%, var(--border)); }
+.drq-refine { margin-top: 6px; font-size: 10.5px; color: var(--ink-muted); }
 .labloop > summary {
   cursor: pointer; color: var(--ink-1); padding: 9px 0; font-weight: 650; font-size: 12.5px;
 }

@@ -67,6 +67,12 @@ class FormulationState(TypedDict, total=False):
     spec: Optional[FormulationSpec]
     api_profile: Optional[ApiProfile]
 
+    # v3 P1/G3A/G3B/G4/G4B/G6R — phase_gates가 채우는 파생값과 계획 서명.
+    # phase_derived는 node_gate가 룰북 registry.run()의 derived= 시드로도 재사용한다.
+    phase_derived: Dict[str, Any]
+    pending_narrow: List[Dict[str, Any]]  # DRQ_NARROW — 전략을 좁히는 데 쓰일 요청(비차단)
+    plan_signature: str  # strategy_planner.signature() — reassess_with_measurements()가 비교
+
     # P2 — 후보 생성 (병렬 fan-out → 누적)
     strategies: List[str]
     candidates: Annotated[List[Recipe], accumulate]
@@ -74,7 +80,11 @@ class FormulationState(TypedDict, total=False):
     # P3 — 결정론 게이트 (병렬 → 누적)
     results: Annotated[List[CandidateResult], accumulate]
 
-    # P4 — 근거 충족 게이트 (후보별 판정 · candidate_id → EvidenceAssessment)
+    # v3 최종 산출물에 함께 실리는 미해결 요청(§1 "미해결 요청" 컬럼)
+    pending_requests: List[Dict[str, Any]]
+
+    # P4 — 근거 충족 게이트 (v3에서는 와이어링만 뺐다 — 그래프가 채우지 않는다.
+    # 되돌릴 경우를 위해 필드는 남겨 둔다). candidate_id → EvidenceAssessment
     evidence: Dict[str, Any]
     readiness: str  # 대표 후보의 프로토콜 상태 (blocked | ready_for_review | approved)
 
@@ -109,9 +119,13 @@ def new_state(request: str, smiles: Optional[str] = None, run_id: Optional[str] 
         property_flags=dict(property_flags or {}),
         spec=None,
         api_profile=None,
+        phase_derived={},
+        pending_narrow=[],
+        plan_signature="",
         strategies=[],
         candidates=[],
         results=[],
+        pending_requests=[],
         evidence={},
         readiness="",
         summoned=[],

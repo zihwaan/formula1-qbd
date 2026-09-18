@@ -1,0 +1,17 @@
+phase_id,order,label_kr,kind,manifest_entries,provides,output_boundary,can_reject,can_backtrack,notes
+P0_QTPP,10,QTPP 고정,deterministic,derived_quantities(constant),storage_temp_c;target_population;dose_mg,입력,no,yes,용량만 필수. 나머지는 비면 예측/unknown
+P1_PROFILE,20,In silico 프로파일,deterministic,rdkit_descriptors;structural_flags;derived_quantities(logs),descriptors;flags;logs_esol;logs_gse;solubility_est_mg_per_ml,자동 · LLM 0회 · 사용자 요청 없음,no,no,RDKit + 폐쇄형 경험식(ESOL·GSE)만 사용. SolTranNet/ADMET-AI/QupKake 등 외부 예측 모델은 선택적 보강으로만 취급(§4.4)
+DRQ_NARROW,25,데이터 요청 (전략을 좁히는 것),deterministic,data_request_triggers(urgency=narrows_strategy),pending_requests[blocking],사용자에게 제시 · 비차단,no,no,미해결이어도 plan은 진행한다(위넓히기). 차단(block) 개념 없음 — 항상 뭔가는 출력한다
+G3A,30,BCS/DCS 판정,deterministic,bcs_classification;g3a_provisional;g3a_dcs_subclass,bcs_class;bcs_solubility_provisional;dcs_solubility;dcs_subclass,derived만 갱신,no,yes,bcs_class는 실측만(불변식 I-1)
+G3B,35,고체상 판단(advisory),deterministic,g3b_solid_form,solid_form_zone;salt_stability_watch;polymorph_control_note,derived만 갱신,no,no,API 형태는 이번 실행에서 바꾸지 않는다 — 권고만
+G4,40,가용화 전략 신호,deterministic,g4_enabling_signals,sig_*,derived만 갱신,no,no,신호만 만든다. 선택은 plan이 점수식으로
+G4B,45,ASD 공정 선택,deterministic,g4b_asd_process,asd_process,derived만 갱신,no,no,
+G6R,48,공정 경로(MCS),deterministic,powder_flow_scale;route_decision_tree,flow_character;recommended_routes;excluded_routes,derived만 갱신,no,no,기존 RTE001-010 재사용
+PLAN,50,오케스트레이터 계획,deterministic,strategy_families(csv),strategies;plan_log;coverage_gaps;decision_signature,전략 목록(내부),no,no,같은 입력 → 같은 계획. 전략 0개면 qtpp_review
+GEN,55,후보 설계 ×≤3,llm,-,candidates,레시피 초안(내부),no,no,
+GATE,60,배합금기·소아안전·공정세부 규칙,deterministic,incompatibility_1to1;pediatric_safety_mg;pediatric_safety_g;coloring_flavoring_pediatric;incompatibility_multi;direct_compression;dry_granulation;wet_granulation_aqueous;capsule_filling;excipient_functional_ratio;residual_solvent;bcs_strategy,verdicts,반려/통과 판정,yes,yes,G9(포장·안정성·용출법·분석법)는 이 빌드에서 배선하지 않는다 — 범위 밖(QbD 이후)
+DRQ_REFINE,65,데이터 요청(신뢰도를 높이는 것),deterministic,data_request_triggers(urgency=refines_confidence),candidate.confidence;pending_requests[refining],후보별 신뢰도 태그,no,no,미해결이어도 후보는 제시된다. confidence=provisional로만 표시
+SUMMON,70,심사관 동적 소집,deterministic,reviewer_registry,summoned_reviewers,내부,no,no,
+JURY,75,심사관 평가,llm,-,judge_verdicts,순위용 점수(내부),no,no,반려 권한 없음(B 모델)
+CONS,80,합의,deterministic,severity_scoring_config,consensus,최종 순위,no,no,
+OUTPUT,90,후보 처방 제시,-,-,ranked_candidates;pending_requests;coverage_gaps,최종 산출물,-,-,여기서 끝난다. 실행 가능 프로토콜·포장·안정성·배치 제조는 이 시스템의 출력이 아니다

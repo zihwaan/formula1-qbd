@@ -31,37 +31,35 @@ function clearNotice() {
 }
 
 let runId = null;
-let projectId = null;
 let source = null;
 const candidates = new Map();   // candidate_id → {recipe, verdicts[], judges[], gate}
 const assessments = new Map();  // candidate_id → 근거 충족 판정 (evidence 이벤트)
 let winnerId = null;            // 합의가 고른 권고 후보
 let lastApplied = {};           // 확인시험 결과가 실측값 자리에 꽂힌 내역
+let pendingRequests = [];       // v3 — 아직 안 풀린 데이터 요청(narrows_strategy)
 
 /* ── 고정 그래프 레이아웃 ────────────────────────────────────────────
    kind: det(결정론) | llm(LLM 판단) | jud(동적 심사관)
    게이트가 둘이라는 것이 이 그래프의 요지다: gate(금기가 있는가) → evidence(알고 있는가). */
 const NODES = [
-  { id: "intake",    x:  14, y: 30, w: 104, label: "intake",    sub: "요구 → 스펙",     kind: "llm" },
-  { id: "route",     x: 138, y: 30, w: 104, label: "route",     sub: "유동성 → 공정",   kind: "det" },
-  { id: "generate",  x: 262, y: 30, w: 112, label: "generate",  sub: "후보 병렬 설계",  kind: "llm" },
-  { id: "gate",      x: 394, y: 30, w: 112, label: "gate",      sub: "룰북 판정",       kind: "det" },
-  { id: "evidence",  x: 526, y: 30, w: 124, label: "evidence",  sub: "근거 충족 판정",  kind: "det" },
-  { id: "summon",    x: 670, y: 30, w: 104, label: "summon",    sub: "심사관 소집",     kind: "det" },
-  { id: "consensus", x: 794, y: 30, w: 118, label: "consensus", sub: "가중 합의",       kind: "det" },
-  { id: "reflect",   x: 394, y: 210, w: 112, label: "reflect",  sub: "재설계 지시",     kind: "llm" },
+  { id: "intake",      x:  14, y: 30, w: 104, label: "intake",      sub: "요구 → 스펙",     kind: "llm" },
+  { id: "phase_gates", x: 138, y: 30, w: 104, label: "phase_gates", sub: "BCS/DCS·전략",   kind: "det" },
+  { id: "generate",    x: 262, y: 30, w: 112, label: "generate",    sub: "후보 병렬 설계",  kind: "llm" },
+  { id: "gate",        x: 394, y: 30, w: 112, label: "gate",        sub: "룰북 판정",       kind: "det" },
+  { id: "drq_refine",  x: 526, y: 30, w: 124, label: "drq_refine",  sub: "신뢰도 요청",     kind: "det" },
+  { id: "summon",      x: 670, y: 30, w: 104, label: "summon",      sub: "심사관 소집",     kind: "det" },
+  { id: "consensus",   x: 794, y: 30, w: 118, label: "consensus",   sub: "가중 합의",       kind: "det" },
+  { id: "reflect",     x: 394, y: 210, w: 112, label: "reflect",    sub: "재설계 지시",     kind: "llm" },
 ];
 const EDGES = [
-  ["intake", "route"], ["route", "generate"], ["generate", "gate"],
-  ["gate", "evidence"], ["evidence", "summon"], ["summon", "consensus"],
+  ["intake", "phase_gates"], ["phase_gates", "generate"], ["generate", "gate"],
+  ["gate", "drq_refine"], ["drq_refine", "summon"], ["summon", "consensus"],
 ];
-/* 되먹임은 두 개다 — 규칙 반려(설계로) 와 확인시험(입력·근거로). 배치 결과 루프는
-   화면 아래 별도 패널이 담당하므로 그래프에는 실행 전 루프만 그린다. */
+/* v3: 되먹임은 규칙 반려(설계로) 하나뿐이다 — DRQ_NARROW/DRQ_REFINE은 그래프를 다시
+   돌지 않고 /api/runs/{id}/measurements가 결정론적으로 재계산한다(§4.1). */
 const LOOPS = [
   { d: "M 450 76 L 450 210", key: "gate->reflect" },
   { d: "M 394 233 L 318 233 L 318 76", key: "reflect->generate", label: "반려 → 재설계", lx: 330, ly: 227 },
-  { d: "M 588 76 L 588 268 L 66 268 L 66 76", key: "evidence->intake",
-    label: "근거 부족 → 확인시험 선행", lx: 300, ly: 262 },
 ];
 const NODE_H = 46;
 
@@ -188,6 +186,12 @@ function handle(kind, ev) {
       addTrace(ev.seq, "intake", `RDKit 계산 완료 · 플래그 ${(p.flags||[]).filter(f=>f.present).length}건`);
       break;
 
+    case "phase.gate":
+      // phase_gates 노드가 BCS/DCS·고체상·가용화 신호마다 하나씩 낸다(candidate 생성 전).
+      addTrace(ev.seq, "phase_gates",
+        `${p.gate}/${p.rule_id} → ${p.assigned || p.action}` + (p.citation ? ` · ${p.citation}` : ""));
+      break;
+
     case "candidate":
       candidates.set(p.candidate.candidate_id, { recipe: p.candidate, verdicts: [], judges: [] });
       addTrace(ev.seq, ev.node, `후보 생성 ${p.candidate.candidate_id} (${p.source})`);
@@ -244,6 +248,22 @@ function handle(kind, ev) {
         p.readiness === "blocked" ? "warn" : "");
       renderCandidates();
       renderEvidence();
+      break;
+    }
+
+    case "data.request": {
+      // drq_refine이 후보별로 낸다(candidate_id 있음) — phase_gates의 narrows_strategy
+      // 요청(candidate_id 없음)은 run.end의 pending_requests로 한 번에 렌더한다.
+      if (p.candidate_id) {
+        const entry = candidates.get(p.candidate_id);
+        if (entry) {
+          entry.recipe.confidence = p.confidence;
+          entry.recipe.pending_refinements = (p.pending || []).map((r) => r.trigger_id);
+          renderCandidates();
+        }
+        addTrace(ev.seq, "drq_refine", `${p.candidate_id}: ${p.confidence}`
+          + ((p.pending || []).length ? ` · 남은 요청 ${p.pending.length}건` : ""));
+      }
       break;
     }
 
@@ -334,11 +354,19 @@ function renderCandidates() {
            <b>${esc(READINESS[assessment.readiness]?.label || assessment.readiness)}</b>
            <span>${esc(READINESS[assessment.readiness]?.hint || "")}</span></div>`
       : "";
+    // v3 — confidence는 pending_refinements가 비어 있는지로 정확히 정해진다(불변식 I-10).
+    // LLM이 이 값을 직접 쓰지 않는다 — drq_refine이 매긴 값을 그대로 보여줄 뿐이다.
+    const confidence = entry.recipe.confidence
+      ? `<span class="drq-badge ${esc(entry.recipe.confidence)}">${esc(entry.recipe.confidence)}</span>`
+      : "";
+    const refinements = (entry.recipe.pending_refinements || []).length
+      ? `<div class="drq-refine">남은 신뢰도 요청: ${entry.recipe.pending_refinements.map(esc).join(", ")}</div>`
+      : "";
     card.innerHTML = `
-      <h4>${esc(id)}<span class="tag">${esc(entry.recipe.strategy)} · ${esc(entry.recipe.process || "")}</span></h4>
+      <h4>${esc(id)}${confidence}<span class="tag">${esc(entry.recipe.strategy)} · ${esc(entry.recipe.process || "")}</span></h4>
       <div class="ing">${ings}</div>
       <div class="ing">포장: ${esc(entry.recipe.packaging || "-")}</div>
-      ${readiness}
+      ${readiness}${refinements}
       <div class="chips">${chips}</div>${judges}`;
     card.querySelectorAll(".chip").forEach((chip) => {
       chip.onclick = () => showRule(chip.dataset.rule);
@@ -666,7 +694,7 @@ function connect(path, { isReconnect = false } = {}) {
   const kinds = ["run.start", "run.end", "node.enter", "node.exit", "chem.profile",
     "spec.ready", "candidate", "rule.fired", "verdict", "evidence", "judge.summoned",
     "judge.token", "judge.verdict", "consensus", "reflect", "warning", "error",
-    "confirmation", "approval", "wetlab"];
+    "confirmation", "approval", "wetlab", "phase.gate", "data.request"];
   kinds.forEach((kind) => source.addEventListener(kind, (e) => {
     let payload;
     try {
@@ -748,19 +776,18 @@ function finishRun(summary) {
   } else {
     clearNotice();
   }
-  if (projectId) setTimeout(loadWorkflow, 500);
+  if (summary) renderDataRequests(summary.pending_requests || [], summary.plan_signature || "");
   continueScenario();
 }
 
 function resetView() {
   candidates.clear(); tokenBuffers.clear(); degraded.clear(); assessments.clear();
-  winnerId = null; lastApplied = {};
+  winnerId = null; lastApplied = {}; pendingRequests = [];
   resetNarration();
   $("trace").innerHTML = ""; $("cands").innerHTML = "";
   $("consensus").hidden = true;
-  $("evidence").hidden = true;
-  $("evidence").innerHTML = "";
-  $("wl-out").innerHTML = "";
+  $("drq").hidden = true;
+  $("drq-body").innerHTML = "";
   $("cand-count").textContent = "";
   $("pred-panel").hidden = true;
   $("lit-panel").hidden = true;
@@ -808,10 +835,6 @@ async function startRun() {
         + data.rejected_inputs.join(", "), "warn");
     }
     runId = data.run_id;
-    projectId = data.project_id || null;
-    if (projectId) {
-      try { localStorage.setItem("f1:last_project", projectId); } catch (e) { /* 무시 */ }
-    }
     connect(api(`/api/runs/${runId}/stream`));
   } catch (err) {
     setRunning(false);
@@ -828,198 +851,115 @@ $("replay").onclick = () => {
   connect(api(`/api/runs/${runId}/replay`));
 };
 
-const WL_EXAMPLE = "30분 용출 62%로 목표에 못 미쳤다. 정제 경도는 38N, 마손도 1.2%. "
-  + "6개월 가속 조건에서 총 불순물이 0.9%까지 올랐고 정제 표면이 약간 갈변했다.";
+/* ── v3 데이터 요청 (lab-in-the-loop, 비차단) ────────────────────────
+   근거 충족 게이트·장기 실행 작업함·배치 결과 루프(WL_EXAMPLE 등)는 v3 출력 경계
+   밖이라 뺐다 — index.html·web/server.py의 대응 주석과 세트다. 되돌릴 때는 git으로
+   이 커밋 이전 버전을 참고할 것(주석으로 원문을 그대로 남기기엔 이 블록이 너무 크다).
 
-$("wl-example").onclick = () => {
-  $("wl-notes").value = WL_EXAMPLE;
-  $("wl-notes").focus();
-};
-
-$("wl-submit").onclick = async () => {
-  if (!runId) {
-    notice("먼저 설계를 실행한 뒤 실험 결과를 입력해 주세요.", "warn");
+   Tier가 낮은(적은 시료로 되는) 요청부터 보여주고, 값을 넣으면 그래프를 다시 돌리지
+   않고 /api/runs/{id}/measurements가 그 자리에서 재계산한다. */
+function renderDataRequests(requests, planSignature) {
+  pendingRequests = requests || [];
+  const panel = $("drq");
+  const body = $("drq-body");
+  if (!pendingRequests.length) {
+    panel.hidden = true;
+    body.innerHTML = "";
     return;
   }
-  const notes = $("wl-notes").value.trim();
-  if (!notes) {
-    notice("수행한 실험 결과를 자연어로 적어 주세요.", "warn");
-    $("wl-notes").focus();
-    return;
-  }
-  const btn = $("wl-submit");
-  btn.disabled = true;
-  btn.textContent = "해석 중…";
-  try {
-    const res = await fetch(api(`/api/runs/${runId}/wetlab`), {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes }),
-    });
-    if (!res.ok) {
-      const detail = await res.json().catch(() => ({}));
-      throw new Error(detail.detail || `해석 요청이 실패했습니다 (${res.status})`);
-    }
-    renderWetlab(await res.json());
-  } catch (err) {
-    notice(err.message, "error", true);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "결과 해석 + 다음 실험 지시";
-  }
-};
-
-/* ── 장기 실행 Lab-in-the-loop 작업함 ───────────────────────────────
-   기존 SSE는 설계 한 번을 보여 주고, 이 패널은 그 뒤 수일간 이어지는 프로젝트 상태를
-   SQLite에서 읽는다. 결과는 연구자가 확인하기 전에는 규격 엔진에 들어가지 않는다. */
-const WF_LABELS = {
-  DESIGNING: "후보 설계 중", RULE_VALIDATING: "규칙 검증 중", EVIDENCE_CHECK: "근거 확인 중",
-  WAITING_FOR_EVIDENCE: "선행 근거 대기", REVIEWING: "후보 비교 중",
-  PROTOCOL_DRAFT: "프로토콜 보완 필요", WAITING_FOR_APPROVAL: "프로토콜 승인 대기",
-  READY_FOR_LAB: "실험 실행 가능", WAITING_FOR_RESULT: "배치 결과 대기",
-  RESULT_CONFIRMATION: "결과값 사람 확인 대기", CQA_EVALUATION: "후보별 규격 판정 중",
-  DIAGNOSING: "실패 원인 진단 중", WAITING_FOR_CONFIRMATION_TEST: "구별시험 결과 대기",
-  REFLECTING: "확인된 원인으로 재설계", COMPLETED: "목표 충족", ESCALATED: "전문가 이관",
-  INFEASIBLE: "고정 제약 충돌",
-};
-const WF_GROUP = {
-  DESIGNING: 0, RULE_VALIDATING: 0, EVIDENCE_CHECK: 1, WAITING_FOR_EVIDENCE: 1,
-  REVIEWING: 1, PROTOCOL_DRAFT: 2, WAITING_FOR_APPROVAL: 2, READY_FOR_LAB: 3,
-  WAITING_FOR_RESULT: 4, RESULT_CONFIRMATION: 5, CQA_EVALUATION: 5,
-  DIAGNOSING: 6, WAITING_FOR_CONFIRMATION_TEST: 6, REFLECTING: 7, COMPLETED: 7,
-};
-
-function workflowKey(prefix) {
-  const suffix = (globalThis.crypto && crypto.randomUUID)
-    ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-  return `${prefix}:${projectId}:${suffix}`;
-}
-
-async function workflowCall(path, body) {
-  const res = await fetch(api(path), {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `요청 실패 (${res.status})`);
-  }
-  const state = await res.json();
-  renderWorkflow(state);
-  return state;
-}
-
-async function loadWorkflow() {
-  if (!projectId) return;
-  try {
-    const res = await fetch(api(`/api/projects/${encodeURIComponent(projectId)}/state`));
-    if (!res.ok) return;
-    renderWorkflow(await res.json());
-  } catch (e) { /* 설계 화면의 부가 패널이므로 연결 실패 시 조용히 둔다 */ }
-}
-
-function renderWorkflow(state) {
-  const panel = $("workflow");
   panel.hidden = false;
-  const body = $("wf-body");
-  const protocols = Object.values(state.protocols || {});
-  const batches = Object.values(state.batches || {});
-  const results = Object.values(state.results || {});
-  const diagnoses = Object.values(state.diagnoses || {});
-  const protocol = protocols.at(-1);
-  const batch = batches.at(-1);
-  const result = results.at(-1);
-  const diagnosis = diagnoses.at(-1);
-  const active = WF_GROUP[state.status] ?? -1;
-  const steps = ["설계", "근거", "프로토콜", "승인", "실험", "값 확인", "원인 구별", "재검증"];
-  const pending = (state.pending_actions || []).map((a) =>
-    `<div class="wf-action"><b>다음 할 일 · ${esc(a.type)}</b>${esc(a.label)}</div>`).join("");
-  const lineage = Object.values(state.candidates || {}).filter((c) => c.parent_candidate_id)
-    .map((c) => `${esc(c.parent_candidate_id)} → ${esc(c.candidate_id)} (v${esc(c.version)})`).join(" · ");
-  let controls = "";
 
-  if (state.status === "WAITING_FOR_APPROVAL" && protocol) {
-    controls = `<div class="wf-controls"><button id="wf-approve" type="button">프로토콜 승인</button></div>`;
-  } else if (state.status === "READY_FOR_LAB" && protocol) {
-    controls = `<div class="wf-controls"><input id="wf-batch-note" placeholder="배치 메모 (선택)">
-      <button id="wf-batch" type="button">실제 배치 등록</button></div>`;
-  } else if (state.status === "WAITING_FOR_RESULT" && batch) {
-    controls = `<div class="wf-controls"><textarea id="wf-result-notes" rows="3"
-      placeholder="예) 30분 용출 62%, 경도 38N, 마손도 1.2%"></textarea>
-      <button id="wf-result" type="button">결과 초안 제출</button></div>`;
-  } else if (state.status === "RESULT_CONFIRMATION" && result) {
-    const values = Object.entries(result.measurements || {}).map(([k, v]) =>
-      `<div><code>${esc(k)}</code> = ${esc(v)}</div>`).join("");
-    controls = `<div class="wf-card"><b>판정 전 확인할 값</b>${values || "수치 없음"}
-      <div class="wf-controls"><button id="wf-confirm-result" type="button">원자료와 대조 완료 · 값 확정</button></div></div>`;
-  } else if (state.status === "DIAGNOSING" && diagnosis) {
-    const hypotheses = diagnosis.hypotheses || [];
-    const evidenceReady = hypotheses.some((h) => h.status === "EVIDENCE_RECEIVED");
-    controls = `<div class="wf-card"><b>경쟁 원인 가설</b>
-      ${hypotheses.map((h) => `<div class="wf-action"><b>${esc(h.hypothesis_id)} · ${esc(h.status)}</b>
-        ${esc(h.statement)}<div class="wf-tests">${(h.discriminating_test_ids || []).map((id) =>
-          `<label><input type="checkbox" class="wf-test" value="${esc(id)}" checked> <code>${esc(id)}</code></label>`).join("")}</div></div>`).join("")}
-      <div class="wf-controls">${evidenceReady
-        ? `<button id="wf-confirm-cause" data-cause="${esc(hypotheses.find((h) => h.status === "EVIDENCE_RECEIVED").hypothesis_id)}" type="button">확인시험 근거 검토 완료 · 원인 확정</button>`
-        : `<button id="wf-approve-tests" type="button">구별시험 계획 승인</button>`}</div></div>`;
-  } else if (state.status === "WAITING_FOR_CONFIRMATION_TEST" && diagnosis && batch) {
-    const hypothesis = (diagnosis.hypotheses || [])[0] || {};
-    controls = `<div class="wf-controls"><textarea id="wf-confirm-notes" rows="3"
-      placeholder="승인된 확인시험의 관찰과 수치를 입력하세요"></textarea>
-      <button id="wf-confirm-test" data-hypothesis="${esc(hypothesis.hypothesis_id || "")}" type="button">확인시험 결과 초안 제출</button></div>`;
-  }
+  // measurement_id 하나가 여러 요청에 걸쳐 있을 수 있다(예: M_DSC) — 입력 필드는
+  // result_key 단위로 중복 없이 한 번만 보여준다.
+  const seenKeys = new Set();
+  body.innerHTML = pendingRequests.map((r) => {
+    const fields = (r.result_keys || []).filter((k) => {
+      if (seenKeys.has(k)) return false;
+      seenKeys.add(k);
+      return true;
+    }).map((k) => `<label class="drq-num">${esc(k)}
+        <input type="number" step="any" data-key="${esc(k)}" placeholder="값"></label>`).join("");
+    return `<div class="drq-req">
+        <b><span class="tier">${esc(r.measurement_ids.join(" · "))}</span>${esc(r.trigger_id)}</b>
+        <div class="why">${esc(r.why)}</div>
+        ${fields ? `<div class="measures">${fields}</div>` : ""}
+      </div>`;
+  }).join("") + `
+    <div class="drq-actions">
+      <button id="drq-submit" type="button">값 제출 → 재계산</button>
+      <button id="drq-skip" class="ghost" type="button">건너뛰기(예측값으로 계속)</button>
+    </div>
+    <div id="drq-out"></div>`;
 
-  body.innerHTML = `<div class="wf-state"><b>${esc(state.status)}</b>
-      <span>${esc(WF_LABELS[state.status] || state.status)} · 상태 버전 ${esc(state.state_version)}</span></div>
-    <div class="wf-flow">${steps.map((s, i) => `<div class="wf-step ${i === active ? "on" : ""}">${esc(s)}</div>`).join("")}</div>
-    ${pending}${controls}${lineage ? `<div class="wf-lineage">후보 계보 · ${lineage}</div>` : ""}`;
-
-  if ($("wf-approve")) $("wf-approve").onclick = async () => {
-    try { await workflowCall(`/api/projects/${projectId}/protocols/${protocol.protocol_id}/approve`,
-      { approver: "researcher", idempotency_key: workflowKey("approve") }); }
-    catch (e) { notice(e.message, "error", true); }
+  $("drq-submit").onclick = async () => {
+    const inputs = [...body.querySelectorAll("input[data-key]")];
+    const measurements = {};
+    for (const el of inputs) {
+      const v = el.value.trim();
+      if (v !== "") measurements[el.dataset.key] = Number(v);
+    }
+    if (!Object.keys(measurements).length) {
+      notice("최소 한 항목에 값을 입력해 주세요.", "warn");
+      return;
+    }
+    const btn = $("drq-submit");
+    btn.disabled = true;
+    btn.textContent = "재계산 중…";
+    try {
+      const res = await fetch(api(`/api/runs/${runId}/measurements`), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ measurements }),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new Error(detail.detail || `재계산 요청이 실패했습니다 (${res.status})`);
+      }
+      const out = await res.json();
+      const beforeCount = pendingRequests.length;
+      const afterCount = (out.pending_requests || []).length;
+      const resultMsg = out.regenerated
+        ? "전략 집합이 바뀌어 새 후보를 다시 생성했습니다(LLM 호출)."
+        : "전략 집합은 그대로라 신뢰도만 다시 계산했습니다(LLM 호출 없음).";
+      narrate("drq-reassess", {
+        layer: "데이터 요청 재계산", kind: "det",
+        title: out.regenerated ? "전략이 바뀌어 후보를 다시 생성했다" : "같은 후보, 신뢰도만 다시 매겼다",
+        body: `남은 요청이 ${beforeCount}건에서 ${afterCount}건으로
+          바뀌었습니다. <span class="nr-why">왜 중요한가: 그래프를 처음부터 다시 돌리지 않았습니다 —
+          결정론 계층만 재계산했으므로 몇 초 안에 끝납니다.</span>`,
+      });
+      // renderDataRequests()가 #drq-body를 통째로 새로 그려서 #drq-out도 매번 새로
+      // 만든다 — 먼저 써 놓고 나중에 다시 그리면 방금 쓴 문구가 그 자리에서 지워진다.
+      // 다시 그린 "뒤에" 채워야 하고, 남은 요청이 0건으로 줄어 패널 자체가 접히는
+      // 경우에는 그 자리가 아예 없어지므로 notice로도 같은 문구를 띄워 놓친 사람이
+      // 없게 한다.
+      renderDataRequests(out.pending_requests || [], out.plan_signature || "");
+      const freshOut = $("drq-out");
+      if (freshOut) {
+        freshOut.innerHTML = `<div class="drq-refine">${resultMsg}
+          plan_signature = <code>${esc(out.plan_signature)}</code></div>`;
+      } else {
+        notice(`${resultMsg} (남은 요청 ${afterCount}건)`, "info");
+      }
+      if (out.summary) {
+        const entry = candidates.get(out.summary.winner);
+        if (entry) {
+          entry.recipe.confidence = out.summary.confidence;
+          entry.recipe.pending_refinements = out.summary.pending_refinements;
+          renderCandidates();
+        }
+      }
+    } catch (err) {
+      notice(err.message, "error", true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "값 제출 → 재계산";
+    }
   };
-  if ($("wf-batch")) $("wf-batch").onclick = async () => {
-    try { await workflowCall(`/api/projects/${projectId}/batches`, {
-      protocol_id: protocol.protocol_id, note: $("wf-batch-note").value,
-      idempotency_key: workflowKey("batch"),
-    }); } catch (e) { notice(e.message, "error", true); }
-  };
-  if ($("wf-result")) $("wf-result").onclick = async () => {
-    const notes = $("wf-result-notes").value.trim();
-    if (!notes) return notice("실험 결과를 입력해 주세요.", "warn");
-    try { await workflowCall(`/api/projects/${projectId}/lab-results`, {
-      batch_id: batch.batch_id, notes, purpose: "batch_cqa",
-      idempotency_key: workflowKey("result"),
-    }); } catch (e) { notice(e.message, "error", true); }
-  };
-  if ($("wf-confirm-result")) $("wf-confirm-result").onclick = async () => {
-    try { await workflowCall(`/api/projects/${projectId}/lab-results/${result.result_id}/confirm`, {
-      researcher: "researcher", idempotency_key: workflowKey("result-confirm"),
-    }); } catch (e) { notice(e.message, "error", true); }
-  };
-  if ($("wf-approve-tests")) $("wf-approve-tests").onclick = async () => {
-    const ids = [...document.querySelectorAll(".wf-test:checked")].map((el) => el.value);
-    try { await workflowCall(`/api/projects/${projectId}/diagnoses/${diagnosis.diagnosis_id}/approve-tests`, {
-      test_ids: ids, researcher: "researcher", idempotency_key: workflowKey("tests"),
-    }); } catch (e) { notice(e.message, "error", true); }
-  };
-  if ($("wf-confirm-test")) $("wf-confirm-test").onclick = async (e) => {
-    const notes = $("wf-confirm-notes").value.trim();
-    if (!notes) return notice("확인시험 결과를 입력해 주세요.", "warn");
-    try { await workflowCall(`/api/projects/${projectId}/lab-results`, {
-      batch_id: batch.batch_id, notes, purpose: "confirmation_test",
-      hypothesis_id: e.currentTarget.dataset.hypothesis, idempotency_key: workflowKey("confirm-test"),
-    }); } catch (err) { notice(err.message, "error", true); }
-  };
-  if ($("wf-confirm-cause")) $("wf-confirm-cause").onclick = async (e) => {
-    try { await workflowCall(`/api/projects/${projectId}/causes/${e.currentTarget.dataset.cause}/confirm`, {
-      researcher: "researcher", backtrack_target: "PHASE_6_PROCESS",
-      idempotency_key: workflowKey("cause"),
-    }); } catch (err) { notice(err.message, "error", true); }
+  $("drq-skip").onclick = () => {
+    panel.hidden = true;
+    notice("예측값으로 계속합니다 — 후보는 provisional 태그를 유지합니다.", "info");
   };
 }
-
-$("wf-refresh").onclick = loadWorkflow;
 
 /* ── 아키텍처 해설 ───────────────────────────────────────────────────
    실행 이벤트를 받아 "지금 어느 계층이 무엇을 왜 하는지"를 순서대로 쌓는다.
@@ -1073,15 +1013,32 @@ function narrateEvent(kind, ev, p) {
       });
       break;
     }
+    case "phase.gate":
+      // G3A/G3B/G4/G4B 신호마다 뜨지만, 카드는 이 계층에서 딱 한 번만 말한다 — 개별 신호는
+      // 트레이스 줄(phase_gates)에서 전부 볼 수 있다.
+      narrate("phasegate", {
+        layer: "P1 · BCS/DCS·고체상 게이트 결정론", kind: "det",
+        title: "게이트가 남긴 첫 판정",
+        body: `<code>${esc(p.gate)}/${esc(p.rule_id)}</code> → <b>${esc(p.assigned || p.action)}</b>
+          ${esc(p.rationale || "")}
+          <span class="nr-why">왜 중요한가: 이 판정은 처방을 반려하지 않습니다. 다음 단계에서
+          어떤 전략(예: 미분화·ASD)이 후보로 올라올지를 좁힐 뿐입니다 — 트레이스에서
+          phase_gates 줄을 보면 이번 실행에서 어떤 신호가 몇 건 발동했는지 전부 보입니다.</span>`,
+      });
+      break;
     case "node.exit":
       if (p.strategies) {
         narrate("route", {
-          layer: "P1 · 결정론", kind: "det",
-          title: "공정 경로를 먼저 좁힌다",
-          body: `경쟁 전략: <b>${esc((p.strategies || []).join(", "))}</b>.
-            <span class="nr-why">왜 중요한가: “직접타정 규칙”은 직접타정이 선택된 뒤에야 의미가
-            있습니다. 앞 단계가 만든 값(유동성 등급)이 뒷 단계의 발동 조건으로 흘러가므로,
-            검사에는 순서가 있습니다.</span>`,
+          layer: "P1 · BCS/DCS·고체상 게이트 결정론", kind: "det",
+          title: "처방을 짜기 전에 이 약이 어떤 부류인지부터 정한다",
+          body: `경쟁 전략: <b>${esc((p.strategies || []).join(", "))}</b>
+            ${p.pending_narrow_count ? `· 아직 모르는 값 ${esc(p.pending_narrow_count)}건은
+              예측값으로 채우고 진행` : ""}
+            <span class="nr-why">왜 중요한가: 용해도·투과도(BCS/DCS), 무정형인지 결정형인지(고체상),
+            가용화가 필요한지, 필요하면 어떤 공정(ASD 등)을 쓸지를 후보를 만들기 전에 먼저
+            정합니다. 실측값이 없으면 계산식(ESOL/GSE 같은 예측 공식)으로 잠정 분류하고, 그 값이
+            나중에 실측으로 바뀌면 이 분류부터 다시 계산됩니다 — 아래 “데이터 요청” 패널이 그
+            지점입니다.</span>`,
         });
       } else if (p.summoned) {
         const ids = (p.summoned || []).map((s) => `${s.reviewer_id}(${s.summon_condition})`);
@@ -1231,21 +1188,22 @@ const SCENARIOS = [
   },
   {
     id: "labloop",
-    title: "실행 전 근거 → 배치 → 다음 실험",
-    proves: "이중 루프 (근거 게이트 + Lab-in-the-loop)",
-    // 이 시나리오의 요점은 두 루프라 설계 단계는 가볍게 둔다 —
-    // 심사관이 많이 소집되면 무료 티어 토큰이 설계에서 다 소모되고 지시가 규칙 기반으로 내려간다.
+    title: "값을 몰라도 후보부터, 갈리는 지점만 되묻는다",
+    proves: "Lab-in-the-loop v3 (비차단 데이터 요청)",
+    // 이 시나리오의 요점은 데이터 요청 루프라 설계 단계는 가볍게 둔다 —
+    // 심사관이 많이 소집되면 무료 티어 토큰이 설계에서 다 소모된다.
     request: "성인용 이부프로펜 정제를 설계해줘",
     pinned: "",
-    duration: "약 2~3분",
+    measuredParams: { dose_mg: 200 },
+    duration: "약 1~2분",
     autoLab: true,
-    goal: `설계가 끝나면 먼저 <b>근거 충족 게이트</b>가 “이 전략을 실행할 만큼 아는가”를 묻습니다.
-      선행 확인시험 결과를 자동 입력해 근거를 채우고 <b>연구자 승인</b>까지 진행한 뒤에야
-      배치 결과를 넣습니다. AI가 문장에서 수치를 판독하고, 규칙이 규격 이탈을 판정한 뒤,
-      확인시험 마스터 66종에서 <b>다음에 할 실험</b>을 골라 지시합니다 —
-      두 루프의 결과가 서로 다른 계층으로 돌아가는 것이 이 구조의 요지입니다.
-      같은 배치 결과는 오른쪽 <b>장기 실행 작업함</b>에도 기록되어, 이탈 원인을 서로 다른
-      가설로 나눠 진단하고 구별시험을 거쳐야만 재설계가 시작되는 흐름을 이어서 볼 수 있습니다.`,
+    goal: `설계가 끝나면 RDKit이 계산 가능한 값(D0·SLAD·logS 등)을 전부 채우고, BCS/DCS·
+      고체상·가용화 전략 신호를 판정해 <b>후보를 먼저 냅니다</b> — 값이 없다고 멈추지
+      않습니다. 판정이 실제로 갈리는 지점(예: 결정형·Tm을 모름)에서만 오른쪽
+      <b>데이터 요청</b> 패널에 구체적 실측을 요청합니다. 값을 하나 넣어 자동 제출하면
+      그래프를 다시 돌리지 않고 <b>그 자리에서 재계산</b>해, 남은 요청이 줄고 후보의
+      신뢰도 태그(<code>grounded</code>/<code>provisional</code>)가 갱신되는 것을 볼 수
+      있습니다.`,
   },
 ];
 
@@ -1269,6 +1227,16 @@ function buildScenarios() {
       activeScenario = scenario;
       $("request").value = scenario.request;
       $("pinned").value = scenario.pinned;
+      // phase_gates가 dose_mg 없이는 dose_solubility_volume 계열을 못 채워 narrows_strategy
+      // 요청이 비어 버린다 — labloop 시나리오는 이 값이 있어야 데이터 요청 패널이 실제로 뜬다.
+      $("inputs-body").querySelectorAll("input").forEach((el) => {
+        if (el.type === "checkbox") el.checked = false; else el.value = "";
+      });
+      Object.entries(scenario.measuredParams || {}).forEach(([key, value]) => {
+        const el = document.querySelector(`#inputs-body input[data-key="${key}"]`);
+        if (el) el.value = value;
+      });
+      updateInputCount();
       box.querySelectorAll(".scenario").forEach((b) => b.classList.remove("on"));
       btn.classList.add("on");
 
@@ -1280,75 +1248,28 @@ function buildScenarios() {
   });
 }
 
-/* 시나리오가 두 루프까지 이어질 때, 설계가 끝나면 순서대로 자동 진행한다.
-   실행 전 루프(확인시험 → 근거 재평가 → 승인)를 먼저 돌고, 그 다음에야 배치 결과를 넣는다 —
-   순서 자체가 이 아키텍처의 주장이라 시연도 같은 순서로 흐른다. */
+/* v3 시나리오 자동 진행 — 설계가 끝나면 데이터 요청 중 하나에 예시값을 자동으로 넣어
+   재계산 결과(요청이 줄고 신뢰도가 갱신되는 것)를 보여준다. 그래프는 다시 돌리지 않는다. */
 async function continueScenario() {
   if (!activeScenario || !activeScenario.autoLab) return;
+  if (!pendingRequests.length) return;
 
-  const id = (winnerId && assessments.has(winnerId)) ? winnerId : [...assessments.keys()][0];
-  if (id) {
-    narrate("evloop-start", {
-      layer: "실험 전 루프", kind: "det",
-      title: "먼저 “실행해도 되는가”를 해결한다",
-      body: `선행 확인시험 결과를 자동 입력해 근거를 채우고, 연구자 승인까지 진행합니다.
-        <span class="nr-why">왜 중요한가: 이 단계를 건너뛰면 수분·열 안정성도 모르는 API에
-        습식과립 프로토콜을 그대로 내보내게 됩니다. 배치를 만든 뒤에는 되돌릴 수 없습니다.</span>`,
-    });
-    $("evidence").scrollIntoView({ behavior: "smooth", block: "nearest" });
-    if ($("ev-example")) {
-      fillConfirmationExample();
-      await submitConfirmation(id);
-      await new Promise((done) => setTimeout(done, 400));
-    }
-    if ($("ev-approve")) await approveProtocol(id);
-  }
-
-  narrate("labloop-start", {
-    layer: "실험 후 루프", kind: "llm",
-    title: "이제 만든 뒤의 절반 — 배치 결과를 넣는다",
-    body: `배치 결과를 자연어로 자동 입력합니다. AI가 판독 → 규칙이 판정 → AI가 다음 실험을 지시.
-      <span class="nr-why">왜 중요한가: 사람이 판단의 병목이 아니라 벤치에서 실험을 수행하는
-      쪽으로 들어옵니다. 지시의 후보는 실제 확인시험 마스터 66종으로 묶여 있어 AI가 시험을
-      발명할 수 없습니다.</span>`,
+  narrate("drq-start", {
+    layer: "데이터 요청 (비차단)", kind: "det",
+    title: "값이 없어도 이미 후보가 나와 있다",
+    body: `왼쪽 후보 처방은 이미 확정됐습니다. 오른쪽 <b>데이터 요청</b> 패널에 예시값을
+      자동으로 넣어, 그 값 하나가 남은 요청과 후보 신뢰도를 어떻게 바꾸는지 보여줍니다.
+      <span class="nr-why">왜 중요한가: 요청은 절대 실행을 막지 않습니다 — 값을 넣기 전과
+      후 모두 후보 목록은 그대로 존재합니다.</span>`,
   });
-  $("labloop").open = true;
-  $("wl-notes").value = WL_EXAMPLE;
-  $("labloop").scrollIntoView({ behavior: "smooth", block: "nearest" });
-  setTimeout(() => $("wl-submit").click(), 700);
+  $("drq").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  await new Promise((done) => setTimeout(done, 500));
 
-  // 승인까지 끝났다면 같은 프로젝트가 장기 실행 작업함에서도 실행 가능 상태다.
-  // 배치를 등록하고 같은 결과를 넣어, 이탈이 났을 때 서로 다른 원인 가설로 갈라지는
-  // 진단(경쟁 가설 + 가설별 구별시험)을 오른쪽 작업함에서도 보여준다. 이 부가 단계가
-  // 실패해도(예: 프로토콜이 아직 BLOCKED) 위의 1회성 시연은 이미 끝난 뒤이므로 조용히 넘어간다.
-  if (projectId) {
-    (async () => {
-      try {
-        const batchState = await workflowCall(`/api/projects/${projectId}/batches`, {
-          note: "시연 배치", idempotency_key: workflowKey("scenario-batch"),
-        });
-        const batch = Object.values(batchState.batches || {}).at(-1);
-        if (!batch) return;
-        const resultState = await workflowCall(`/api/projects/${projectId}/lab-results`, {
-          batch_id: batch.batch_id, notes: WL_EXAMPLE, purpose: "batch_cqa",
-          idempotency_key: workflowKey("scenario-result"),
-        });
-        const result = Object.values(resultState.results || {}).at(-1);
-        if (!result) return;
-        await workflowCall(`/api/projects/${projectId}/lab-results/${result.result_id}/confirm`, {
-          researcher: "researcher", idempotency_key: workflowKey("scenario-confirm"),
-        });
-        narrate("workflow-diagnosis", {
-          layer: "장기 실행 작업함", kind: "det",
-          title: "같은 결과가 지속되는 작업함에도 기록됐다",
-          body: `오른쪽 <b>장기 실행 작업함</b>에서 이 배치의 규격 판정과 원인 진단을 확인할 수
-            있습니다. <span class="nr-why">왜 중요한가: 첫 실패에서 바로 처방을 고치지 않고,
-            서로 다른 원인 가설과 각 가설을 갈라낼 구별시험부터 제시합니다 — 가설이 여러 개면
-            실제로 서로 다른 시험이 붙습니다.</span>`,
-        });
-      } catch (e) { /* 부가 패널 — 실패해도 메인 시연 흐름에 영향 없음 */ }
-    })();
-  }
+  // Tier가 가장 낮은(적은 시료로 되는) 요청의 첫 숫자 필드에 예시값을 채운다.
+  const firstInput = document.querySelector("#drq-body .drq-num input");
+  if (!firstInput) return;
+  firstInput.value = firstInput.dataset.key === "tm_c" ? "234" : "1";
+  setTimeout(() => { const b = $("drq-submit"); if (b) b.click(); }, 300);
 }
 
 /* 예측 계층 — 교차검증·불확실성·BCS. 값이 없으면 "미연결"을 그대로 보여준다. */
@@ -1551,10 +1472,9 @@ $("btn-theme").onclick = () => {
   loadSmartsPresets();
   loadInputCatalog();
   setRunning(false);
-  try {
-    projectId = localStorage.getItem("f1:last_project") || null;
-    if (projectId) loadWorkflow();
-  } catch (e) { projectId = null; }
+  // v3: 장기 실행 작업함을 뺐다 — 예전 배포에서 남은 localStorage 흔적이 있으면 지운다
+  // (그대로 두면 loadWorkflow가 더 이상 없어서 죽은 참조만 남는다).
+  try { localStorage.removeItem("f1:last_project"); } catch (e) { /* 무시 */ }
   try {
     const res = await fetch(api("/api/meta"));
     if (!res.ok) throw new Error(`상태 조회 실패 (${res.status})`);

@@ -1,0 +1,10 @@
+counterion_id,name_kr,name_en,pka_relevant,ph_max_note,source_citation,verification_status,seed_review_status,notes
+CI_HCL,염산,hydrochloride,-6.3,강산 — 대부분의 염기성 API와 ΔpKa > 4 확보,Serajuddin 2007 Table 1 부근 기술,VERIFIED_SECONDARY,pending_team_review,가장 흔한 카운터이온이지만 흡습성·disproportionation 위험이 상대적으로 큼(§6 G3B006)
+CI_MESYLATE,메실산,mesylate (methanesulfonic acid),-1.9,강산,Serajuddin 2007,VERIFIED_SECONDARY,pending_team_review,
+CI_BESYLATE,베실산,besylate (benzenesulfonic acid),-2.8,강산,Serajuddin 2007,VERIFIED_SECONDARY,pending_team_review,
+CI_MALEATE,말레산,maleate,1.9,pKa1 기준(2단),Serajuddin 2007,VERIFIED_SECONDARY,pending_team_review,유전독성 우려로 최근 선호도 낮음 — 문헌 확인 권장
+CI_FUMARATE,푸마르산,fumarate,3.0,pKa1 기준(2단),Serajuddin 2007,VERIFIED_SECONDARY,pending_team_review,
+CI_TARTRATE,타르타르산,tartrate,3.0,pKa1 기준(2단),Serajuddin 2007,VERIFIED_SECONDARY,pending_team_review,
+CI_CITRATE,구연산,citrate,3.1,pKa1 기준(3단),Serajuddin 2007,VERIFIED_SECONDARY,pending_team_review,
+CI_SUCCINATE,숙신산,succinate,4.2,pKa1 기준(2단),Serajuddin 2007,VERIFIED_SECONDARY,pending_team_review,
+CI_NONE,비이온성(free form),none,,,—,VERIFIED_PRIMARY,pending_team_review,ionizable=False일 때 사용
