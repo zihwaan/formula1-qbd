@@ -41,7 +41,10 @@
     panel.innerHTML = `
       <header class="ap-head">
         <div class="ap-title"><span class="ap-dot" aria-hidden="true"></span><b>입력 에이전트</b>
-          <small id="agent-ctx">맥락: 후보 탐색</small></div>
+          <small id="agent-ctx">맥락: 후보 탐색</small>
+          <span class="ap-model"><label for="llm-select">모델</label>
+            <select id="llm-select" aria-describedby="llm-note"></select>
+            <small id="llm-note"></small></span></div>
         <p class="ap-intro">말로 요청하면 지금 맥락을 읽고 <b>실행할 수 있는 입력</b>으로 정리해 제안합니다.
           판정은 룰북이 하고, 카드의 [실행]을 눌러야 반영됩니다. 글에 없는 숫자나 구조식은 채우지 않습니다.</p>
       </header>
@@ -63,6 +66,25 @@
       proposals: [], source: "context",
     });
   }
+
+  // 모델 선택 — 옵션·권한은 app.js가 /api/meta에서 읽어 f1:llm 이벤트로 알려 준다
+  function renderModel(detail) {
+    const sel = el("llm-select"), note = el("llm-note");
+    if (!sel || !detail) return;
+    sel.innerHTML = (detail.options || []).map((o) => {
+      const why = !o.available ? " (키 없음)" : !o.allowed ? " (비밀번호 접속 필요)" : "";
+      return `<option value="${esc(o.id)}" ${o.available && o.allowed ? "" : "disabled"} ${o.id === detail.id ? "selected" : ""}>${esc(o.label + why)}</option>`;
+    }).join("");
+    sel.disabled = !detail.id;
+    note.innerHTML = detail.role === "full"
+      ? ""
+      : `게스트 접속 · 무료 모델만 — <a href="/?locked=formula1&amp;next=%2Fformula1%2F">비밀번호로 접속</a>하면 대회 API를 고를 수 있습니다`;
+    sel.onchange = () => {
+      if (!window.F1LLM.set(sel.value)) sel.value = window.F1LLM.get();
+      else say("agent", { reply: `이제부터 ${sel.options[sel.selectedIndex].text} 모델로 설계·심사·대화를 진행합니다.`, proposals: [], source: "context" });
+    };
+  }
+  document.addEventListener("f1:llm", (e) => renderModel(e.detail));
 
   function focusAgent() {
     el("agent-panel").scrollIntoView({ block: "start", behavior: "smooth" });
@@ -138,7 +160,7 @@
     try {
       const res = await fetch(api("/api/agent/turn"), {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history: prior, ...ids() }),
+        body: JSON.stringify({ message: text, history: prior, llm: (window.F1LLM && window.F1LLM.get()) || "groq", ...ids() }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : `요청 실패 (${res.status})`);

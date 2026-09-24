@@ -44,14 +44,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from formula.agents import input_agent
-from formula.agents.client import credentials_available, provider, provider_label
+from formula.agents import client as llm_client, input_agent
+from formula.agents.client import (DEFAULT_CHOICE, LLM_CHOICES, choice_available, credentials_available,
+                                   provider, provider_label, use_llm)
 from formula.checkers.registry import RulebookRegistry
 from formula.chem.profile import build_profile, smiles_error
 from formula.chem.smarts_probe import match_smarts
@@ -136,6 +137,34 @@ def lifecycle() -> LifecycleService:
 
 
 # ---------------------------------------------------------------------------
+# 모델 선택 권한 — 허브가 세션을 보고 `x-f1-role`(full | guest)을 붙인다(클라이언트 값은 허브가 덮어씀).
+# 비밀번호로 접속한 세션(full)만 대회 API를 고를 수 있고, 게스트는 무료 Groq만. 허브 없이 단독 실행
+# (BASE_PATH 없음)하면 로컬 개발이므로 full로 본다.
+# ---------------------------------------------------------------------------
+def access_role(request: Request) -> str:
+    role = (request.headers.get("x-f1-role") or "").strip().lower()
+    if role in ("full", "guest"):
+        return role
+    return "full" if not BASE_PATH else "guest"
+
+
+def llm_choice(request: Request, requested: Optional[str]) -> str:
+    choice = (requested or DEFAULT_CHOICE).strip().lower()
+    if choice not in LLM_CHOICES:
+        raise HTTPException(400, f"알 수 없는 모델 선택: {choice}")
+    if choice == "dacon" and access_role(request) != "full":
+        raise HTTPException(403, "대회 API 모델은 비밀번호로 접속한 경우에만 쓸 수 있습니다 — 게스트는 무료 모델(Groq)만 사용합니다.")
+    if choice == "dacon" and not choice_available("dacon"):
+        raise HTTPException(400, "대회 API 키가 설정돼 있지 않습니다.")
+    return choice
+
+
+def _with_llm(choice: str, fn, *args, **kwargs):
+    with use_llm(choice):
+        return fn(*args, **kwargs)
+
+
+# ---------------------------------------------------------------------------
 # 요청 모델
 # ---------------------------------------------------------------------------
 # 공개 엔드포인트라 길이를 묶는다. 자연어 요구가 수십 KB일 이유가 없고,
@@ -149,6 +178,7 @@ class RunRequest(BaseModel):
     # 룰북 조건식 문맥을 사용자가 덮어쓸 수 있다.
     measured_params: Dict[str, float] = Field(default_factory=dict)
     property_flags: Dict[str, bool] = Field(default_factory=dict)
+    llm: str = Field(default=DEFAULT_CHOICE, max_length=10)   # "groq" | "dacon" (대회 API는 full 접속만)
 
 
 class ChemRequest(BaseModel):
@@ -287,7 +317,7 @@ async def input_catalog() -> Dict[str, Any]:
 # 실행
 # ---------------------------------------------------------------------------
 @app.post("/api/runs")
-async def create_run(payload: RunRequest) -> Dict[str, Any]:
+async def create_run(payload: RunRequest, request: Request) -> Dict[str, Any]:
     # 공개 엔드포인트라 동시 실행을 제한한다 — 무료 티어 rate limit과 파드 메모리 보호.
     if len(ACTIVE) >= MAX_ACTIVE_RUNS:
         raise HTTPException(429, f"동시 실행 {MAX_ACTIVE_RUNS}건 초과 — 잠시 후 다시 시도하세요")
@@ -298,6 +328,7 @@ async def create_run(payload: RunRequest) -> Dict[str, Any]:
     invalid = smiles_error(payload.smiles)
     if invalid:
         raise HTTPException(400, invalid)
+    choice = llm_choice(request, payload.llm)
 
     # 실측값은 허용목록을 통과한 것만 스펙에 들어간다. 거부된 키는 조용히 버리지 않고
     # 응답에 실어 준다 — 오타를 삼키면 "왜 아무 규칙도 안 도는지" 알 수 없다.
@@ -306,7 +337,7 @@ async def create_run(payload: RunRequest) -> Dict[str, Any]:
 
     execution = Run(ROOT, payload.request, smiles=payload.smiles,
                     required_excipients=payload.required_excipients,
-                    measured_params=measured, property_flags=flags)
+                    measured_params=measured, property_flags=flags, llm=choice)
     # v3: 영속 프로젝트(lifecycle)는 만들지 않는다 — 출력 경계가 후보 처방 목록에서
     # 끝난다(§1). 되돌릴 때는 아래 두 줄과 응답의 project_id를 복구하면 된다.
     # project = lifecycle().create(
@@ -324,7 +355,7 @@ async def create_run(payload: RunRequest) -> Dict[str, Any]:
         QUEUES.pop(stale_id, None)
 
     asyncio.create_task(_drive_execution(execution))
-    return {"run_id": execution.run_id,
+    return {"run_id": execution.run_id, "llm": choice,
             "accepted_inputs": len(measured) + len(flags),
             "rejected_inputs": rejected}
 
@@ -432,9 +463,10 @@ def _study_error(exc: Exception) -> HTTPException:
 
 
 @app.post("/api/candidates/{candidate_id}/development-studies")
-async def create_study(candidate_id: str, payload: StudyCreateRequest,
+async def create_study(candidate_id: str, payload: StudyCreateRequest, request: Request,
                        idempotency_key: Optional[str] = Header(None),
-                       actor_id: str = Header("researcher")) -> Dict[str, Any]:
+                       actor_id: str = Header("researcher"),
+                       x_f1_llm: Optional[str] = Header(None)) -> Dict[str, Any]:
     execution = RUNS.get(payload.run_id)
     if execution is None or not execution.final:
         raise HTTPException(404, "설계 실행이 없거나 아직 끝나지 않았습니다.")
@@ -450,19 +482,21 @@ async def create_study(candidate_id: str, payload: StudyCreateRequest,
     h = dev_handoff.from_recipe(svc.rb, recipe, run_id=payload.run_id, spec=spec_d,
                                 verdicts=[v for v in verdicts if v.get("status") != "pass"], actor=actor_id)
     try:
-        return await asyncio.to_thread(svc.create, h, mode=payload.mode, actor=actor_id,
-                                       idempotency_key=idempotency_key)
+        return await asyncio.to_thread(_with_llm, llm_choice(request, x_f1_llm), svc.create, h,
+                                       mode=payload.mode, actor=actor_id, idempotency_key=idempotency_key)
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
 
 
 @app.post("/api/development-studies/demo/lornoxicam")
-async def create_demo_study(mode: str = "demo", idempotency_key: Optional[str] = Header(None),
-                            actor_id: str = Header("researcher")) -> Dict[str, Any]:
+async def create_demo_study(request: Request, mode: str = "demo", idempotency_key: Optional[str] = Header(None),
+                            actor_id: str = Header("researcher"),
+                            x_f1_llm: Optional[str] = Header(None)) -> Dict[str, Any]:
     svc = development()
     h = dev_handoff.lornoxicam_demo(svc.rb, actor_id)
+    choice = llm_choice(request, x_f1_llm)
     try:
-        return await asyncio.to_thread(svc.create, h, mode=mode, actor=actor_id,
+        return await asyncio.to_thread(_with_llm, choice, svc.create, h, mode=mode, actor=actor_id,
                                        idempotency_key=idempotency_key, demo_script="lornoxicam")
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
@@ -482,12 +516,15 @@ async def get_study(study_id: str) -> Dict[str, Any]:
 
 
 @app.post("/api/development-studies/{study_id}/actions/{action}")
-async def study_action(study_id: str, action: str, body: StudyActionRequest,
+async def study_action(study_id: str, action: str, body: StudyActionRequest, request: Request,
                        idempotency_key: Optional[str] = Header(None),
                        expected_state_version: Optional[int] = Header(None),
-                       actor_id: str = Header("researcher")) -> Dict[str, Any]:
+                       actor_id: str = Header("researcher"),
+                       x_f1_llm: Optional[str] = Header(None)) -> Dict[str, Any]:
+    choice = llm_choice(request, x_f1_llm)
     try:
-        return await asyncio.to_thread(development().act, study_id, action, body.payload, actor=actor_id,
+        return await asyncio.to_thread(_with_llm, choice, development().act, study_id, action, body.payload,
+                                       actor=actor_id,
                                        idempotency_key=idempotency_key, expected_version=expected_state_version)
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
@@ -544,6 +581,7 @@ class AgentRequest(BaseModel):
     run_id: Optional[str] = Field(default=None, max_length=60)
     study_id: Optional[str] = Field(default=None, max_length=80)
     history: List[AgentTurn] = Field(default_factory=list, max_length=12)
+    llm: str = Field(default=DEFAULT_CHOICE, max_length=10)
 
 
 _agent_catalog: Optional[Dict[str, Dict[str, Any]]] = None
@@ -574,12 +612,14 @@ def _pubchem_lookup(name: str) -> Dict[str, Any]:
 
 
 @app.post("/api/agent/turn")
-async def agent_turn(payload: AgentRequest) -> Dict[str, Any]:
+async def agent_turn(payload: AgentRequest, request: Request) -> Dict[str, Any]:
     if not payload.message.strip():
         raise HTTPException(422, "메시지가 비어 있습니다.")
+    choice = llm_choice(request, payload.llm)
     ctx = _agent_context(payload)
     history = [h.model_dump() for h in payload.history]
-    out, source = await asyncio.to_thread(input_agent.run_turn, payload.message, history, ctx, agent_catalog())
+    out, source = await asyncio.to_thread(_with_llm, choice, input_agent.run_turn, payload.message, history, ctx,
+                                          agent_catalog())
     return await asyncio.to_thread(input_agent.build_response, out, source, payload.message, history, ctx,
                                    agent_catalog(), experimental_inputs(), _pubchem_lookup)
 
@@ -1067,7 +1107,7 @@ def _sources_for(rule_file: str) -> Optional[str]:
 # 시스템 상태
 # ---------------------------------------------------------------------------
 @app.get("/api/meta")
-async def meta() -> Dict[str, Any]:
+async def meta(request: Request) -> Dict[str, Any]:
     reg = registry()
     reviewers: List[Dict[str, Any]] = []
     if reg.reviewer_registry_path:
@@ -1085,6 +1125,16 @@ async def meta() -> Dict[str, Any]:
         "llm_available": credentials_available(),
         "llm_provider": provider(),
         "llm_model": provider_label(),
+        # 화면의 모델 선택 — 기본은 무료 Groq, 대회 API는 비밀번호 접속(full)에서만
+        "access_role": access_role(request),
+        "llm_calls": dict(llm_client.CALLS),
+        "llm_default": DEFAULT_CHOICE,
+        "llm_options": [
+            {"id": "groq", "label": f"무료 · {provider_label('groq')}", "available": choice_available("groq"),
+             "allowed": True},
+            {"id": "dacon", "label": f"대회 API · {provider_label('dacon').replace(' (대회 API)', '')}",
+             "available": choice_available("dacon"), "allowed": access_role(request) == "full"},
+        ],
     }
 
 

@@ -29,6 +29,8 @@ const topAt = (page, sel) => page.evaluate((s) => {
 }, sel);
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 950 } });
+// 모델 선택(기본 Groq). 무료 한도가 바닥났을 때 F1_LLM=dacon 으로 같은 흐름을 대회 API로 검증할 수 있다(로컬=full 권한).
+if (process.env.F1_LLM) await ctx.addInitScript((v) => {{ try {{ localStorage.setItem('f1:llm', v); }} catch (e) {{}} }}, process.env.F1_LLM);
 const page = await ctx.newPage();
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });

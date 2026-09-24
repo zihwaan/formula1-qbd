@@ -615,6 +615,7 @@ async function startRun() {
         required_excipients: $("pinned").value.split(",").map((s) => s.trim()).filter(Boolean),
         measured_params: measured,
         property_flags: flags,
+        llm: llmChoice,
       }),
     });
     if (!res.ok) {
@@ -650,6 +651,40 @@ $("replay").onclick = () => {
   setRunning(true);
   connect(api(`/api/runs/${runId}/replay`));
 };
+
+/* ── 모델 선택 ─────────────────────────────────────────────────────
+   기본은 무료 Groq. 대회 API는 비밀번호로 접속한 세션(access_role=full)에서만 고를 수 있다 —
+   서버도 같은 규칙으로 다시 막으므로(403) 화면의 잠금은 안내일 뿐 권한 경계가 아니다.
+   선택은 설계 실행·입력 에이전트·개발 스튜디오 호출에 함께 실린다. */
+let llmChoice = "groq";
+let llmMeta = { options: [], role: "guest", fallbackLabel: "" };
+
+function llmUsable(o) { return o && o.available && o.allowed; }
+
+function setLlm(id, { save = true } = {}) {
+  const opt = llmMeta.options.find((o) => o.id === id);
+  if (!llmUsable(opt)) return false;
+  llmChoice = id;
+  if (save) { try { localStorage.setItem("f1:llm", id); } catch (e) { /* 무시 */ } }
+  $("pill-llm").textContent = `LLM ${opt.label}`;
+  $("pill-llm").className = "pill ok";
+  document.dispatchEvent(new CustomEvent("f1:llm", { detail: { id, options: llmMeta.options, role: llmMeta.role } }));
+  return true;
+}
+
+function initLlm(meta) {
+  llmMeta = { options: meta.llm_options || [], role: meta.access_role || "guest" };
+  let saved = null;
+  try { saved = localStorage.getItem("f1:llm"); } catch (e) { /* 무시 */ }
+  const ok = setLlm(saved, { save: false }) || setLlm(meta.llm_default || "groq", { save: false })
+    || llmMeta.options.some((o) => llmUsable(o) && setLlm(o.id, { save: false }));
+  if (!ok) {
+    $("pill-llm").textContent = "LLM 미연결 — 규칙 기반 대체";
+    $("pill-llm").className = "pill warn";
+    document.dispatchEvent(new CustomEvent("f1:llm", { detail: { id: null, options: llmMeta.options, role: llmMeta.role } }));
+  }
+}
+window.F1LLM = { get: () => llmChoice, set: (id) => setLlm(id), meta: () => llmMeta };
 
 /* ── v3 데이터 요청 (lab-in-the-loop, 비차단) ────────────────────────
    근거 충족 게이트·장기 실행 작업함·배치 결과 루프(WL_EXAMPLE 등)는 v3 출력 경계
@@ -1316,10 +1351,7 @@ $("btn-theme").onclick = () => {
     $("pill-rules").textContent =
       `룰북 ${r.total} (정량 ${r.quantitative} · 정성 ${r.qualitative} · 참조 ${r.reference})`;
     $("pill-rules").className = "pill ok";
-    $("pill-llm").textContent = meta.llm_available
-      ? `LLM ${meta.llm_model || "연결됨"}`
-      : "LLM 미연결 — 규칙 기반 대체";
-    $("pill-llm").className = "pill " + (meta.llm_available ? "ok" : "warn");
+    initLlm(meta);
   } catch (err) {
     // 백엔드가 안 뜬 상태를 빈 화면으로 두지 않는다.
     $("pill-rules").textContent = "룰북 조회 실패";

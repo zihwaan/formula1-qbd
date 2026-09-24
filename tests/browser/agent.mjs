@@ -11,6 +11,8 @@ const check = (name, ok, detail = '') => {
 };
 
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+// 모델 선택(기본 Groq). 무료 한도가 바닥났을 때 F1_LLM=dacon 으로 같은 흐름을 대회 API로 검증할 수 있다(로컬=full 권한).
+if (process.env.F1_LLM) await page.addInitScript((v) => { try { localStorage.setItem('f1:llm', v); } catch (e) {} }, process.env.F1_LLM);
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error' && !/status of (409|422)/.test(m.text())) errors.push(m.text()); });

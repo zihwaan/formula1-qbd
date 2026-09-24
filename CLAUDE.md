@@ -688,3 +688,11 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
 - The PDF link is intentionally **not** shown in the app (user request); the report is only at `zihwan.com/pdf`.
 - Report experiments: `python3 scripts/report/experiments.py http://localhost:<port> 2` against a container with the
   contest key → `docs/report/experiments.json` (table 5/6). One pass (8 runs + 6 agent turns) ≈ 575k contest tokens.
+- **Model choice is per request (2026-09-25).** `client.use_llm("groq"|"dacon")` sets a contextvar (it follows LangGraph
+  node threads like the event bus). Default = **groq**. `Run(llm=...)` wraps `stream()` and measurement reassess; the agent,
+  study create/action and demo study wrap their thread calls (`_with_llm`). The UI select lives in the agent panel header
+  (`F1LLM` in app.js, sent as `llm` in bodies and `X-F1-LLM` header from studio.js). **Access:** the hub sets
+  `x-f1-role` = `full` (Formula 1 password session) | `guest` (`POST /api/formula1/guest`, "게스트로 접속" in the hub
+  lock modal) and overwrites any client value; `web/server.py:llm_choice` 403s `dacon` for guests. No header + empty
+  BASE_PATH (local dev) = full. `/api/meta` exposes `access_role`, `llm_options`, and `llm_calls` (per-provider success
+  counts — use it to prove routing).

@@ -7,6 +7,8 @@ const found = [];
 const note = (sev, area, msg) => { found.push({ sev, area, msg }); console.log(`  [${sev}] ${area}: ${msg}`); };
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 950 } });
+// 모델 선택(기본 Groq). 무료 한도가 바닥났을 때 F1_LLM=dacon 으로 같은 흐름을 대회 API로 검증할 수 있다(로컬=full 권한).
+if (process.env.F1_LLM) await ctx.addInitScript((v) => {{ try {{ localStorage.setItem('f1:llm', v); }} catch (e) {{}} }}, process.env.F1_LLM);
 const page = await ctx.newPage();
 const consoleErrs = [], netFails = [], reqs = [];
 // 섹션 E가 일부러 없는 run을 조회한다 — 그 404는 점검 자신이 만든 것이라 콘솔 오류로 세지 않는다

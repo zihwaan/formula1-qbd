@@ -20,6 +20,7 @@ from formula.contracts import (
     TraceEvent,
 )
 from formula.evidence.gate import EvidenceGate
+from formula.agents.client import use_llm
 from formula.orchestrator.events import EventBus
 from formula.orchestrator.graph import build_graph
 from formula.orchestrator.state import new_state
@@ -36,8 +37,10 @@ class Run:
     def __init__(self, base_dir: Path, request: str, smiles: Optional[str] = None,
                  run_id: Optional[str] = None, required_excipients: Optional[List[str]] = None,
                  measured_params: Optional[Dict[str, float]] = None,
-                 property_flags: Optional[Dict[str, bool]] = None):
+                 property_flags: Optional[Dict[str, bool]] = None,
+                 llm: str = "groq"):
         self.base_dir = Path(base_dir)
+        self.llm = llm            # 화면에서 고른 모델("groq" | "dacon") — 권한 검사는 서버가 끝냈다
         self.state = new_state(request, smiles=smiles, run_id=run_id,
                                required_excipients=required_excipients,
                                measured_params=measured_params, property_flags=property_flags)
@@ -67,7 +70,7 @@ class Run:
         self.bus.subscribe(lambda event: loop.call_soon_threadsafe(queue.put_nowait, event))
 
         async def drive() -> None:
-            with self.bus:
+            with self.bus, use_llm(self.llm):
                 self.bus.publish(TraceEvent(run_id=self.run_id, node="run",
                                             kind=EventKind.RUN_START,
                                             payload={"request": self.state["request"]}))
@@ -139,6 +142,11 @@ class Run:
 
     # ── v3 데이터 요청 재계산 (§4.1) ──────────────────────────────────
     def reassess_with_measurements(self, measurements: Dict[str, float]) -> Dict[str, Any]:
+        """같은 run의 모델 선택으로 재계산한다(재설계가 필요하면 그 모델로 다시 생성)."""
+        with use_llm(self.llm):
+            return self._reassess_with_measurements(measurements)
+
+    def _reassess_with_measurements(self, measurements: Dict[str, float]) -> Dict[str, Any]:
         """narrows_strategy 요청에 대한 실측값을 반영해 다시 계산한다.
 
         그래프를 다시 돌리지 않는다 — phase_gates·gate·drq_refine은 전부 결정론이라

@@ -27,6 +27,7 @@ Groq 경로가 Anthropic과 다른 점:
 
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import threading
@@ -109,9 +110,54 @@ def _dacon_key() -> str:
 _DACON_EXHAUSTED = {"flag": False}
 
 
-@lru_cache(maxsize=1)
+# 요청 단위 모델 선택 — 화면에서 고른 값("groq" | "dacon")을 실행·에이전트·스튜디오 호출에 싣는다.
+# contextvar라 LangGraph 노드 스레드까지 따라간다(이벤트 버스와 같은 방식). 권한 검사는 web/server.py가 한다.
+LLM_CHOICES = ("groq", "dacon")
+DEFAULT_CHOICE = "groq"
+_CHOICE: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("f1_llm_choice", default=None)
+
+
+# 실제로 응답한 프로바이더별 호출 수(프로세스 누적) — /api/meta로 노출해 선택이 지켜지는지 확인한다.
+CALLS: Dict[str, int] = {}
+
+
+def _count(name: str) -> None:
+    CALLS[name] = CALLS.get(name, 0) + 1
+
+
+class use_llm:
+    """`with use_llm("dacon"):` 안의 호출은 그 선택으로 간다(대회 API → 실패·소진 시 Groq)."""
+
+    def __init__(self, choice: Optional[str]):
+        self.choice = choice if choice in LLM_CHOICES else DEFAULT_CHOICE
+        self._token = None
+
+    def __enter__(self):
+        self._token = _CHOICE.set(self.choice)
+        return self
+
+    def __exit__(self, *exc):
+        _CHOICE.reset(self._token)
+
+
+def choice_available(choice: str) -> bool:
+    return {"groq": bool(_groq_key()), "dacon": bool(_dacon_key())}.get(choice, False)
+
+
 def providers() -> Tuple[str, ...]:
-    """이번 프로세스가 쓸 프로바이더 순서. 앞의 것이 실패하면 다음 것으로 넘어간다."""
+    """이번 호출이 쓸 프로바이더 순서. 앞의 것이 실패하면 다음 것으로 넘어간다."""
+    base = _base_providers()
+    choice = _CHOICE.get()
+    if choice == "groq":
+        return tuple(p for p in base if p == "groq")
+    if choice == "dacon":
+        return tuple(p for p in ("dacon", "groq") if p in base)
+    return base
+
+
+@lru_cache(maxsize=1)
+def _base_providers() -> Tuple[str, ...]:
+    """환경이 허용하는 프로바이더 순서(선택이 없을 때의 기본)."""
     requested = os.environ.get("FORMULA1_LLM_PROVIDER", "auto").strip().lower()
     if requested == "none":
         return ()
@@ -146,10 +192,10 @@ def credentials_available() -> bool:
     return provider() != "none"
 
 
-def provider_label() -> str:
+def provider_label(name: Optional[str] = None) -> str:
     """UI에 보여줄 모델 이름 — 어떤 경로로 돌고 있는지 화면에서 구분되게."""
     return {"anthropic": MODEL, "dacon": f"{DACON_MODEL} (대회 API)", "groq": GROQ_MODELS[0],
-            "none": ""}[provider()]
+            "none": ""}[name or provider()]
 
 
 # ---------------------------------------------------------------------------
@@ -688,15 +734,17 @@ def parse_structured(
     last: Optional[LLMUnavailable] = None
     for name in providers():
         try:
+            if name == "dacon" and _DACON_EXHAUSTED["flag"]:
+                continue
             if name == "anthropic":
-                return _anthropic_parse(output_format, system_prefix, user, system_suffix, effort, max_tokens)
-            if name == "dacon":
-                if _DACON_EXHAUSTED["flag"]:
-                    continue
-                return _dacon_parse(output_format, system_prefix, user, system_suffix, effort, max_tokens)
-            if name == "groq":
-                return _groq_parse(output_format, system_prefix, user, system_suffix, effort,
-                                   max_tokens, wait_budget)
+                out = _anthropic_parse(output_format, system_prefix, user, system_suffix, effort, max_tokens)
+            elif name == "dacon":
+                out = _dacon_parse(output_format, system_prefix, user, system_suffix, effort, max_tokens)
+            else:
+                out = _groq_parse(output_format, system_prefix, user, system_suffix, effort,
+                                  max_tokens, wait_budget)
+            _count(name)
+            return out
         except LLMUnavailable as exc:
             last = exc          # 다음 프로바이더로 (대회 API 소진·오류 → 무료 Groq)
     raise last or LLMUnavailable("LLM 자격증명 없음 (DACON_API_KEY / GROQ_API_KEY 미설정)")
@@ -715,14 +763,16 @@ def stream_text(
     emitted = [False]
     for name in providers():
         try:
+            if name == "dacon" and _DACON_EXHAUSTED["flag"]:
+                continue
             if name == "anthropic":
-                return _anthropic_stream(system_prefix, user, on_delta, system_suffix, effort, max_tokens)
-            if name == "dacon":
-                if _DACON_EXHAUSTED["flag"]:
-                    continue
-                return _dacon_stream(system_prefix, user, on_delta, system_suffix, effort, max_tokens, emitted)
-            if name == "groq":
-                return _groq_stream(system_prefix, user, on_delta, system_suffix, effort, max_tokens)
+                out = _anthropic_stream(system_prefix, user, on_delta, system_suffix, effort, max_tokens)
+            elif name == "dacon":
+                out = _dacon_stream(system_prefix, user, on_delta, system_suffix, effort, max_tokens, emitted)
+            else:
+                out = _groq_stream(system_prefix, user, on_delta, system_suffix, effort, max_tokens)
+            _count(name)
+            return out
         except LLMUnavailable as exc:
             last = exc
             if emitted[0]:      # 이미 화면에 흘린 뒤라면 다른 모델로 이어 붙이지 않는다

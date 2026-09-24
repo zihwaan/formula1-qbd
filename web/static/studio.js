@@ -54,7 +54,8 @@
   // ── 서버 호출 ──────────────────────────────────────────────────────────
   async function req(method, path, body, headers = {}) {
     const res = await fetch(api(path), {
-      method, headers: { "Content-Type": "application/json", "Actor-ID": "researcher", ...headers },
+      method, headers: { "Content-Type": "application/json", "Actor-ID": "researcher",
+        "X-F1-LLM": (window.F1LLM && window.F1LLM.get()) || "groq", ...headers },
       body: body ? JSON.stringify(body) : undefined,
     });
     const data = await res.json().catch(() => ({}));
