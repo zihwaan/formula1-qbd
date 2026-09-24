@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="static/styles.css">
   <link rel="stylesheet" href="static/explainer.css">
   <link rel="stylesheet" href="static/studio.css">
+  <link rel="stylesheet" href="static/agent.css">
   <script>
     /* 테마를 그리기 전에 적용해 첫 프레임 깜빡임을 막는다.
        키는 머니메이트·브리핑과 공유('mm:theme') — 한 서비스에서 바꾸면 전체 반영. */
@@ -29,6 +30,7 @@
         <span class="pill" id="pill-rules">룰북 —</span>
         <span class="pill" id="pill-llm">LLM —</span>
         <button id="guide-open" class="btn btn-ghost" type="button">시스템 설명</button>
+        <a class="btn btn-ghost" id="report-pdf" href="/pdf" download title="기술 보고서(논문 형식) PDF 내려받기">보고서 PDF</a>
         <button class="btn-icon" id="btn-theme" type="button" title="라이트/다크 전환" aria-label="라이트/다크 전환">◐</button>
       </div>
     </div>
@@ -292,5 +294,6 @@
   <script src="static/explainer.js"></script>
   <script src="static/app.js"></script>
   <script src="static/studio.js"></script>
+  <script src="static/agent.js"></script>
 </body>
 </html>

@@ -189,3 +189,10 @@ def test_every_event_is_serializable(golden_run):
     """모든 TraceEvent는 SSE로 나갈 수 있어야 한다(웹 UI 계약)."""
     for event in golden_run.bus.history:
         assert event.model_dump_json()
+
+
+def test_rejection_backtracks_by_reason(golden_run):
+    """유당 반려(INC002)는 BT001로 같은 전략·성분만 교체(GATE) — 제약에 유당 제외가 쌓인다."""
+    bt = [e.payload for e in golden_run.bus.history if e.kind.value == "backtrack"]
+    assert bt and bt[0]["transition_id"].startswith("BT001") and bt[0]["return_phase"] == "GATE"
+    assert any("actose" in x for x in bt[0]["constraints"].get("exclude_ingredient", []))

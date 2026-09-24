@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from formula.agents import generator
+from formula.biopharm.triggers import group_requests
 from formula.checkers.registry import RulebookRegistry
 from formula.contracts import (
     ConfirmationResult,
@@ -42,6 +43,7 @@ class Run:
                                measured_params=measured_params, property_flags=property_flags)
         self.run_id: str = self.state["run_id"]
         self.bus = EventBus(self.run_id)
+        self.declined: set = set()   # 연구자가 건너뛴 데이터 요청 trigger_id
         self.final: Dict[str, Any] = {}
         self.registry = RulebookRegistry(self.base_dir / "config" / "rulebook_manifest.yaml",
                                          base_dir=self.base_dir)
@@ -114,13 +116,26 @@ class Run:
             "candidates": [c.candidate_id for c in final.get("candidates", [])],
             "ranked": consensus.get("ranked", []),
             "rulebook_feedback": consensus.get("rulebook_feedback", []),
-            # v3: 출력 경계가 후보 처방 목록에서 끝난다 — 실행 가능 프로토콜 상태
-            # (readiness/evidence_summary) 대신 권고 후보의 신뢰도 태그를 낸다.
+            # 출력 경계는 후보 처방 목록 — 권고 후보의 신뢰도 태그와 남은 요청을 낸다.
             "confidence": winner_recipe.confidence if winner_recipe else "",
             "pending_refinements": winner_recipe.pending_refinements if winner_recipe else [],
-            "pending_requests": final.get("pending_narrow", []),
+            "pending_requests": [r for r in final.get("pending_narrow", [])
+                                 if r.get("trigger_id") not in self.declined],
+            "request_groups": group_requests(final.get("pending_narrow", []), self.base_dir, list(self.declined)),
+            "declined": sorted(self.declined),
             "plan_signature": final.get("plan_signature", ""),
+            "strategies": final.get("strategies", []),
+            "constraints": final.get("constraints", {}),
+            "backtrack": final.get("backtrack", {}),
         }
+
+    def decline(self, trigger_ids: List[str]) -> Dict[str, Any]:
+        """연구자가 요청을 건너뛴다 — 멈추지 않고 예측값으로 계속한다(후보는 provisional 유지)."""
+        known = {r.get("trigger_id") for r in (self.final or {}).get("pending_narrow", [])}
+        for t in trigger_ids:
+            if t in known:
+                self.declined.add(t)
+        return self.summary()
 
     # ── v3 데이터 요청 재계산 (§4.1) ──────────────────────────────────
     def reassess_with_measurements(self, measurements: Dict[str, float]) -> Dict[str, Any]:
@@ -136,11 +151,19 @@ class Run:
         from formula.checkers.applies_when import spec_context
         from formula.planner import strategy_planner
 
+        from formula.biopharm.triggers import load_measurement_catalog
+        from formula.planner import backtrack as backtrack_mod
+
         spec = self.final.get("spec")
         if spec is None:
             raise KeyError("spec")
         for key, value in measurements.items():
-            spec.measured_params[str(key)] = float(value)
+            if isinstance(value, bool):
+                spec.properties[str(key)] = value
+            elif isinstance(value, (int, float)):
+                spec.measured_params[str(key)] = float(value)
+            else:
+                spec.properties[str(key)] = str(value)   # 결정형 ID 같은 문자열 결과
 
         ctx: Dict[str, Any] = spec_context(spec, {})
         seed_known_keys(ctx, self.base_dir)
@@ -153,12 +176,26 @@ class Run:
                    if k != "candidate_id" and not str(k).startswith("_")})
         ctx.setdefault("recommended_routes", [])
         ctx.setdefault("excluded_routes", [])
+        # 유동성 자료가 없어 경로 결정트리가 아무것도 권하지 못하면 좁히지 않고 넓힌다 —
+        # 세 경로를 모두 잠정 후보로 열고(routes_provisional), 유동성 측정 요청(DRQ_PFLOW)이 좁힌다.
+        if not ctx["recommended_routes"] and not ctx.get("flow_character"):
+            ctx["recommended_routes"] = [r for r in ("DC", "DG", "WG") if r not in ctx["excluded_routes"]]
+            ctx["routes_provisional"] = True
         run_biopharm_gates(ctx, self.base_dir)
 
         profile = self.final.get("api_profile")
         flag_names = profile.flag_names() if profile else []
         pending_narrow = evaluate_triggers(ctx, "narrows_strategy", self.base_dir, flags=flag_names)
-        planned = strategy_planner.plan(ctx, self.base_dir)
+        # 측정 결과가 전략의 전제를 부정하면(ASD 비혼화 등) 되돌림 표대로 그 전략을 빼거나 감점한다
+        decisions = backtrack_mod.match_measurements(dict(measurements), self.final.get("strategies", []),
+                                                     self.base_dir, load_measurement_catalog(self.base_dir))
+        constraints = dict(self.final.get("constraints") or {})
+        for d in decisions:
+            constraints = backtrack_mod.apply(constraints, d.patch)
+        self.final["constraints"] = constraints
+        if decisions:
+            self.final["backtrack"] = {"from_measurement": True, "decisions": [d.as_dict() for d in decisions]}
+        planned = strategy_planner.plan(ctx, self.base_dir, constraints=constraints)
         new_signature = strategy_planner.signature(planned)
         old_signature = self.final.get("plan_signature", "")
 
@@ -167,7 +204,14 @@ class Run:
         self.final["pending_narrow"] = [p.model_dump(mode="json") for p in pending_narrow]
         self.final["plan_signature"] = new_signature
 
-        if new_signature == old_signature or not planned:
+        if not planned:
+            self.final["status"] = "qtpp_review"
+            self.final["strategies"] = []
+            return {"regenerated": False, "qtpp_review": True, "plan_signature": new_signature,
+                    "backtrack": [d.as_dict() for d in decisions],
+                    "pending_requests": self.final["pending_narrow"], "summary": self.summary()}
+        self.final["strategies"] = [p.strategy_code for p in planned]
+        if new_signature == old_signature:
             # 전략 집합 불변 — 기존 후보들의 confidence만 다시 매긴다(LLM 호출 없음).
             for result in self.final.get("results", []):
                 if not result.get("passed"):
@@ -187,6 +231,8 @@ class Run:
                 candidate_id = f"cand-reassess-{planned_strategy.strategy_code}"
                 recipe = generator.generate(spec, planned_strategy.strategy_code, self.base_dir,
                                             candidate_id)
+                if recipe is None:
+                    continue   # LLM 무응답 — 이 전략 후보는 만들지 않는다(대신 채우지 않음)
                 gate = self.registry.run(spec, recipe, short_circuit=False, derived=dict(public_derived))
                 result = {
                     "candidate_id": recipe.candidate_id, "recipe": recipe,
@@ -214,10 +260,14 @@ class Run:
                 summary["pending_refinements"] = winner_result["recipe"].pending_refinements
             self.final["consensus"] = summary
             self.final["final_candidate"] = summary["winner"]
-            self.final["status"] = "passed" if summary["winner"] else "rejected"
+            passed_any = any(r["passed"] for r in new_results)
+            self.final["status"] = ("passed" if summary["winner"] else
+                                    "passed_unranked" if passed_any else
+                                    "no_design" if not new_results else "rejected")
             regenerated = True
 
         return {"regenerated": regenerated, "plan_signature": new_signature,
+                "backtrack": [d.as_dict() for d in decisions],
                 "pending_requests": self.final["pending_narrow"], "summary": self.summary()}
 
     # ── 실험 전 루프 (확인시험 → 근거 재평가 → 연구자 승인) ──────────────

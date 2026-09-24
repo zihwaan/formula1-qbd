@@ -184,11 +184,14 @@
     el("tab-studio").setAttribute("aria-selected", String(studio));
     try { localStorage.setItem("f1:tab", which); } catch (e) { /* 무시 */ }
     if (studio) refreshList();
+    document.dispatchEvent(new CustomEvent("f1:tab", { detail: { tab: which } }));
   }
 
   // ── 전체 그리기 ────────────────────────────────────────────────────────
   function render(s) {
+    const changed = !study || study.study_id !== s.study_id || study.state_version !== s.state_version;
     study = s;
+    if (changed) document.dispatchEvent(new CustomEvent("f1:study", { detail: { studyId: s.study_id, status: s.status } }));
     try { localStorage.setItem("f1:study", s.study_id); } catch (e) { /* 무시 */ }
     el("studio-empty").hidden = true;
     el("studio-grid").hidden = false;
@@ -1283,7 +1286,14 @@
       .catch(() => { try { localStorage.removeItem("f1:study"); } catch (e) { /* 무시 */ } });
   }
 
-  window.F1Studio = { startFromCandidate, showTab, startDemo };
+  // 입력 에이전트가 제안한 행동도 사람이 누른 버튼과 같은 act() 경로로 간다(버전 헤더·멱등키 포함).
+  window.F1Studio = {
+    startFromCandidate, showTab, startDemo,
+    current: () => (study ? { studyId: study.study_id, status: study.status, version: study.state_version } : null),
+    tab: () => (el("view-studio").hidden ? "discovery" : "studio"),
+    runAction: (action, payload) => act(action, payload || {}),
+    lastError: () => lastError,
+  };
   el("studio-demo").onclick = () => startDemo();
   init();
 })();

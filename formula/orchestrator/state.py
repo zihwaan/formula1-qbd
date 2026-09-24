@@ -96,6 +96,10 @@ class FormulationState(TypedDict, total=False):
     # P6 — 반성 루프
     reflection_count: int
     reflection_directive: str
+    constraints: Dict[str, List[str]]   # 되돌림이 쌓은 제약: 성분·전략·경로 제외, 가족 요구/감점
+    phase_attempts: Dict[str, int]      # 복귀 지점별 횟수 — 같은 지점 3회면 한 단계 위로
+    backtrack: Dict[str, Any]           # 마지막 되돌림 결정
+    planned: List[Dict[str, Any]]       # 계획이 고른 전략(공정 단계·규칙 커버리지 포함)
     reject_reasons: List[str]
 
     # P7 — lab-in-the-loop (배치 결과 → 원인 가설 → 다음 실험 지시)
@@ -132,6 +136,10 @@ def new_state(request: str, smiles: Optional[str] = None, run_id: Optional[str] 
         judge_verdicts=[],
         consensus=None,
         reflection_count=0,
+        constraints={},
+        phase_attempts={},
+        backtrack={},
+        planned=[],
         reflection_directive="",
         reject_reasons=[],
         wetlab=None,

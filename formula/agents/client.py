@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import re
 import time
 from collections import deque
 from functools import lru_cache
@@ -345,11 +346,34 @@ def _groq_call(payload: Dict[str, Any]) -> Tuple[str, Optional[int]]:
     return data["choices"][0]["message"]["content"] or "", used
 
 
+# 일일 토큰 한도(TPD)에 걸린 모델 → 풀리는 시각(monotonic). 분당 한도와 달리 기다려도 수십 분은
+# 안 풀리므로, 그 사이 호출마다 75초씩 기다리지 않고 바로 "일일 한도"라고 알린다.
+_DAILY_BLOCK: Dict[str, float] = {}
+DAILY_LIMIT_MESSAGE = "무료 티어 일일 토큰 한도 도달 — 한도가 풀릴 때까지 LLM 단계는 비어 있습니다"
+
+
+def _daily_retry_seconds(error: Exception) -> Optional[float]:
+    """429 본문이 '하루 한도(tokens per day)'면 다시 시도까지 남은 초, 아니면 None."""
+    try:
+        text = error.response.text  # type: ignore[attr-defined]
+    except Exception:   # noqa: BLE001
+        return None
+    if "per day" not in text:
+        return None
+    m = re.search(r"try again in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?", text)
+    if not m:
+        return 600.0
+    h, mi, se = (float(x) if x else 0.0 for x in m.groups())
+    return h * 3600 + mi * 60 + se
+
+
 def _friendly(error: Exception) -> str:
     """사용자 화면에 나갈 사유 문구. 원시 HTTP 본문·URL을 그대로 노출하지 않는다."""
     httpx = _httpx()
     if isinstance(error, httpx.HTTPStatusError):
         status = error.response.status_code
+        if status == 429 and _daily_retry_seconds(error) is not None:
+            return DAILY_LIMIT_MESSAGE
         if status in (429, 413):
             return "무료 티어 분당 토큰 한도 도달"
         if status in (401, 403):
@@ -377,6 +401,11 @@ def _groq_with_fallback(need: Callable[[str], int], call: Callable[[str], Any],
     last_error: Optional[Exception] = None
     blocked: set = set()
 
+    now = time.monotonic()
+    daily = {m for m, until in _DAILY_BLOCK.items() if until > now}
+    if daily and daily >= set(GROQ_MODELS):
+        raise LLMUnavailable(DAILY_LIMIT_MESSAGE)
+    blocked |= daily
     for _ in range(len(GROQ_MODELS) + 1):
         budget = {m: need(m) for m in GROQ_MODELS if m not in blocked}
         if not budget:
@@ -389,6 +418,10 @@ def _groq_with_fallback(need: Callable[[str], int], call: Callable[[str], Any],
         except httpx.HTTPStatusError as exc:
             last_error = exc
             status = exc.response.status_code
+            if status == 429:
+                wait = _daily_retry_seconds(exc)
+                if wait is not None:
+                    _DAILY_BLOCK[model] = time.monotonic() + wait
             if status in (404, 429, 413):
                 # 404 = 이 모델이 카탈로그에서 내려갔다(Groq가 무료 티어 모델을 종종 바꾼다).
                 # 429/413 = 우리 회계보다 서버가 빡빡했다. 어느 쪽이든 이 모델 하나만 이번

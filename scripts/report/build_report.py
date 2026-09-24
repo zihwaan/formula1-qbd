@@ -1,0 +1,540 @@
+"""기술 보고서(논문 형식) 빌드 — docs/report/figdata.json(엔진 실측) → docs/report/report.html → PDF.
+
+    docker run --rm -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1-dev python scripts/report/figdata.py
+    python3 scripts/report/build_report.py --tests 199 --browser "verify 33 · audit · scenarios · studio · agent"
+    "<chrome>" --headless=new --no-pdf-header-footer --print-to-pdf=docs/report/Formula1_report.pdf docs/report/report.html
+
+그림의 수치는 전부 figdata.json(엔진 계산)이나 저장소의 CSV 행 수에서 온다. 손으로 적은 결과값은 없다.
+"""
+from __future__ import annotations
+
+import argparse
+import html
+import json
+from datetime import date
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+OUT = ROOT / "docs" / "report"
+E = html.escape
+
+
+# ── 그림 ──────────────────────────────────────────────────────────────────
+def box(x, y, w, h, title, sub="", kind="det", r=8):
+    dash = {"det": "", "llm": ' stroke-dasharray="6 4"', "jud": ' stroke-dasharray="2 3"', "io": "", "hi": ""}[kind]
+    fill = {"det": "#ffffff", "llm": "#ffffff", "jud": "#ffffff", "io": "#f1f3f5", "hi": "#e7f0ff"}[kind]
+    stroke = "#1d4ed8" if kind == "hi" else "#222"
+    t = f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{r}" fill="{fill}" stroke="{stroke}" stroke-width="1.3"{dash}/>'
+    t += f'<text x="{x + w / 2}" y="{y + (h / 2 if not sub else h / 2 - 5)}" class="bt">{E(title)}</text>'
+    if sub:
+        t += f'<text x="{x + w / 2}" y="{y + h / 2 + 11}" class="bs">{E(sub)}</text>'
+    return t
+
+
+def arrow(x1, y1, x2, y2, label="", dash=False, lx=None, ly=None):
+    d = ' stroke-dasharray="5 4"' if dash else ""
+    t = f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#333" stroke-width="1.2" marker-end="url(#ah)"{d}/>'
+    if label:
+        t += f'<text x="{lx if lx is not None else (x1 + x2) / 2 + 4}" y="{ly if ly is not None else (y1 + y2) / 2 - 3}" class="al">{E(label)}</text>'
+    return t
+
+
+def path(dpath, label="", lx=0, ly=0, dash=True):
+    d = ' stroke-dasharray="5 4"' if dash else ""
+    t = f'<path d="{dpath}" fill="none" stroke="#333" stroke-width="1.2" marker-end="url(#ah)"{d}/>'
+    if label:
+        t += f'<text x="{lx}" y="{ly}" class="al">{E(label)}</text>'
+    return t
+
+
+DEFS = ('<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+        '<path d="M0,0 L10,5 L0,10 z" fill="#333"/></marker></defs>')
+
+
+def svg(w, h, body):
+    return f'<svg viewBox="0 0 {w} {h}" width="100%" xmlns="http://www.w3.org/2000/svg" role="img">{DEFS}{body}</svg>'
+
+
+def fig_architecture():
+    b = ""
+    b += box(250, 8, 220, 36, "연구자", "말 · 폼 · 측정값 · 승인", "io")
+    b += box(200, 66, 320, 44, "입력 에이전트", "맥락 스냅숏 · 말 → 제안 카드 · 코드 가드레일", "llm")
+    b += arrow(360, 44, 360, 66) + arrow(340, 66, 340, 44)
+    # discovery
+    b += '<rect x="10" y="132" width="700" height="150" rx="10" fill="#fafafa" stroke="#999"/>'
+    b += '<text x="22" y="150" class="gt">① 후보 탐색 — CandidateDiscoveryGraph (LangGraph · 분 단위)</text>'
+    xs = [22, 130, 238, 346, 454, 562]
+    names = [("분자 프로파일", "RDKit · 82 패턴", "det"), ("페이즈 게이트", "BCS/DCS·고체상·가용화", "det"),
+             ("계획", "상위 3 전략 · 서명", "det"), ("병렬 설계", "전략별 후보", "llm"),
+             ("규칙 게이트", "오차 0% · 반려 권한", "det"), ("심사·합의", "동적 소집 · 순위만", "jud")]
+    for x, (t, s, k) in zip(xs, names):
+        b += box(x, 162, 100, 46, t, s, k)
+    for i in range(5):
+        b += arrow(xs[i] + 100, 185, xs[i + 1], 185)
+    b += box(346, 228, 200, 40, "되돌림 · 반성", "사유별 복귀 지점 (14행 전이표)", "det")
+    b += path("M 504 208 L 504 228", dash=False)
+    b += path("M 346 248 L 290 248 L 290 208", "성분만/공정·전략부터", 190, 262)
+    b += box(566, 228, 132, 40, "후보 처방 목록", "신뢰도 · 남은 요청", "io")
+    b += arrow(612, 208, 612, 228)
+    b += arrow(360, 110, 360, 132, "확인한 카드만", lx=366, ly=126)
+    # handoff
+    b += box(210, 300, 300, 36, "불변 Handoff", "candidate_id@version · fingerprint", "hi")
+    b += arrow(632, 268, 510, 318, "연구자가 선택", lx=560, ly=298)
+    # studio
+    b += '<rect x="10" y="354" width="700" height="120" rx="10" fill="#fafafa" stroke="#999"/>'
+    b += '<text x="22" y="372" class="gt">② 개발 스튜디오 — ExperimentalDevelopmentGraph (상태기계 · 주·월 단위)</text>'
+    st = [("Readiness", "det"), ("CQA 계약", "det"), ("FMEA", "llm"), ("요인·수준", "det"), ("DoE 설계", "det"),
+          ("결과·모델", "det"), ("잠정 영역", "det"), ("확인배치", "det")]
+    for i, (t, k) in enumerate(st):
+        b += box(20 + i * 86, 384, 78, 34, t, "", k, r=6)
+        if i < len(st) - 1:
+            b += arrow(98 + i * 86, 401, 106 + i * 86, 401)
+    b += box(250, 432, 220, 32, "VERIFIED 영역 + 성립 조건", "", "io")
+    b += arrow(360, 336, 360, 354)
+    b += arrow(622, 418, 470, 440)
+    b += '<text x="480" y="450" class="al">판정 07_doe 171규칙 · 숫자 엔진 · 승인 연구자</text>'
+    # legend
+    b += '<g transform="translate(560,12)"><rect width="150" height="58" fill="#fff" stroke="#ccc"/>'
+    b += '<line x1="8" y1="14" x2="34" y2="14" stroke="#222"/><text x="40" y="18" class="lg">결정론(규칙·엔진)</text>'
+    b += '<line x1="8" y1="30" x2="34" y2="30" stroke="#222" stroke-dasharray="6 4"/><text x="40" y="34" class="lg">LLM</text>'
+    b += '<line x1="8" y1="46" x2="34" y2="46" stroke="#222" stroke-dasharray="2 3"/><text x="40" y="50" class="lg">심사관(순위만)</text></g>'
+    return svg(720, 480, b)
+
+
+def fig_discovery():
+    b = ""
+    nodes = [("intake", 10, 30), ("phase_gates", 110, 30), ("drq_narrow", 210, 30), ("plan", 310, 30),
+             ("generate ×≤3", 410, 30), ("gate", 510, 30), ("drq_refine", 610, 30)]
+    kinds = {"intake": "llm", "generate ×≤3": "llm"}
+    for n, x, y in nodes:
+        b += box(x, y, 90, 34, n, "", kinds.get(n, "det"), r=6)
+    for i in range(len(nodes) - 1):
+        b += arrow(nodes[i][1] + 90, 47, nodes[i + 1][1], 47)
+    b += box(610, 100, 90, 34, "summon", "", "det", r=6)
+    b += box(610, 160, 90, 34, "judge ×M", "", "jud", r=6)
+    b += box(610, 220, 90, 34, "consensus", "", "det", r=6)
+    b += arrow(655, 64, 655, 100) + arrow(655, 134, 655, 160) + arrow(655, 194, 655, 220)
+    b += box(410, 130, 90, 34, "backtrack", "", "det", r=6)
+    b += box(260, 130, 90, 34, "reflect", "", "llm", r=6)
+    b += path("M 555 64 L 555 147 L 500 147", "반려", 560, 110)
+    b += arrow(410, 147, 350, 147)
+    b += path("M 305 130 L 305 100 L 455 100 L 455 64", "GATE: 성분만", 330, 95)
+    b += path("M 280 130 L 280 110 L 355 110 L 355 64", "", 0, 0)
+    b += '<text x="200" y="122" class="al">G6R·G4: 계획부터</text>'
+    for i, (t, sub) in enumerate([("qtpp_review", "전략 0"), ("infeasible", "고정 성분 반려"),
+                                  ("escalate", "이관 판정"), ("exhausted", "5회 초과")]):
+        b += box(20 + i * 130, 220, 116, 34, t, sub, "io", r=6)
+    b += path("M 330 64 L 330 80 L 78 80 L 78 220", "", 0, 0)
+    b += path("M 530 64 L 530 200 L 208 200 L 208 220", "", 0, 0)
+    b += path("M 540 64 L 540 205 L 338 205 L 338 220", "", 0, 0)
+    b += path("M 545 64 L 545 210 L 468 210 L 468 220", "", 0, 0)
+    return svg(720, 262, b)
+
+
+def fig_agent():
+    b = ""
+    b += box(10, 20, 150, 44, "사용자의 말", "최근 6개 발화", "io")
+    b += box(10, 84, 150, 44, "서버 맥락 스냅숏", "run 요약 · study 상태", "io")
+    b += box(200, 40, 150, 66, "해석", "LLM 구조화 출력 ↘ 실패 시 규칙 해석기", "llm")
+    b += arrow(160, 42, 200, 62) + arrow(160, 106, 200, 86)
+    g = [("숫자 대조", "제안 숫자 ⊂ 발화 숫자"), ("구조식 출처", "사용자 · 사전 · PubChem"),
+         ("허용 키·행동", "허용목록 · 현재 상태"), ("필수 입력", "SMILES · 1회 용량")]
+    for i, (t, s) in enumerate(g):
+        b += box(390, 8 + i * 40, 160, 34, t, s, "det", r=6)
+    b += arrow(350, 73, 390, 73)
+    b += box(590, 30, 120, 44, "제안 카드", "ready / 되묻기", "hi")
+    b += box(590, 96, 120, 44, "[실행] 클릭", "사람과 같은 경로", "io")
+    b += arrow(550, 73, 590, 55) + arrow(650, 74, 650, 96)
+    return svg(720, 172, b)
+
+
+def fig_value_tiers():
+    b = ""
+    b += box(10, 20, 150, 50, "A · 계산값", "RDKit — 항상 자동", "det")
+    b += box(10, 84, 150, 50, "B · 예측값", "ESOL·GSE — 잠정", "det")
+    b += box(10, 148, 150, 50, "C · 실측값", "요청했을 때만", "io")
+    b += box(200, 60, 170, 60, "파생값 (23행)", "고정점 반복 · 순서 무관", "det")
+    b += arrow(160, 45, 200, 80) + arrow(160, 109, 200, 90) + arrow(160, 173, 200, 105)
+    b += box(410, 20, 140, 44, "요청 ① 좁히기", "계획 전 · 막지 않음", "det")
+    b += box(410, 90, 140, 44, "계획 서명", "상위 3 전략", "det")
+    b += box(410, 160, 140, 44, "요청 ② 신뢰도", "후보별 · 0건일 때만 grounded", "det")
+    b += arrow(370, 90, 410, 42) + arrow(480, 64, 480, 90) + arrow(480, 134, 480, 160)
+    b += box(590, 60, 120, 40, "서명 같음", "태그만 (LLM 0회)", "io")
+    b += box(590, 120, 120, 40, "서명 바뀜", "다시 설계", "io")
+    b += path("M 80 198 L 80 215 L 700 215 L 700 160", "측정값 제출", 330, 228, dash=True)
+    b += arrow(550, 112, 590, 80) + arrow(550, 112, 590, 140)
+    return svg(720, 236, b)
+
+
+def fig_region(data):
+    sl = data["slice"]
+    n = len(sl["rows"])
+    cell = 11
+    ox, oy = 48, 18
+
+    def panel(x0, title, key):
+        t = f'<text x="{x0 + n * cell / 2}" y="12" class="gt" text-anchor="middle">{E(title)}</text>'
+        for ia in range(n):
+            for ib in range(n):
+                x = x0 + ib * cell
+                y = oy + (n - 1 - ia) * cell
+                if not sl["in"][ia][ib]:
+                    t += f'<rect x="{x}" y="{y}" width="{cell}" height="{cell}" fill="#e9ecef"/>'
+                    continue
+                if key == "P":
+                    p = sl["P"][ia][ib]
+                    shade = int(245 - 205 * p)
+                    col = f"rgb({shade},{shade + 5 if shade < 250 else 250},{min(255, shade + 40)})"
+                    t += f'<rect x="{x}" y="{y}" width="{cell}" height="{cell}" fill="{col}"/>'
+                    if p >= 0.9:
+                        t += f'<rect x="{x + 3.5}" y="{y + 3.5}" width="4" height="4" fill="#fff"/>'
+                else:
+                    ok = sl["mean_ok"][ia][ib]
+                    t += f'<rect x="{x}" y="{y}" width="{cell}" height="{cell}" fill="{"#6c8fd6" if ok else "#f6d5d5"}"/>'
+        t += f'<rect x="{x0}" y="{oy}" width="{n * cell}" height="{n * cell}" fill="none" stroke="#333"/>'
+        # setpoint
+        sa, sb = data["setpoint"]["coded"]["a"], data["setpoint"]["coded"]["c"]
+        ia = min(range(n), key=lambda i: abs(sl["rows"][i] - sa)); ib = min(range(n), key=lambda i: abs(sl["cols"][i] - sb))
+        t += f'<circle cx="{x0 + ib * cell + cell / 2}" cy="{oy + (n - 1 - ia) * cell + cell / 2}" r="4.5" fill="none" stroke="#d00" stroke-width="2"/>'
+        # axes
+        for v, lab in ((0, "2"), (n // 2, "6"), (n - 1, "10")):
+            t += f'<text x="{x0 + v * cell + cell / 2}" y="{oy + n * cell + 12}" class="lg" text-anchor="middle">{lab}</text>'
+        for v, lab in ((0, "1"), (n // 2, "2"), (n - 1, "3")):
+            t += f'<text x="{x0 - 5}" y="{oy + (n - 1 - v) * cell + cell / 2 + 3}" class="lg" text-anchor="end">{lab}</text>'
+        t += f'<text x="{x0 + n * cell / 2}" y="{oy + n * cell + 26}" class="lg" text-anchor="middle">크로스포비돈 (%)</text>'
+        return t
+
+    b = panel(ox, "(a) 평균 예측이 규격 안 (파랑)", "mean") + panel(ox + n * cell + 70, "(b) 미래 배치 공동 통과확률 (□ ≥ 0.90)", "P")
+    b += f'<text x="14" y="{oy + n * cell / 2}" class="lg" transform="rotate(-90 14 {oy + n * cell / 2})" text-anchor="middle">MCC : 만니톨 비</text>'
+    # colorbar
+    cx = ox + 2 * n * cell + 90
+    for i in range(20):
+        p = 1 - i / 19
+        shade = int(245 - 205 * p)
+        b += f'<rect x="{cx}" y="{oy + i * 11}" width="12" height="11" fill="rgb({shade},{min(250, shade + 5)},{min(255, shade + 40)})"/>'
+    b += f'<text x="{cx + 16}" y="{oy + 8}" class="lg">1.0</text><text x="{cx + 16}" y="{oy + 20 * 11}" class="lg">0.0</text>'
+    b += f'<text x="{cx - 2}" y="{oy + 20 * 11 + 18}" class="lg">P(공동)</text>'
+    return svg(cx + 60, oy + n * cell + 34, b)
+
+
+def fig_fits(data):
+    fits = data["fits"]
+    w, h = 660, 190
+    b = ""
+    base, top = 160, 26
+    scale = lambda v: base - max(0.0, v) * (base - top)
+    labels = {"Y1": "분산 시간", "Y2": "마손도", "Y3": "DE30", "Y4": "함량균일성 AV"}
+    for gi in range(5):
+        v = gi / 4
+        b += f'<line x1="50" x2="{w - 10}" y1="{scale(v)}" y2="{scale(v)}" stroke="#e5e5e5"/>'
+        b += f'<text x="44" y="{scale(v) + 3}" class="lg" text-anchor="end">{v:.2f}</text>'
+    for i, f in enumerate(fits):
+        x = 70 + i * 150
+        bars = [("R² (이차)", f["full_r2"], "#9aa5b1"), ("예측 R² (이차)", f["full_pred_r2"], "#4b5563")]
+        if f["used_terms"] == "linear":
+            bars.append(("예측 R² (축소)", f["used_pred_r2"], "#1d4ed8"))
+        for j, (lab, v, col) in enumerate(bars):
+            bx = x + j * 30
+            b += f'<rect x="{bx}" y="{scale(v)}" width="24" height="{base - scale(v)}" fill="{col}"/>'
+            b += f'<text x="{bx + 12}" y="{scale(v) - 3}" class="lg" text-anchor="middle">{v:.2f}</text>'
+        b += f'<text x="{x + 40}" y="{base + 14}" class="lg" text-anchor="middle">{E(labels[f["cqa"]])}</text>'
+    b += '<g transform="translate(470,4)"><rect width="10" height="8" fill="#9aa5b1"/><text x="14" y="8" class="lg">R²</text>'
+    b += '<rect x="44" width="10" height="8" fill="#4b5563"/><text x="58" y="8" class="lg">예측 R²</text>'
+    b += '<rect x="112" width="10" height="8" fill="#1d4ed8"/><text x="126" y="8" class="lg">축소 후 예측 R²</text></g>'
+    return svg(w, h, b)
+
+
+def fig_states():
+    b = ""
+    rows = [[("진입 자료", "REQUIRED_DATA"), ("CQA 계약", "CQA_APPROVAL"), ("FMEA", "FMEA_APPROVAL"), ("요인 근거", "FACTOR_DATA")],
+            [("요인·수준 승인", "FACTOR_APPROVAL"), ("DoE 설계 승인", "RSM_APPROVAL"), ("실험 결과", "RSM_EXECUTION"), ("모델 판단", "MODEL_APPROVAL")],
+            [("잠정 영역", "REGION_APPROVAL"), ("확인계획 잠금", "VERIFICATION_PLAN_APPROVAL"), ("확인배치 결과", "VERIFICATION_EXECUTION"), ("VERIFIED", "COMPLETED")]]
+    for r, row in enumerate(rows):
+        for c, (t, name) in enumerate(row):
+            x, y = 10 + c * 178, 10 + r * 60
+            b += box(x, y, 166, 40, t, name, "hi" if name == "COMPLETED" else "det", r=6)
+            if c < 3:
+                b += arrow(x + 166, y + 20, x + 178, y + 20)
+        if r < 2:
+            b += path(f"M {10 + 3 * 178 + 83} {10 + r * 60 + 40} L {10 + 3 * 178 + 83} {10 + r * 60 + 50} L 93 {10 + r * 60 + 50} L 93 {10 + (r + 1) * 60}", dash=False)
+    b += box(10, 194, 220, 40, "사람 판단", "HUMAN_TRIAGE · 전이표에 없는 사유", "io", r=6)
+    b += box(250, 194, 220, 40, "진단 방향 승인", "DIRECTIVE_APPROVAL · 경쟁 가설", "llm", r=6)
+    b += box(490, 194, 220, 40, "재계획 · 전략 검토", "DESIGN_REPLAN · STRATEGY_REVIEW", "io", r=6)
+    b += '<text x="10" y="254" class="al">상태명은 WAITING_ 접두 생략. 다음 상태는 backtrack_routing_rules.csv의 (reason_code, from_state)로만 결정된다.</text>'
+    return svg(720, 262, b)
+
+
+# ── 본문 ──────────────────────────────────────────────────────────────────
+def build(data, tests: int, browser: str) -> str:
+    r = data["region"]
+    sp = data["setpoint"]
+    c = data["counts"]
+    fits = {f["cqa"]: f for f in data["fits"]}
+    bt_rows = "".join(
+        f"<tr><td>{E(x['transition_id'])}</td><td>{'판정' if x['trigger_type'] == 'rule_verdict' else '측정'}</td>"
+        f"<td>{E(x['return_phase'])}</td><td class='mono'>{E(x['constraint_patch'])}</td><td>{E(x['directive_hint'])}</td></tr>"
+        for x in data["backtrack"])
+    st_rows = "".join(
+        f"<tr><td class='mono'>{E(x['strategy_code'])}</td><td>{E(x['family'])}</td><td>{E(x['label_kr'])}</td>"
+        f"<td class='mono'>{E(x['process_steps'])}</td><td class='mono'>{E(x['required_measurements'])}</td></tr>"
+        for x in data["strategies"])
+    today = date.today().isoformat()
+
+    return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<title>Formula 1 기술 보고서</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+@page {{ size: A4; margin: 20mm 17mm 20mm 17mm; }}
+* {{ box-sizing: border-box; }}
+body {{ font-family: "Noto Serif KR", serif; font-size: 10pt; line-height: 1.62; color: #111; margin: 0; word-break: keep-all; }}
+h1 {{ font-family: "Noto Sans KR", sans-serif; font-size: 19pt; line-height: 1.35; margin: 0 0 6pt; text-align: center; }}
+.sub {{ text-align: center; font-family: "Noto Sans KR"; font-size: 10.5pt; color: #333; margin-bottom: 4pt; }}
+.meta {{ text-align: center; font-family: "Noto Sans KR"; font-size: 9pt; color: #555; margin-bottom: 14pt; }}
+.abstract {{ border-top: 1.2pt solid #111; border-bottom: 1.2pt solid #111; padding: 8pt 4pt; margin-bottom: 12pt; font-size: 9.4pt; }}
+.abstract b.h {{ font-family: "Noto Sans KR"; display: block; margin-bottom: 3pt; }}
+.kw {{ font-size: 8.8pt; color: #333; margin-top: 5pt; }}
+h2 {{ font-family: "Noto Sans KR", sans-serif; font-size: 12.5pt; margin: 16pt 0 5pt; break-after: avoid; }}
+h3 {{ font-family: "Noto Sans KR", sans-serif; font-size: 10.6pt; margin: 11pt 0 3pt; break-after: avoid; }}
+p {{ margin: 0 0 6pt; text-align: justify; }}
+figure {{ margin: 10pt 0 12pt; break-inside: avoid; }}
+figcaption {{ font-family: "Noto Sans KR"; font-size: 8.6pt; color: #333; margin-top: 4pt; }}
+figcaption b {{ color: #000; }}
+table {{ width: 100%; border-collapse: collapse; font-size: 8.4pt; margin: 6pt 0 10pt; break-inside: avoid; font-family: "Noto Sans KR"; }}
+th, td {{ border-top: .5pt solid #bbb; padding: 3pt 4pt; vertical-align: top; text-align: left; }}
+thead th {{ border-top: 1.2pt solid #111; border-bottom: .8pt solid #111; }}
+tbody tr:last-child td {{ border-bottom: 1.2pt solid #111; }}
+.tcap {{ font-family: "Noto Sans KR"; font-size: 8.6pt; margin-top: 8pt; }}
+.mono, code {{ font-family: ui-monospace, Menlo, monospace; font-size: 7.8pt; }}
+svg text.bt {{ font: 600 10.5px "Noto Sans KR", sans-serif; text-anchor: middle; fill: #111; }}
+svg text.bs {{ font: 400 8.6px "Noto Sans KR", sans-serif; text-anchor: middle; fill: #444; }}
+svg text.gt {{ font: 700 10px "Noto Sans KR", sans-serif; fill: #222; }}
+svg text.al {{ font: 400 8.6px "Noto Sans KR", sans-serif; fill: #333; }}
+svg text.lg {{ font: 400 8.6px "Noto Sans KR", sans-serif; fill: #333; }}
+ol.refs {{ font-size: 8.6pt; padding-left: 16pt; }}
+ol.refs li {{ margin-bottom: 2pt; }}
+.eq {{ text-align: center; font-family: "Noto Serif KR"; margin: 6pt 0; }}
+.twocol {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12pt; }}
+</style></head><body>
+
+<h1>Formula 1: 결정론적 규칙 검증과 입력 에이전트를 갖춘<br>다중 에이전트 제형 설계 및 실험계획 기반 운전 영역 검증 시스템</h1>
+<div class="sub">팀 Formula 1 · 제4회 인공지능 신약개발 경진대회</div>
+<div class="meta">라이브 시스템 https://zihwan.com/formula1 · 기술 보고서 · {today}</div>
+
+<div class="abstract"><b class="h">초록</b>
+거대언어모델(LLM)은 제형 처방을 그럴듯하게 제안하지만, 배합 금기·공정 한계·규제 상한 같은 정량 판단에서
+근거 없는 수치를 만들어 낼 수 있다. 본 연구는 <b>창의는 AI가, 검증은 규칙이, 결정은 연구자가</b> 맡는 역할 분리를
+구조로 강제하는 제형 설계 시스템 Formula 1을 제시한다. 시스템은 두 그래프로 구성된다. ① 후보 탐색 그래프는
+분자 구조에서 계산한 값과 공개 경험식 예측만으로 생물약제학 페이즈 게이트(BCS/DCS·고체상·가용화·ASD 공정)를 돌려
+전략을 좁히고, 전략별 후보를 병렬 설계한 뒤, 출처와 검증 상태가 붙은 규칙표로 반려하며, 반려 사유별 복귀 지점을
+전이표({c['backtrack_transitions']}행)로 정한다. 값이 없을 때는 멈추지 않고 측정 카탈로그({c['measurement_catalog']}종) 안에서만
+실측을 요청한다. ② 개발 스튜디오 그래프는 연구자가 고른 후보를 불변 Handoff로 받아 CQA 계약·FMEA·실험계획법(DoE)·모델
+진단·미래 배치 예측분포 기반 공동확률 영역·독립 확인배치까지를 규칙 171개와 결정론 통계 엔진으로 진행한다.
+두 그래프 앞에는 <b>입력 에이전트</b>가 서서, 서버가 구성한 맥락을 읽고 사용자의 말을 실행 가능한 제안 카드로 바꾸되,
+제안의 수치는 사용자 발화에, 구조식은 사용자 입력·내장 사전·PubChem에만 근거하도록 코드로 강제한다.
+공개 논문(Almotairi 등, 2022)의 Lornoxicam 분산정 Box–Behnken 실측 15 run에 적용한 결과, 평균 예측 기준으로는 지지 영역의
+{r['mean_ok_fraction'] * 100:.1f}%가 규격을 만족했으나 미래 배치 공동 통과확률 0.90 기준으로는 {r['feasible_fraction'] * 100:.1f}%만 남았고,
+권장 설정점(비 {sp['actual']['x1']} · 혼합 {sp['actual']['x2']}분 · 크로스포비돈 {sp['actual']['x3']}%)의 공동확률은 {sp['joint_probability']:.3f}였다.
+<div class="kw"><b>주제어</b> 제형 설계 · Quality by Design · 다중 에이전트 · 결정론적 검증 · 환각 억제 · 실험계획법 · 설계공간 · lab-in-the-loop</div>
+</div>
+
+<h2>1. 서론</h2>
+<p>신약 하나가 허가되기까지의 비용과 시간 가운데 상당 부분은 주성분을 사람이 복용할 수 있는 형태로 만드는 제형 개발에서 쓰인다.
+주성분만으로는 정제가 형성되지 않으므로 희석제·결합제·붕해제·활택제 같은 첨가제를 섞는데, 바로 그 조합에서 화학적 비상용성
+(예: 2차 아민과 유당의 Maillard 반응), 공정 실패(유동성 부족으로 인한 직접타정 불가), 규제 상한 초과(소아용 첨가제 한도)가 발생한다.
+처방이 정해진 뒤에도 공정 변수를 어느 범위에서 흔들어도 규격을 지키는지 — 운전 영역 — 를 실험으로 증명해야 한다(ICH Q8(R2)).</p>
+<p>LLM은 넓은 조합 공간에서 후보를 상상하고 상충하는 목표 사이의 타협을 서술하는 데 강하지만, 수치 판단에서 근거 없는 값을
+확신 있게 생성하는 환각 문제가 있다. 제약에서 이러한 오류는 제품 폐기와 허가 반려로 직결된다. 따라서 우리는 LLM에게 판정 권한을
+주지 않고, 판정은 출처가 있는 규칙표와 결정론 엔진에만 맡기는 구조를 설계했다. 본 보고서는 그 구조와 구현, 그리고 공개 실측 데이터에
+대한 적용 결과를 서술한다.</p>
+<p>기여는 다음과 같다. (1) 판정 권한을 데이터(규칙표)로 제한하고, 근거 상태에 따라 반려 가능 여부를 엔진이 스스로 정하는 검증 계층.
+(2) 값을 모를 때 멈추지 않고 판정이 갈리는 지점에서만 실측을 요청하는 비차단 lab-in-the-loop와, 반려 사유별 복귀 지점을 정하는 되돌림 전이표.
+(3) 후보 이후의 개발을 상태기계로 옮기고, 영역을 평균이 아닌 미래 배치 예측분포로 계산하는 DoE 파이프라인.
+(4) 사용자와 시스템 사이에서 맥락을 읽고 입력을 정리하되 수치·구조식 생성을 코드로 차단한 입력 에이전트.</p>
+
+<h2>2. 관련 연구와 배경</h2>
+<p><b>Quality by Design.</b> ICH Q8(R2)는 품질 목표(QTPP)에서 중요 품질 특성(CQA)을 도출하고, 위험평가(ICH Q9)로 중요 공정 변수를 좁혀
+실험계획법으로 설계공간을 정의하는 체계를 제시한다. 설계공간의 신뢰성은 평균 반응면이 아니라 미래 배치가 규격을 만족할 확률로
+평가해야 한다는 관점이 베이즈·예측분포 기반 접근으로 제안되어 왔다[4,5].</p>
+<p><b>생물약제학 분류.</b> BCS는 용해도와 투과도로 약물을 분류하고(ICH M9), DCS는 용해 속도 제한(IIa)과 용해도 제한(IIb)을 구분해 제형
+전략(미분화 대 가용화)을 가른다[6]. 용해도 예측에는 ESOL[7]과 일반용해도식(GSE)[8] 같은 경험식이 쓰인다.</p>
+<p><b>LLM 과학 에이전트.</b> FutureHouse의 Robin은 가설 생성·실험 제안·결과 해석을 자동화해 후보 약물을 찾은 사례로, 지시문 원문을
+공개했다[9]. 본 시스템은 그 지시문 패턴(구별되는 가설의 배열 강제, 필요 없으면 제안하지 않기, 근거 우선의 평가 기준)을 가져오되,
+시험 제안은 자유 텍스트가 아닌 실제 확인시험 목록({c['confirmation_tests']}행) 안으로 제한했다. 오케스트레이션은 LangGraph[10]를 사용한다.</p>
+
+<h2>3. 시스템 개요</h2>
+<figure>{fig_architecture()}
+<figcaption><b>그림 1.</b> 전체 구조. 연구자와 두 그래프 사이에 입력 에이전트가 있고, 두 그래프는 내부 상태를 공유하지 않은 채 불변 Handoff
+하나로만 연결된다. 선 모양은 담당 주체를 나타낸다(실선: 결정론 규칙·엔진, 파선: LLM, 점선: 순위만 매기는 심사관).</figcaption></figure>
+<p>역할 분리는 표 1과 같다. 판정·계산 권한은 결정론 계층에만 있고, LLM은 제안과 서술만 한다. 연구자는 어떤 후보를 개발할지,
+경고를 사유와 함께 넘길지, 모델을 축소할지 같은 수용 결정을 내린다.</p>
+<table><thead><tr><th>성격</th><th>예</th><th>담당</th></tr></thead><tbody>
+<tr><td>숫자로 답이 떨어지는 것</td><td>첨가제 상한, 회귀계수, 예측구간, 공동확률</td><td>규칙 기반 검사기 · 통계 엔진</td></tr>
+<tr><td>맥락을 읽어야 하는 것</td><td>소아 복용 적합성, 실패 원인 가설</td><td>심사·가설 LLM (반려 권한 없음)</td></tr>
+<tr><td>말을 입력으로 옮기는 것</td><td>“용량은 50 mg”, “압축력은 모름”</td><td>입력 에이전트 (수치·구조식 생성 금지)</td></tr>
+<tr><td>받아들일지 정하는 것</td><td>개발 후보 선택, 과적합 모델 처리</td><td>연구자</td></tr></tbody></table>
+<div class="tcap"><b>표 1.</b> 판단의 성격별 담당.</div>
+
+<h2>4. 입력 에이전트</h2>
+<p>입력 에이전트는 두 그래프 앞에서 대화를 받는다. 맥락은 브라우저가 보낸 상태가 아니라 서버가 실행(run)과 개발 스터디(study)에서
+직접 구성한 스냅숏이다 — 현재 탭, 설계 상태와 권고 후보, 병합된 실험 요청(측정 ID·Tier·산출 키·사유), 마지막 되돌림, 스튜디오의 현재 상태와
+그 상태에서 허용되는 행동, 막고 있는 규칙. 에이전트는 LLM 구조화 출력으로 의도(설계 실행 · 측정값 제출 · 스튜디오 행동 · 개발 착수 · 설명 · 되묻기)와
+초안 값을 받고, 이를 <b>제안 카드</b>로 바꾼다. 카드는 연구자가 [실행]을 눌러야 반영되며, 실행은 사람이 누르는 버튼과 같은 함수 경로를 탄다.</p>
+<figure>{fig_agent()}
+<figcaption><b>그림 2.</b> 입력 에이전트 처리 경로. 해석(LLM, 실패 시 규칙 해석기) 뒤의 네 가드레일은 모두 코드로 구현되어 있다.</figcaption></figure>
+<p>가드레일은 프롬프트가 아니라 코드다. (i) 제안에 들어가는 모든 숫자는 최근 사용자 발화에서 추출한 숫자 집합에 속해야 하며, 아니면 제거되고
+제거 사실이 사용자에게 표시된다. (ii) SMILES는 사용자 글에 그대로 있거나, 내장 구조 사전 또는 PubChem PUG-REST 조회에서만 얻고, 카드에 CID와 링크를
+붙인다. LLM이 쓴 SMILES는 사용하지 않는다. (iii) 측정 키는 실험 입력 허용목록과 측정 카탈로그 산출 필드 안에서만, 스튜디오 행동은 현재 상태가
+허용하는 것만 받고, 카드를 실행할 때 상태 버전이 바뀌었으면 실행하지 않는다. (iv) 설계 실행에는 구조식과 1회 용량이 필요하며, 없으면 카드는
+미완성으로 표시되고 에이전트가 되묻는다 — 용량이 없으면 용량/용해도 부피를 계산할 수 없어 DCS 분류가 성립하지 않기 때문이다.
+LLM이 되묻기만 하고 글에서 행동이 명확히 읽히는 경우(예: “압축력은 몰라요” → 진입 자료의 압축력 UNKNOWN 기록)에는 규칙 해석기가 바닥을 받친다.
+설계 종료·재계산·스튜디오 상태 전이 때에는 LLM 없이 맥락만으로 다음 행동을 먼저 제시한다(nudge).</p>
+
+<h2>5. 후보 탐색 그래프</h2>
+<h3>5.1 분자 프로파일과 값의 세 계층</h3>
+<p>RDKit으로 구조 품질(파싱·염·전하·입체), 35종 기술자, 구조 패턴 {c['structural_flags']}종을 계산한다. 패턴은 “구조 사실 · 조건부 경고 · 높은 경고”의
+세 등급과 위험 조건·확인 시험을 함께 가지며, 세분화된 아민 분류는 규칙표의 결합 키(<code>primary_amine</code>/<code>secondary_amine</code>)로 연결된다.
+모든 값은 획득 방식에 따라 계산값(A), 경험식 예측값(B), 실측값(C)으로 나뉜다. 예측값은 <code>*_est</code> 변수에만 저장되어 실측을 덮지 않고,
+BCS 등급은 실측으로만 확정된다. 파생값 {c['derived_quantities']}종(D0, 흡수 한계, Tg 여유, ΔpKa 등)은 CSV의 식으로 정의되고, 상호 의존은 값이 더 바뀌지
+않을 때까지 반복(고정점)해 계산 순서를 코드 줄 순서에 맡기지 않는다.</p>
+<figure>{fig_value_tiers()}
+<figcaption><b>그림 3.</b> 값의 세 계층과 비차단 실험 요청. 측정값이 들어오면 그래프를 다시 돌리지 않고 결정론 계층만 재계산해, 계획 서명이 같으면
+신뢰도 태그만 갱신한다.</figcaption></figure>
+
+<h3>5.2 페이즈 게이트와 계획</h3>
+<p>Gate 3A(BCS/DCS) → 3B(고체상, 권고) → 4(가용화 필요 여부) → 4B(ASD 공정) 순서로 돌며, 순서가 곧 의존 관계다. 게이트에는 반려 권한이 없고
+전략 탐색 범위만 정한다. CSV 조건식이 “값을 모름”을 조건으로 쓰는 경우(<code>tm_c is None</code>), 변수가 문맥에 아예 없으면 평가 오류가 “미발화”로
+삼켜지므로, 모든 참조 변수를 <code>None</code>으로 먼저 채운다. 계획 단계는 켜진 신호로 전략 {c['strategies']}종(표 2)을 채점해 상위 3개를 고르고,
+정렬된 전략 코드를 이어 계획 서명을 만든다. 판정이 갈리지 않으면(예: 투과도를 몰라 IIa/IIb 불명) 양쪽을 모두 열고, 유동성 자료가 없으면 세 공정 경로를
+잠정으로 모두 연다. 되돌림 제약을 반영해 남는 전략이 없으면 설계하지 않고 목표(QTPP) 재검토로 끝난다.</p>
+<table><thead><tr><th>코드</th><th>가족</th><th>전략</th><th>공정 단계</th><th>요구 측정(트리거)</th></tr></thead><tbody>{st_rows}</tbody></table>
+<div class="tcap"><b>표 2.</b> 전략 가족(<code>strategy_families.csv</code>). 요구 측정 열은 측정 기반 되돌림이 어느 전략에 적용되는지도 정한다.</div>
+
+<h3>5.3 규칙 게이트</h3>
+<p>규칙은 코드가 아니라 CSV 행이고, 단일 manifest가 각 CSV를 여덟 개의 범용 검사 함수(쌍 금기, 부분집합 금지, 임계값, 범위, 필수 성분,
+조건부 금지, 구간 조회, 결정 트리) 중 하나에 연결한다. 검사는 우선순위 단계로 돌며 앞 단계가 만든 값(유동성 등급 → 공정 경로 → BCS 등급)이
+다음 단계의 발동 조건으로 흘러간다. 행마다 <code>verification_status</code>가 있어 검증된 행만 반려를 만들 수 있고, 미검증 행은 심사관 표시로 강등되며,
+출처를 찾지 못한 행은 로드 단계에서 제외된다. 성분명은 문자열 동등 비교가 아니라 두 부형제 마스터(영문·국문·이명)를 사전으로 한 정규화로
+대조하며, 구조를 해석하지 못한 실행은 통과가 아니라 이관(STRUCT000)으로 끝난다.</p>
+
+<h3>5.4 되돌림 — 반려 사유별 복귀 지점</h3>
+<figure>{fig_discovery()}
+<figcaption><b>그림 4.</b> 후보 탐색 그래프. <code>backtrack</code>은 반려 판정을 전이표에 대조해 복귀 지점(GATE: 같은 전략으로 성분만 교체,
+G6R: 공정 경로부터, G4: 전략 선택부터)과 제약을 정한다. 하단은 종결 노드.</figcaption></figure>
+<p>한 라운드의 여러 반려는 가장 깊은 복귀 지점으로 합치되 제약은 모두 누적한다. 같은 지점에 3회 복귀해도 해소되지 않으면 한 단계 위로 올리며
+반려된 전략을 제외하고, 전체 5회를 넘으면 사람에게 이관한다. 반려 사유가 사용자가 고정한 성분이면 되돌리지 않고 즉시 “제약 불가능”과 규칙표의
+대체 성분을 낸다. 측정 결과가 전략 전제를 부정하는 경우(예: ASD 혼화성 부적합)에는 <b>그 측정을 요구하는 전략에만</b> 제외를 적용한다(표 2의 요구 측정 열).</p>
+<table><thead><tr><th>ID</th><th>계기</th><th>복귀</th><th>제약</th><th>지시</th></tr></thead><tbody>{bt_rows}</tbody></table>
+<div class="tcap"><b>표 3.</b> 되돌림 전이표(<code>backtrack_transitions.csv</code>, {c['backtrack_transitions']}행).</div>
+
+<h3>5.5 실험 요청과 신뢰도</h3>
+<p>요청 가능한 시험은 측정 카탈로그 {c['measurement_catalog']}종(Tier 1 ~10 mg: XRPD·DSC·TGA·KF, Tier 2 ~30 mg, Tier 3, 전략별)으로 한정되며,
+“언제·무엇을·왜·거절 시 대체 경로”는 트리거 표 {c['data_request_triggers']}행에 정의된다. 계획 전에는 전략을 좁히는 요청을, 후보 생성 뒤에는 후보별
+신뢰도 요청을 낸다. 같은 시험을 가리키는 요청은 하나로 병합되고 시료가 적은 Tier부터 제시되며, 용해도 요청은 “예측이 낮거나 모름”과
+“두 예측이 1 log 이상 불일치”를 구분해 표시한다. 요청은 흐름을 막지 않는다 — 건너뛰면 예측값으로 계속하고 후보는 provisional로 남는다.
+신뢰도는 <code>grounded ⟺ 남은 신뢰도 요청 = ∅</code>로 계산되어 LLM이 매길 여지가 없다.</p>
+
+<h3>5.6 동적 심사위원단과 합의</h3>
+<p>심사관 {c['reviewers']}명(소아 안전, 가용화 전략, 공정 실현성, 규제 취지, 문헌 조사, 고령자 안전, 고체상 안정성)은 소집 조건식이 참일 때만 생성된다.
+심사관은 근거 강도 → 잔여 위험 → 실현 가능성 → 참신성 순의 기준으로 통과 후보에 점수를 매기되 반려 권한이 없고, 합의는 결정론 가중평균이다.
+LLM이 응답하지 않으면 점수를 대신 채우지 않고 “점수 없음”으로 표시하며, 순위는 실제 점수만으로 정한다.</p>
+
+<h2>6. 개발 스튜디오 그래프</h2>
+<p>연구자가 후보를 고르면 조성·공정·고정 변수·QTPP를 담은 불변 Handoff가 fingerprint와 함께 생성된다. 이후 판정은 <code>database/07_doe</code>의
+규칙 171개(CSV 22종 + 마스터 7종)가 전부 맡는다. 조건식은 Python <code>eval</code>이 아니라 AST 화이트리스트 평가기로 해석되어, 허용되지 않은 문법이
+CSV에 들어오면 로드 자체가 실패한다. 값이 없으면 “미발화”가 아니라 규칙별 결측 처리(RECORD_NOT_CHECKED, REQUEST_DATA, BLOCK_STAGE 등)를 적용한다.
+여러 규칙이 동시에 발화하면 모두 기록하고 가장 강한 효과(INVALIDATE/BLOCK &gt; REQUEST_DATA &gt; AUGMENT &gt; ROUTE &gt; WARNING) 하나로 전이하며,
+다음 상태는 전이표의 (reason_code, from_state)에서만 찾는다.</p>
+<figure>{fig_states()}
+<figcaption><b>그림 5.</b> 개발 스튜디오 상태기계의 주 경로. 모든 WAITING 상태에서 연구자의 입력·승인을 기다린다.</figcaption></figure>
+<p>통계 엔진은 numpy·scipy만으로 설계 생성(BBD·CCD·FCCD·2<sup>4−1</sup>·PB12), OLS 적합, PRESS 기반 예측 R², Cook's D, 순수오차·적합결여 검정을
+구현한다. 잠정 영역은 반응별 미래 배치 예측분포(자유도 = 잔차 자유도인 t 분포, 척도 √(SE²<sub>평균</sub> + σ̂²))로 통과확률을 구해 곱한 공동확률이
+0.90 이상인 격자점이며, 분모는 설계점 convex hull 안의 격자점이다.</p>
+<div class="eq">P<sub>joint</sub>(x) = ∏<sub>k</sub> Pr[ Y<sub>k</sub><sup>new</sup>(x) ∈ Spec<sub>k</sub> ],&nbsp;&nbsp; Y<sub>k</sub><sup>new</sup>(x) ~ ŷ<sub>k</sub>(x) + t<sub>ν</sub>·√(SE<sub>k</sub>(x)² + σ̂<sub>k</sub>²)</div>
+<p>확인점은 설정점·영역 경계 최저 확률점·설정점 주변 허용 변동 최악점의 세 개가 필수이며, 예측구간은 첫 결과 전에 Bonferroni 동시구간으로 잠긴다.
+판정은 규격 통과 × 예측구간 포함의 2×2이고, VERIFIED는 내부 사전계획 통과를 뜻할 뿐 규제 승인 설계공간을 의미하지 않는다.</p>
+
+<h2>7. 적용 결과</h2>
+<h3>7.1 Lornoxicam 분산정 (공개 실측 데이터)</h3>
+<p>Almotairi 등[11]의 Box–Behnken 15 run(요인: MCC:만니톨 비 1–3, 혼합 시간 5–15분, 크로스포비돈 2–10%; 반응: 분산 시간, 마손도, 30분 용출률 DE30,
+함량균일성 AV)을 결과 제출 화면으로 입력하고, 논문의 회귀식은 쓰지 않고 엔진이 처음부터 계산했다. 규격은 분산 시간 ≤ 180 s, 마손도 ≤ 1.0%,
+AV ≤ 15, DE30 ≥ 75%이며, DE30 기준은 논문 기준이 아니라 프로젝트 목표로서 화면에 가정으로 표시된다.</p>
+<figure>{fig_fits(data)}
+<figcaption><b>그림 6.</b> 반응별 적합도. 마손도의 전체 이차모형은 R² {fits['Y2']['full_r2']:.2f}이나 예측 R²가 {fits['Y2']['full_pred_r2']:.2f}로 과적합 flag(MV006)가
+서고, 계층성을 지킨 선형 축소 후 예측 R² {fits['Y2']['used_pred_r2']:.2f}로 회복했다. 함량균일성(예측 R² {fits['Y4']['full_pred_r2']:.2f})도 flag가 서며, 데모에서는 사유를
+기록하고 수용했다. 잔차 자유도는 이차모형 {fits['Y1']['df_resid']}, 선형 {fits['Y2']['df_resid']}.</figcaption></figure>
+<figure>{fig_region(data)}
+<figcaption><b>그림 7.</b> 혼합 시간 {data['slice']['fixed_actual']:.1f}분 단면(설정점을 지나는 면, 엔진 계산 격자 21×21). (a) 평균 예측만 보면 이 면의
+지지 영역 중 {data['slice']['mean_ok_fraction'] * 100:.0f}%가 규격 안이지만, (b) 미래 배치의 공동 통과확률 ≥ 0.90(흰 점)을 요구하면 {data['slice']['feasible_fraction'] * 100:.0f}%만 남는다.
+전체 격자에서 미달 점의 대부분은 DE30이 결정한다(표 4). 회색은 설계점 convex hull 밖(외삽), 빨간 원은 권장 설정점.</figcaption></figure>
+<table><thead><tr><th>지표</th><th>값</th></tr></thead><tbody>
+<tr><td>격자점 (21³) / 지지 영역 안</td><td>{r['grid_points_total']:,} / {r['grid_points_in_domain']:,}</td></tr>
+<tr><td>평균 예측이 모든 규격 안</td><td>{r['mean_ok_fraction'] * 100:.1f}%</td></tr>
+<tr><td>공동 통과확률 ≥ 0.90</td><td>{r['feasible_fraction'] * 100:.1f}% ({r['feasible_points']:,}점)</td></tr>
+<tr><td>경계를 주도하는 CQA (미달 격자점 수)</td><td>{', '.join(f'{k} {v:,}' for k, v in r['binding_cqa_counts'].items())} — DE30이 주도</td></tr>
+<tr><td>권장 설정점 (비 · 혼합 · 크로스포비돈)</td><td>{sp['actual']['x1']} · {sp['actual']['x2']}분 · {sp['actual']['x3']}% (공동확률 {sp['joint_probability']:.3f}, 경계 거리 {sp['edge_distance']:.1f} coded)</td></tr>
+<tr><td>분산 시간 모형 최대 Cook's D</td><td>{data['cook_max']:.2f} (run 3·12 동률 — 표시만, 삭제 없음)</td></tr>
+</tbody></table>
+<div class="tcap"><b>표 4.</b> Lornoxicam 사례의 엔진 계산 결과. 값은 저장소의 골든 테스트(statsmodels 참조 구현과 대조)로 고정되어 있다.</div>
+<p>평균 기준 {r['mean_ok_fraction'] * 100:.1f}%와 공동확률 기준 {r['feasible_fraction'] * 100:.1f}%의 차이는, 잔차 자유도 5의 소표본 모형에서 미래 배치의 변동을
+무시하고 평균면만으로 영역을 그리면 영역을 약 1.6배 과대평가함을 보여 준다. 논문의 최적 처방 배치 관측값은 결과가 이미 공개되어 있어 확인 판정에는
+쓰지 않고 참고점으로만 비교하며, 합성·문헌 데이터로는 VERIFIED로 승격되지 않는다(VR015).</p>
+
+<h3>7.2 검증 계층의 동작</h3>
+<p>소아용 플루옥세틴 정제에 유당 수화물을 고정 성분으로 요구하면, 구조 패턴이 2차 아민을 검출하고 1대1 배합 금기 INC002(2차 아민 × 유당 → Maillard)가
+반려하며, 반려 사유가 고정 성분이므로 되돌림 없이 “제약 불가능”과 대체 성분(만니톨)을 낸다. 같은 금기가 “유당”, “Lactose, NF”, “유당수화물” 표기에서
+모두 발동하고 대체품인 만니톨·전분글리콜산나트륨에서는 발동하지 않음을 회귀 테스트가 고정한다.</p>
+
+<h3>7.3 소프트웨어 검증</h3>
+<p>단위·통합 테스트 {tests}개(pytest)가 구조 패턴 진리표, 검사 방향, 근거 정책, 페이즈 게이트, 되돌림·계획 불변식, 입력 에이전트 가드레일, 07_doe 규칙
+fixture 48건, 통계 골든 값, 스터디 흐름을 고정한다. 실제 브라우저 테스트({E(browser)})는 화면 상호작용, 다섯 렌더 경로의 스크립트 주입 차단, 9개 뷰포트
+폭의 반응형, 시연 시나리오의 실제 경로, 개발 스튜디오 9장면, 입력 에이전트의 대화→카드→실행 흐름을 검사한다.</p>
+
+<h2>8. 논의와 한계</h2>
+<p><b>판정 권한의 위치.</b> 이 시스템의 안전성은 LLM의 정확도가 아니라 판정 권한이 어디에 있는가에서 나온다. 설계·심사·가설 LLM이 틀려도 반려와
+승격은 규칙과 엔진만 할 수 있으므로, LLM 오류는 “잘못된 후보가 반려됨” 또는 “가설이 기각됨”으로 흡수된다. 입력 에이전트는 이 원칙을 입력 쪽으로
+확장한다 — 대화 창이 새로운 환각 통로가 되지 않도록 수치와 구조식의 출처를 코드로 제한했다.</p>
+<p><b>모르는 것의 표현.</b> “규칙이 발동하지 않음”과 “문제가 없음”을 구분하는 것이 핵심이었다. 성분명 불일치, 구조 해석 실패, 비어 있는 사전은 모두
+조용한 통과를 만들 수 있었고, 각각을 판정 불가·이관으로 바꾸었다. 결측 값은 NOT_CHECKED나 실측 요청으로 기록된다.</p>
+<p><b>한계.</b> (1) 개발 스튜디오 규칙 171개는 약학 담당 검토 전(DRAFT)이라 production 모드의 집행 규칙은 0개이며, 화면은 sandbox 모드로 동작한다.
+(2) 신경망 물성 예측기는 연결하지 않았다. (3) 스터디 저장소는 임시 SQLite로 재시작 시 사라진다. (4) 무료 티어 LLM의 분당 토큰 한도로 설계·심사가
+비는 경우가 있으며, 이때 결과를 채우지 않고 “응답 없음”으로 표시한다. (5) 다변량 공동확률(반응 간 상관), mixture·D-optimal 설계, 스케일업은 범위 밖이다.
+(6) 입력 에이전트의 구조식 조회는 영문 표준명에 기대며, 대화 기록은 브라우저 탭 안에만 있다.</p>
+
+<h2>9. 결론</h2>
+<p>Formula 1은 제형 설계에서 LLM의 창의와 결정론 검증을 분리하고, 후보 탐색에서 검증된 운전 영역까지를 두 그래프와 하나의 불변 연결로 구성했다.
+값을 모르면 멈추지 않고 필요한 실측만 묻고, 반려되면 사유가 가리키는 지점으로 돌아가며, 영역은 미래 배치의 공동 통과확률로 계산한다. 공개 실측
+사례에서 평균 기준 영역이 공동확률 기준보다 크게 과대평가됨을 정량적으로 보였고, 사용자와 시스템 사이의 입력 에이전트가 맥락을 활용해 상호작용을
+능동적으로 이끌면서도 판정 권한과 데이터 출처 원칙을 유지할 수 있음을 구현으로 보였다.</p>
+
+<h2>참고문헌</h2>
+<ol class="refs">
+<li>ICH Q8(R2) Pharmaceutical Development. International Council for Harmonisation, 2009.</li>
+<li>ICH Q9(R1) Quality Risk Management. ICH, 2023.</li>
+<li>ICH M9 Biopharmaceutics Classification System-based Biowaivers. ICH, 2019.</li>
+<li>Peterson J.J. A Bayesian approach to the ICH Q8 definition of design space. <i>J. Biopharm. Stat.</i> 18(5):959–975, 2008.</li>
+<li>Lebrun P. et al. Development of a new predictive modelling technique to find with confidence equivalence zone and design space of chromatographic analytical methods. <i>Chemometr. Intell. Lab. Syst.</i> 91:4–16, 2008.</li>
+<li>Butler J.M., Dressman J.B. The developability classification system: application of biopharmaceutics concepts to formulation development. <i>J. Pharm. Sci.</i> 99(12):4940–4954, 2010.</li>
+<li>Delaney J.S. ESOL: estimating aqueous solubility directly from molecular structure. <i>J. Chem. Inf. Comput. Sci.</i> 44(3):1000–1005, 2004.</li>
+<li>Jain N., Yalkowsky S.H. Estimation of the aqueous solubility I: application to organic nonelectrolytes. <i>J. Pharm. Sci.</i> 90(2):234–252, 2001.</li>
+<li>FutureHouse. Robin: a multi-agent system for automating scientific discovery. arXiv:2505.13400; <i>Nature</i>, 2026, doi:10.1038/s41586-026-10652-y. 지시문: github.com/Future-House/robin (robin/prompts.py).</li>
+<li>LangGraph. LangChain, github.com/langchain-ai/langgraph.</li>
+<li>Almotairi N. et al. Design and Optimization of Lornoxicam Dispersible Tablets Using QbD Approach. <i>Pharmaceuticals</i> 15, 1463, 2022. (CC BY, PMC9785951)</li>
+<li>Kim S. et al. PubChem 2023 update. <i>Nucleic Acids Res.</i> 51(D1):D1373–D1380, 2023.</li>
+<li>Wirth D.D. et al. Maillard reaction of lactose and fluoxetine hydrochloride, a secondary amine. <i>J. Pharm. Sci.</i> 87(1):31–39, 1998.</li>
+</ol>
+</body></html>"""
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--tests", type=int, required=True, help="pytest 통과 개수(실제 실행 결과)")
+    ap.add_argument("--browser", required=True, help="브라우저 테스트 요약(실제 실행 결과)")
+    a = ap.parse_args()
+    data = json.loads((OUT / "figdata.json").read_text(encoding="utf-8"))
+    (OUT / "report.html").write_text(build(data, a.tests, a.browser), encoding="utf-8")
+    print(OUT / "report.html")
+
+
+if __name__ == "__main__":
+    main()

@@ -40,24 +40,29 @@ let pendingRequests = [];       // v3 — 아직 안 풀린 데이터 요청(nar
    kind: det(결정론) | llm(LLM 판단) | jud(동적 심사관)
    게이트가 둘이라는 것이 이 그래프의 요지다: gate(금기가 있는가) → evidence(알고 있는가). */
 const NODES = [
-  { id: "intake",      x:  14, y: 30, w: 104, label: "intake",      sub: "요구 → 스펙",     kind: "llm" },
-  { id: "phase_gates", x: 138, y: 30, w: 104, label: "phase_gates", sub: "BCS/DCS·전략",   kind: "det" },
-  { id: "generate",    x: 262, y: 30, w: 112, label: "generate",    sub: "후보 병렬 설계",  kind: "llm" },
-  { id: "gate",        x: 394, y: 30, w: 112, label: "gate",        sub: "룰북 판정",       kind: "det" },
-  { id: "drq_refine",  x: 526, y: 30, w: 124, label: "drq_refine",  sub: "신뢰도 요청",     kind: "det" },
-  { id: "summon",      x: 670, y: 30, w: 104, label: "summon",      sub: "심사관 소집",     kind: "det" },
-  { id: "consensus",   x: 794, y: 30, w: 118, label: "consensus",   sub: "가중 합의",       kind: "det" },
-  { id: "reflect",     x: 394, y: 210, w: 112, label: "reflect",    sub: "재설계 지시",     kind: "llm" },
+  { id: "intake",      x:   8, y: 30, w: 96, label: "intake",      sub: "요구 → 스펙",   kind: "llm" },
+  { id: "phase_gates", x: 116, y: 30, w: 96, label: "phase_gates", sub: "BCS/DCS·고체상", kind: "det" },
+  { id: "drq_narrow",  x: 224, y: 30, w: 96, label: "drq_narrow",  sub: "좁히는 요청",   kind: "det" },
+  { id: "plan",        x: 332, y: 30, w: 96, label: "plan",        sub: "전략 ≤3",       kind: "det" },
+  { id: "generate",    x: 440, y: 30, w: 96, label: "generate",    sub: "후보 병렬 설계", kind: "llm" },
+  { id: "gate",        x: 548, y: 30, w: 96, label: "gate",        sub: "룰북 판정",     kind: "det" },
+  { id: "drq_refine",  x: 656, y: 30, w: 96, label: "drq_refine",  sub: "신뢰도 요청",   kind: "det" },
+  { id: "summon",      x: 764, y: 30, w: 96, label: "summon",      sub: "심사관 소집",   kind: "det" },
+  { id: "consensus",   x: 872, y: 30, w: 100, label: "consensus",  sub: "가중 합의",     kind: "det" },
+  { id: "backtrack",   x: 548, y: 210, w: 96, label: "backtrack",  sub: "사유별 복귀",   kind: "det" },
+  { id: "reflect",     x: 380, y: 210, w: 96, label: "reflect",    sub: "재설계 지시",   kind: "llm" },
 ];
 const EDGES = [
-  ["intake", "phase_gates"], ["phase_gates", "generate"], ["generate", "gate"],
-  ["gate", "drq_refine"], ["drq_refine", "summon"], ["summon", "consensus"],
+  ["intake", "phase_gates"], ["phase_gates", "drq_narrow"], ["drq_narrow", "plan"], ["plan", "generate"],
+  ["generate", "gate"], ["gate", "drq_refine"], ["drq_refine", "summon"], ["summon", "consensus"],
 ];
-/* v3: 되먹임은 규칙 반려(설계로) 하나뿐이다 — DRQ_NARROW/DRQ_REFINE은 그래프를 다시
-   돌지 않고 /api/runs/{id}/measurements가 결정론적으로 재계산한다(§4.1). */
+/* 되먹임은 규칙 반려 하나뿐이다 — 반려 사유가 복귀 지점을 정한다(backtrack_transitions.csv).
+   데이터 요청(drq_*)은 그래프를 다시 돌지 않고 /api/runs/{id}/measurements가 결정론적으로 재계산한다. */
 const LOOPS = [
-  { d: "M 450 76 L 450 210", key: "gate->reflect" },
-  { d: "M 394 233 L 318 233 L 318 76", key: "reflect->generate", label: "반려 → 재설계", lx: 330, ly: 227 },
+  { d: "M 596 76 L 596 210", key: "gate->backtrack", label: "반려", lx: 602, ly: 150 },
+  { d: "M 548 233 L 476 233", key: "backtrack->reflect" },
+  { d: "M 440 210 L 440 160 L 488 160 L 488 76", key: "reflect->generate", label: "성분만 교체", lx: 494, ly: 156 },
+  { d: "M 400 210 L 400 160 L 380 160 L 380 76", key: "reflect->plan", label: "전략·경로부터", lx: 300, ly: 156 },
 ];
 const NODE_H = 46;
 
@@ -118,13 +123,13 @@ function addJudgeNode(reviewerId, persona) {
   if (judgeNodes.has(reviewerId)) return;
   const index = judgeNodes.size;
   const node = {
-    id: `judge-${reviewerId}`, x: 668, y: 100 + index * 56, w: 140,
+    id: `judge-${reviewerId}`, x: 742, y: 100 + index * 56, w: 140,
     label: reviewerId, sub: persona.slice(0, 14), kind: "jud",
   };
   judgeNodes.set(reviewerId, node);
   const svg = $("graph");
   const edge = document.createElementNS(SVG_NS, "path");
-  edge.setAttribute("d", `M 722 76 L 722 ${node.y}`);
+  edge.setAttribute("d", `M 812 76 L 812 ${node.y}`);
   edge.setAttribute("class", "edge loop");
   svg.appendChild(edge);
   svg.appendChild(nodeEl(node));
@@ -267,6 +272,12 @@ function handle(kind, ev) {
       addTrace(ev.seq, "reflect", `${p.root_cause} → ${p.directive}`, "warn");
       break;
 
+    case "backtrack":
+      addTrace(ev.seq, "backtrack",
+        `${p.transition_id} → ${p.return_phase}${p.escalated_from ? ` (${p.escalated_from} 3회 초과 → 상향)` : ""}`
+        + (Object.keys(p.patch || {}).length ? ` · 제약 ${Object.entries(p.patch).map(([k, v]) => `${k}=${v.join(",")}`).join(" · ")}` : ""), "warn");
+      break;
+
     case "warning":
       addTrace(ev.seq, ev.node, p.message || (p.reason + (p.fallback ? " → 규칙 기반 처리(LLM 미사용)" : "")), "warn");
       if (p.fallback) degraded.add(ev.node);
@@ -338,7 +349,7 @@ function renderCandidates() {
     card.innerHTML = `
       <h4>${esc(id)}${confidence}<span class="tag">${esc(entry.recipe.strategy)} · ${esc(entry.recipe.process || "")}</span></h4>
       <div class="ing">${ings}</div>
-      <div class="ing">포장: ${esc(entry.recipe.packaging || "-")}</div>
+      ${(entry.recipe.process_steps || []).length ? `<div class="ing">공정: ${entry.recipe.process_steps.map(esc).join(" → ")}</div>` : ""}
       ${readiness}${refinements}
       <div class="chips">${chips}</div>${judges}
       ${gate && gate.passed ? `<button type="button" class="dev-start" data-cand="${esc(id)}"
@@ -536,9 +547,36 @@ function finishRun(summary) {
   } else {
     clearNotice();
   }
-  if (summary) renderDataRequests(summary.pending_requests || [], summary.plan_signature || "");
+  if (summary && summary.status === "qtpp_review") {
+    notice("남은 전략이 없습니다 — 목표(QTPP) 재검토가 필요합니다. 용량·대상·제형이나 고정한 제약을 조정하세요.", "warn", true);
+  }
+  if (summary) renderDataRequests(summary.pending_requests || [], summary.plan_signature || "", summary.request_groups || []);
+  announceRun();
   continueScenario();
 }
+
+// 입력 에이전트에게 "설계 상태가 바뀌었다"를 알린다 — 에이전트는 서버에서 맥락을 다시 읽는다.
+function announceRun() {
+  document.dispatchEvent(new CustomEvent("f1:run", { detail: { runId } }));
+}
+
+// 입력 에이전트가 제안한 설계 실행 — 폼을 실제로 채워 보여 준 뒤 같은 startRun() 경로로 보낸다.
+function startRunWith(p) {
+  if (running) return false;
+  $("request").value = p.request || "";
+  $("smiles").value = p.smiles || "";
+  $("pinned").value = (p.required_excipients || []).join(", ");
+  $("inputs-body").querySelectorAll("input").forEach((el) => {
+    const v = (p.measured_params || {})[el.dataset.key];
+    if (el.dataset.type === "bool") el.checked = v === true;
+    else el.value = v === undefined ? "" : String(v);
+  });
+  if (typeof updateInputCount === "function") updateInputCount();
+  activeScenario = null;
+  startRun();
+  return true;
+}
+window.F1Discovery = { startRunWith, submitMeasurements: (m) => submitMeasurements(m), runId: () => runId, running: () => running };
 
 function resetView() {
   candidates.clear(); tokenBuffers.clear(); degraded.clear();
@@ -619,107 +657,122 @@ $("replay").onclick = () => {
 
    Tier가 낮은(적은 시료로 되는) 요청부터 보여주고, 값을 넣으면 그래프를 다시 돌리지
    않고 /api/runs/{id}/measurements가 그 자리에서 재계산한다. */
-function renderDataRequests(requests, planSignature) {
+function renderDataRequests(requests, planSignature, groups) {
   pendingRequests = requests || [];
   const panel = $("drq");
   const body = $("drq-body");
-  if (!pendingRequests.length) {
+  // 같은 시험을 가리키는 요청은 서버가 하나로 합치고(시료 적은 순 정렬) groups로 보낸다
+  const list = groups || [];
+  if (!pendingRequests.length || !list.length) {
     panel.hidden = true;
     body.innerHTML = "";
     return;
   }
   panel.hidden = false;
-
-  // measurement_id 하나가 여러 요청에 걸쳐 있을 수 있다(예: M_DSC) — 입력 필드는
-  // result_key 단위로 중복 없이 한 번만 보여준다.
-  const seenKeys = new Set();
-  body.innerHTML = pendingRequests.map((r) => {
-    const fields = (r.result_keys || []).filter((k) => {
-      if (seenKeys.has(k)) return false;
-      seenKeys.add(k);
-      return true;
-    }).map((k) => `<label class="drq-num">${esc(k)}
-        <input type="number" step="any" data-key="${esc(k)}" placeholder="값"></label>`).join("");
-    return `<div class="drq-req">
-        <b><span class="tier">${esc(r.measurement_ids.join(" · "))}</span>${esc(r.trigger_id)}</b>
-        <div class="why">${esc(r.why)}</div>
-        ${fields ? `<div class="measures">${fields}</div>` : ""}
-      </div>`;
-  }).join("") + `
+  const kindTag = (k) => k === "disagreement" ? "예측 간 불일치" : k === "low_or_unknown" ? "예측이 낮거나 모름" : "";
+  const textKey = (k) => /(_id|_json|_class)$/.test(k);
+  body.innerHTML = list.map((g) => `<div class="drq-req" data-mid="${esc(g.measurement_id)}">
+      <b><span class="tier">Tier ${esc(g.tier)} · ~${esc(g.sample_mg)} mg</span>${esc(g.name)}</b>
+      ${g.reasons.map((r) => `<div class="why">${kindTag(r.kind) ? `<span class="drq-kind">${esc(kindTag(r.kind))}</span> ` : ""}${esc(r.text)} <code>${esc(r.trigger_id)}</code></div>`).join("")}
+      ${g.result_keys.length ? `<div class="measures">${g.result_keys.map((k) => `<label class="drq-num">${esc(k)}
+        <input ${textKey(k) ? 'type="text"' : 'type="number" step="any"'} data-key="${esc(k)}" placeholder="값"></label>`).join("")}</div>` : ""}
+      <div class="drq-row-actions"><button type="button" class="ghost drq-decline" data-triggers="${esc(g.triggers.join(","))}">이 시험 건너뛰기</button>
+        ${g.fallbacks.length ? `<span class="drq-fallback">건너뛰면: ${esc(g.fallbacks[0])}</span>` : ""}</div>
+    </div>`).join("") + `
     <div class="drq-actions">
       <button id="drq-submit" type="button">값 제출 → 재계산</button>
-      <button id="drq-skip" class="ghost" type="button">건너뛰기(예측값으로 계속)</button>
+      <button id="drq-skip" class="ghost" type="button">전부 건너뛰기(예측값으로 계속)</button>
     </div>
     <div id="drq-out"></div>`;
+
+  const decline = async (triggerIds) => {
+    try {
+      const res = await fetch(api(`/api/runs/${runId}/decline`), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trigger_ids: triggerIds }),
+      });
+      if (!res.ok) throw new Error(`건너뛰기 실패 (${res.status})`);
+      const out = await res.json();
+      renderDataRequests(out.pending_requests || [], out.plan_signature || "", out.request_groups || []);
+      announceRun();
+      notice("건너뛴 요청은 예측값으로 계속합니다 — 해당 후보는 provisional 태그를 유지합니다.", "info");
+    } catch (err) { notice(err.message, "error"); }
+  };
+  body.querySelectorAll(".drq-decline").forEach((b) => {
+    b.onclick = () => decline(b.dataset.triggers.split(",").filter(Boolean));
+  });
 
   $("drq-submit").onclick = async () => {
     const inputs = [...body.querySelectorAll("input[data-key]")];
     const measurements = {};
     for (const el of inputs) {
       const v = el.value.trim();
-      if (v !== "") measurements[el.dataset.key] = Number(v);
+      if (v === "") continue;
+      measurements[el.dataset.key] = el.type === "number" ? Number(v) : v;
     }
     if (!Object.keys(measurements).length) {
       notice("최소 한 항목에 값을 입력해 주세요.", "warn");
       return;
     }
-    const btn = $("drq-submit");
-    btn.disabled = true;
-    btn.textContent = "재계산 중…";
-    try {
-      const res = await fetch(api(`/api/runs/${runId}/measurements`), {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ measurements }),
-      });
-      if (!res.ok) {
-        const detail = await res.json().catch(() => ({}));
-        throw new Error(detail.detail || `재계산 요청이 실패했습니다 (${res.status})`);
-      }
-      const out = await res.json();
-      const beforeCount = pendingRequests.length;
-      const afterCount = (out.pending_requests || []).length;
-      const resultMsg = out.regenerated
+    await submitMeasurements(measurements);
+  };
+  $("drq-skip").onclick = () => decline(list.flatMap((g) => g.triggers));
+}
+
+// 측정값 제출 — 데이터 요청 패널과 입력 에이전트가 같은 경로를 쓴다
+async function submitMeasurements(measurements) {
+  const btn = $("drq-submit");
+  if (btn) { btn.disabled = true; btn.textContent = "재계산 중…"; }
+  try {
+    const res = await fetch(api(`/api/runs/${runId}/measurements`), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ measurements }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      throw new Error(detail.detail || `재계산 요청이 실패했습니다 (${res.status})`);
+    }
+    const out = await res.json();
+    const beforeCount = pendingRequests.length;
+    const afterCount = (out.pending_requests || []).length;
+    const bt = (out.backtrack || []).map((d) => `${d.transition_id}(${Object.entries(d.patch || {}).map(([k, v]) => `${k}=${v.join(",")}`).join(" ")})`);
+    const resultMsg = out.qtpp_review
+      ? "측정 결과로 남은 전략이 없어졌습니다 — 목표(QTPP) 재검토가 필요합니다."
+      : out.regenerated
         ? "전략 집합이 바뀌어 새 후보를 다시 생성했습니다(LLM 호출)."
         : "전략 집합은 그대로라 신뢰도만 다시 계산했습니다(LLM 호출 없음).";
-      narrate("drq-reassess", {
-        layer: "데이터 요청 재계산", kind: "det",
-        title: out.regenerated ? "전략이 바뀌어 후보를 다시 생성했다" : "같은 후보, 신뢰도만 다시 매겼다",
-        body: `남은 요청이 ${beforeCount}건에서 ${afterCount}건으로
-          바뀌었습니다. <span class="nr-why">왜 중요한가: 그래프를 처음부터 다시 돌리지 않았습니다 —
-          결정론 계층만 재계산했으므로 몇 초 안에 끝납니다.</span>`,
-      });
-      // renderDataRequests()가 #drq-body를 통째로 새로 그려서 #drq-out도 매번 새로
-      // 만든다 — 먼저 써 놓고 나중에 다시 그리면 방금 쓴 문구가 그 자리에서 지워진다.
-      // 다시 그린 "뒤에" 채워야 하고, 남은 요청이 0건으로 줄어 패널 자체가 접히는
-      // 경우에는 그 자리가 아예 없어지므로 notice로도 같은 문구를 띄워 놓친 사람이
-      // 없게 한다.
-      renderDataRequests(out.pending_requests || [], out.plan_signature || "");
-      const freshOut = $("drq-out");
-      if (freshOut) {
-        freshOut.innerHTML = `<div class="drq-refine">${resultMsg}
-          plan_signature = <code>${esc(out.plan_signature)}</code></div>`;
-      } else {
-        notice(`${resultMsg} (남은 요청 ${afterCount}건)`, "info");
-      }
-      if (out.summary) {
-        const entry = candidates.get(out.summary.winner);
-        if (entry) {
-          entry.recipe.confidence = out.summary.confidence;
-          entry.recipe.pending_refinements = out.summary.pending_refinements;
-          renderCandidates();
-        }
-      }
-    } catch (err) {
-      notice(err.message, "error", true);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "값 제출 → 재계산";
+    narrate("drq-reassess", {
+      layer: "데이터 요청 재계산", kind: "det", once: false,
+      title: out.regenerated ? "전략이 바뀌어 후보를 다시 생성했다" : "같은 후보, 신뢰도만 다시 매겼다",
+      body: `남은 요청이 ${beforeCount}건에서 ${afterCount}건으로 바뀌었습니다.
+        ${bt.length ? `<br>측정 결과가 전제를 부정해 되돌림: <code>${esc(bt.join(" · "))}</code>` : ""}
+        <span class="nr-why">왜 중요한가: 그래프를 처음부터 다시 돌리지 않았습니다 —
+        결정론 계층만 재계산했으므로 몇 초 안에 끝납니다.</span>`,
+    });
+    const summary = out.summary || {};
+    renderDataRequests(out.pending_requests || [], out.plan_signature || "", summary.request_groups || []);
+    const freshOut = $("drq-out");
+    if (freshOut) {
+      freshOut.innerHTML = `<div class="drq-refine">${resultMsg}
+        plan_signature = <code>${esc(out.plan_signature)}</code></div>`;
+    } else {
+      notice(`${resultMsg} (남은 요청 ${afterCount}건)`, "info");
     }
-  };
-  $("drq-skip").onclick = () => {
-    panel.hidden = true;
-    notice("예측값으로 계속합니다 — 후보는 provisional 태그를 유지합니다.", "info");
-  };
+    const entry = candidates.get(summary.winner);
+    if (entry) {
+      entry.recipe.confidence = summary.confidence;
+      entry.recipe.pending_refinements = summary.pending_refinements;
+      renderCandidates();
+    }
+    announceRun();
+    return out;
+  } catch (err) {
+    notice(err.message, "error", true);
+    return null;
+  } finally {
+    const b = $("drq-submit");
+    if (b) { b.disabled = false; b.textContent = "값 제출 → 재계산"; }
+  }
 }
 
 /* ── 아키텍처 해설 ───────────────────────────────────────────────────
@@ -788,18 +841,24 @@ function narrateEvent(kind, ev, p) {
       });
       break;
     case "node.exit":
-      if (p.strategies) {
+      if (ev.node === "phase_gates" && p.derived) {
         narrate("route", {
-          layer: "P1 · BCS/DCS·고체상 게이트 결정론", kind: "det",
+          layer: "P1 · 페이즈 게이트 결정론", kind: "det",
           title: "처방을 짜기 전에 이 약이 어떤 부류인지부터 정한다",
-          body: `경쟁 전략: <b>${esc((p.strategies || []).join(", "))}</b>
-            ${p.pending_narrow_count ? `· 아직 모르는 값 ${esc(p.pending_narrow_count)}건은
-              예측값으로 채우고 진행` : ""}
-            <span class="nr-why">왜 중요한가: 용해도·투과도(BCS/DCS), 무정형인지 결정형인지(고체상),
-            가용화가 필요한지, 필요하면 어떤 공정(ASD 등)을 쓸지를 후보를 만들기 전에 먼저
-            정합니다. 실측값이 없으면 계산식(ESOL/GSE 같은 예측 공식)으로 잠정 분류하고, 그 값이
-            나중에 실측으로 바뀌면 이 분류부터 다시 계산됩니다 — 아래 “데이터 요청” 패널이 그
-            지점입니다.</span>`,
+          body: `BCS 잠정 용해도 <b>${esc(p.derived.bcs_solubility_provisional ?? "미정")}</b> ·
+            DCS <b>${esc(p.derived.dcs_subclass ?? "미정")}</b> · 고체상 <b>${esc(p.derived.solid_form_zone ?? "미정")}</b>
+            ${p.derived.routes_provisional ? " · 유동성 자료가 없어 세 공정 경로를 모두 잠정 후보로 엶" : ""}
+            <span class="nr-why">왜 중요한가: 계산값(RDKit) → 예측값(ESOL·GSE) → 실측값 중 있는 것까지만 씁니다.
+            모르는 값은 기본값으로 채우지 않고 비워 두며, 판정이 안 갈리면 좁히지 않고 넓힙니다.</span>`,
+        });
+      } else if (ev.node === "plan") {
+        narrate("plan", {
+          layer: "P2 · 계획 결정론", kind: "det",
+          title: p.strategies && p.strategies.length ? "전략을 채점해 상위 3개만 설계한다" : "남은 전략이 없다",
+          body: `${(p.scores || []).map((x) => `<code>${esc(x.strategy)}</code> ${esc(x.score)}`).join(" · ") || "후보 전략 없음"}
+            ${Object.keys(p.constraints || {}).length ? `<br>되돌림 제약: ${Object.entries(p.constraints).map(([k, v]) => `${esc(k)}=${esc(v.join(","))}`).join(" · ")}` : ""}
+            <span class="nr-why">왜 중요한가: 어떤 전략을 쓸지는 AI가 아니라 전략 가족 표가 정합니다 —
+            같은 입력이면 같은 계획(서명 <code>${esc(p.plan_signature || "-")}</code>)이고, 그 자체가 감사 기록입니다.</span>`,
         });
       } else if (p.summoned) {
         const ids = (p.summoned || []).map((s) => `${s.reviewer_id}(${s.summon_condition})`);
@@ -882,7 +941,27 @@ function narrateEvent(kind, ev, p) {
       });
       break;
 
+    case "backtrack":
+      narrate(`backtrack-${ev.seq}`, {
+        layer: "P3′ · 되돌림 결정론", kind: "warn", once: false,
+        title: p.return_phase === "GATE" ? "반려 사유가 첨가제 — 같은 전략으로 성분만 바꾼다" : `반려 사유에 따라 ${esc(p.return_phase)}부터 다시 한다`,
+        body: `<code>${esc(p.transition_id)}</code> → <b>${esc(p.return_phase)}</b> · ${esc(p.directive_hint || "")}
+          ${p.escalated_from ? `<br>${esc(p.escalated_from)}에서 3번 풀리지 않아 한 단계 위로 올렸습니다.` : ""}
+          <span class="nr-why">왜 중요한가: 반려되면 무조건 처음부터가 아닙니다. 어디로 돌아갈지는 되돌림 표의
+          한 줄이 정합니다(첨가제 → 성분 교체, 공정 규칙 → 공정 경로부터, 가용화 누락 → 전략 선택부터).</span>`,
+      });
+      break;
+
     case "warning":
+      if (ev.node === "qtpp_review") {
+        narrate("qtpp", {
+          layer: "종단 · QTPP 재검토", kind: "fail",
+          title: "남은 전략이 없다 — 목표를 다시 볼 차례",
+          body: `${esc(p.reason || "")}
+            <span class="nr-why">왜 중요한가: 전략이 하나도 남지 않으면 임의의 기본 전략을 지어내지 않습니다.
+            용량·대상·제형이나 고정한 제약을 조정하거나, 전략을 가르는 실측을 넣어야 다시 열립니다.</span>`,
+        });
+      }
       if (ev.node === "infeasible") {
         narrate("infeasible", {
           layer: "종단 · 판정", kind: "fail",

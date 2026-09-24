@@ -67,17 +67,68 @@ def evaluate_triggers(
         satisfied = str(row.get("satisfied_when") or "").strip()
         if satisfied and evaluate(satisfied, scope):
             continue
+        kind, label = _reason(str(row.get("trigger_id") or ""), scope, str(row.get("rationale") or ""))
         out.append(PendingRequest(
             trigger_id=str(row.get("trigger_id") or ""),
             urgency=urgency,
             measurement_ids=_split(row.get("measurement_id")),
             result_keys=_split(row.get("result_keys")),
-            label=str(row.get("rationale") or "")[:120],
+            label=label,
             why=str(row.get("rationale") or ""),
             fallback=str(row.get("fallback_if_declined") or ""),
             strategy=strategy,
+            reason_kind=kind,
         ))
     return out
+
+
+def _reason(trigger_id: str, ctx: Dict[str, Any], rationale: str):
+    """발동 사유를 화면에 구분해 보여 준다. 용해도 요청은 두 가지 이유로 켜진다:
+    예측이 **낮거나 모르기** 때문인지, 두 예측 모델이 **1 log 이상 어긋나기** 때문인지."""
+    if trigger_id == "DRQ_SOL":
+        a, b = ctx.get("logs_esol"), ctx.get("logs_gse")
+        if a is not None and b is not None and abs(a - b) >= 1.0:
+            return "disagreement", f"두 예측 모델(ESOL {a:.2f} · GSE {b:.2f})이 {abs(a - b):.2f} log 어긋나 예측을 신뢰할 수 없음"
+        return "low_or_unknown", "예측 용해도가 낮거나(또는 계산 불가) — 용량을 녹일 수 있는지 실측이 필요"
+    return "rule", rationale[:120]
+
+
+def group_requests(pending: List[Dict[str, Any]], base_dir: Path,
+                   declined: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """같은 시험을 가리키는 요청을 하나로 합치고, 시료가 적게 드는 시험부터 정렬한다.
+
+    예: 고체상 세트(DRQ_SOLIDFORM)와 녹는점(DRQ_TM)이 모두 DSC를 가리키면 DSC 한 번으로 묻는다.
+    연구자가 건너뛴 요청(declined)은 목록에서 빠지고, 거절 시의 대체 경로만 남는다.
+    """
+    catalog = load_measurement_catalog(Path(base_dir))
+    declined_set = set(declined or [])
+    groups: Dict[str, Dict[str, Any]] = {}
+    for req in pending:
+        if req.get("trigger_id") in declined_set:
+            continue
+        for mid in req.get("measurement_ids") or []:
+            meta = catalog.get(mid, {})
+            g = groups.setdefault(mid, {
+                "measurement_id": mid, "name": meta.get("name_kr") or mid,
+                "tier": meta.get("tier") or "", "sample_mg": meta.get("indicative_sample_mg") or "",
+                "method": meta.get("method_summary") or "",
+                "outputs": _split(meta.get("output_fields")), "triggers": [], "result_keys": [],
+                "reasons": [], "fallbacks": []})
+            if req.get("trigger_id") not in g["triggers"]:
+                g["triggers"].append(req.get("trigger_id"))
+                g["reasons"].append({"trigger_id": req.get("trigger_id"), "kind": req.get("reason_kind") or "",
+                                     "text": req.get("label") or req.get("why") or ""})
+                if req.get("fallback"):
+                    g["fallbacks"].append(req.get("fallback"))
+            outputs = set(g["outputs"]) or set(req.get("result_keys") or [])
+            for k in req.get("result_keys") or []:
+                if k in outputs and k not in g["result_keys"]:
+                    g["result_keys"].append(k)
+
+    def tier_key(g):
+        t = str(g["tier"])
+        return (int(t) if t.isdigit() else 9, float(g["sample_mg"] or 999), g["measurement_id"])
+    return sorted(groups.values(), key=tier_key)
 
 
 CATALOG_PATH = "database/reference/measurement_catalog.csv"

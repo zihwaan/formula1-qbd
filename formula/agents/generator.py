@@ -4,7 +4,7 @@
 생성해 경쟁시키고, 검증을 가장 잘 통과하는 후보가 살아남는다.
 
 LLM에 주는 것: 스펙 + RDKit 프로파일 + RAG 근거(부형제 마스터·배합금기 출처) + 반성 지시.
-LLM이 하는 것: 성분·비율·공정·포장 선택. **판정은 하지 않는다.**
+LLM이 하는 것: 성분·비율·공정 선택. **판정은 하지 않는다.** 포장 사양은 산출물 범위 밖이라 만들지 않는다.
 """
 
 from __future__ import annotations
@@ -37,8 +37,7 @@ SYSTEM = """당신은 경구 고형제 처방을 설계하는 제제 연구원�
   lubricant / glidant / surfactant_wetting / film_coating / sweetener / flavoring / colorant
   (이 어휘는 배합비 룰북 excipient_functional_ratio_rules.csv 의 functional_category와 일치해야 한다)
 - 모든 부형제에 amount_mg와 percent를 모두 채운다. percent 합계는 100에 근접해야 한다.
-- packaging은 다음 중 하나로 적는다: PVC blister / Alu-Alu blister / HDPE bottle with desiccant /
-  amber glass bottle / CRC bottle
+- packaging은 비워 둔다(null) — 포장 사양은 이 시스템의 산출물 범위 밖이다.
 - process는 direct_compression / dry_granulation / wet_granulation 중 하나.
 - 제공된 배합금기 근거를 반드시 읽고, 금기에 걸리는 조합은 처음부터 피한다.
 - rationale에는 왜 이 조합인지 2~3문장으로 적는다. **참고 근거에 실제로 등장하는 구체적
@@ -132,6 +131,11 @@ API descriptor: {descriptor_text}
         recipe = parse_structured(Recipe, SYSTEM, user)
         recipe.candidate_id = candidate_id
         recipe.strategy = strategy
+        recipe.packaging = None   # 산출물 범위 밖 — 모델이 적어도 버린다
+        # 공정 단계는 모델이 아니라 전략 가족 표가 정한다(같은 전략 = 같은 단계)
+        row = next((r for r in _strategy_family_rows(base_dir) if r.get("strategy_code") == strategy), None)
+        if row:
+            recipe.process_steps = [p.strip() for p in str(row.get("process_steps") or "").split(";") if p.strip()]
     except LLMUnavailable as exc:
         # 설계는 AI의 몫이다. 응답이 없으면 틀에 박힌 처방을 대신 내놓지 않는다 — 후보를 만들지 않고
         # 그 사실을 알린다. 가짜 후보가 룰북을 통과하면 검증 결과까지 가짜가 된다.

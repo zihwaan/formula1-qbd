@@ -15,6 +15,8 @@
   POST /api/runs/{id}/approve     연구자 승인 → 실행 가능 공정 프로토콜로 전환
   POST /api/runs/{id}/wetlab      자연어 배치 결과 → 판독·판정·다음 실험 지시 (실험 후 루프)
   GET  /api/meta                  룰북·심사관·LLM 가용성 등 시스템 상태
+  POST /api/agent/turn            입력 에이전트 — 말 → 제안 카드(실행은 사용자가 확인)
+  POST /api/agent/nudge           입력 에이전트 — 상태 변화에 맞춘 다음 행동 제안
 
 ExperimentalDevelopmentGraph (명세 v6.1 — 후보 선택 이후의 뒷부분)
   POST /api/candidates/{id}/development-studies   연구자가 고른 candidate_id@version → 불변 Handoff + study
@@ -39,7 +41,7 @@ import re
 import uuid
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
 from fastapi import FastAPI, Header, HTTPException
@@ -48,6 +50,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from formula.agents import input_agent
 from formula.agents.client import credentials_available, provider, provider_label
 from formula.checkers.registry import RulebookRegistry
 from formula.chem.profile import build_profile, smiles_error
@@ -386,7 +389,7 @@ class MeasurementsRequest(BaseModel):
 
     없거나 일부만 와도 그래프는 이미 끝났으므로 즉시 재계산한다."""
 
-    measurements: Dict[str, float] = Field(default_factory=dict, max_length=30)
+    measurements: Dict[str, Union[float, bool, str]] = Field(default_factory=dict, max_length=30)
 
 
 @app.post("/api/runs/{run_id}/measurements")
@@ -513,6 +516,78 @@ async def demo_csv() -> Dict[str, Any]:
     return {"filename": path.name, "csv": path.read_text(encoding="utf-8"),
             "source": "Almotairi et al., Pharmaceuticals 2022, 15, 1463 — Table 3 (CC BY)"}
 
+class DeclineRequest(BaseModel):
+    trigger_ids: List[str] = Field(default_factory=list, max_length=30)
+
+
+@app.post("/api/runs/{run_id}/decline")
+async def decline_requests(run_id: str, payload: DeclineRequest) -> Dict[str, Any]:
+    """데이터 요청 건너뛰기 — 멈추지 않고 예측값으로 계속한다. 후보는 provisional 유지."""
+    if run_id not in RUNS:
+        raise HTTPException(404, "run 없음")
+    return RUNS[run_id].decline(payload.trigger_ids)
+
+
+
+# ---------------------------------------------------------------------------
+# 입력 에이전트 — 사용자와 두 그래프 사이. 말을 제안 카드로 바꾸고, 실행은 사용자가 누른다.
+# 맥락은 서버가 run/study에서 직접 읽는다(클라이언트가 보낸 상태를 믿지 않는다).
+# ---------------------------------------------------------------------------
+class AgentTurn(BaseModel):
+    role: str = Field(default="user", pattern="^(user|agent)$")
+    text: str = Field(default="", max_length=2000)
+
+
+class AgentRequest(BaseModel):
+    message: str = Field(default="", max_length=2000)
+    tab: str = Field(default="discovery", max_length=20)
+    run_id: Optional[str] = Field(default=None, max_length=60)
+    study_id: Optional[str] = Field(default=None, max_length=80)
+    history: List[AgentTurn] = Field(default_factory=list, max_length=12)
+
+
+_agent_catalog: Optional[Dict[str, Dict[str, Any]]] = None
+
+
+def agent_catalog() -> Dict[str, Dict[str, Any]]:
+    global _agent_catalog
+    if _agent_catalog is None:
+        _agent_catalog = input_agent.measurement_catalog(ROOT, experimental_inputs())
+    return _agent_catalog
+
+
+def _agent_context(payload: AgentRequest) -> Dict[str, Any]:
+    run = RUNS.get(payload.run_id or "")
+    run_summary = run.summary() if run is not None and run.final else None
+    study = None
+    if payload.study_id:
+        try:
+            study = development().view(payload.study_id)
+        except Exception:   # noqa: BLE001 — 없는 study는 맥락에서 뺀다
+            study = None
+    return input_agent.snapshot(payload.tab, run_summary, study, agent_catalog())
+
+
+def _pubchem_lookup(name: str) -> Dict[str, Any]:
+    from formula.literature import pubchem_summary
+    return pubchem_summary(name)
+
+
+@app.post("/api/agent/turn")
+async def agent_turn(payload: AgentRequest) -> Dict[str, Any]:
+    if not payload.message.strip():
+        raise HTTPException(422, "메시지가 비어 있습니다.")
+    ctx = _agent_context(payload)
+    history = [h.model_dump() for h in payload.history]
+    out, source = await asyncio.to_thread(input_agent.run_turn, payload.message, history, ctx, agent_catalog())
+    return await asyncio.to_thread(input_agent.build_response, out, source, payload.message, history, ctx,
+                                   agent_catalog(), experimental_inputs(), _pubchem_lookup)
+
+
+@app.post("/api/agent/nudge")
+async def agent_nudge(payload: AgentRequest) -> Dict[str, Any]:
+    """상태가 바뀌었을 때 에이전트가 먼저 건네는 말 — LLM 없이 맥락에서만 만든다."""
+    return input_agent.nudge(_agent_context(payload)) or {"reply": "", "proposals": []}
 # 
 # # ---------------------------------------------------------------------------
 # # 장기 실행 프로젝트 API — 파드 재시작 뒤에도 승인·실험·진단을 이어 간다.

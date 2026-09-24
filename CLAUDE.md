@@ -23,14 +23,24 @@ The README.md (Korean) is the authoritative design doc — update it in the same
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 169 tests — run this first when changing the core
+.venv/bin/pytest                                  # 191 tests — run this first when changing the core
 python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.json   # 07_doe static check (errors=0)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
 .venv/bin/python scripts/feedback_demo.py         # lab-in-the-loop (결과 해석)
 .venv/bin/uvicorn web.server:app --port 8000      # dashboard at http://localhost:8000
 .venv/bin/python scripts/import_rulebook.py       # re-import rulebook zips from 추가자료/
+# 기술 보고서(논문 PDF, zihwan.com/pdf): 수치는 엔진으로 계산 → HTML → 헤드리스 Chrome PDF → hub/reports/ 복사 → hub 재배포
+docker run --rm -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1-dev python scripts/report/figdata.py
+python3 scripts/report/build_report.py --tests <pytest 통과 수> --browser "<브라우저 스위트 요약>"
+"<Chrome>" --headless=new --no-pdf-header-footer --virtual-time-budget=15000 --print-to-pdf=docs/report/Formula1_report.pdf "file://$PWD/docs/report/report.html"
+cp docs/report/Formula1_report.pdf ~/zihwan/hub/reports/formula1_report.pdf
 ```
+
+Local tests without a venv: `docker run --rm -e FORMULA1_LLM_PROVIDER=none -v "$PWD":/app -w /app formula1-dev python -m pytest -p no:cacheprovider -o addopts="" -q`
+(`formula1-dev` = `formula1:latest` + scipy/statsmodels). Browser suites need a real key — run the image with the k8s
+`formula1-secrets` Groq key on :8104 and **don't hit the LLM from anything else while they run** (the suites share the
+free-tier TPM budget; concurrent curl runs made scenarios/audit fail with empty candidates).
 
 **No fabricated output, ever (user requirement, 2026-09-24).** AI steps need `GROQ_API_KEY` (free tier)
 or `ANTHROPIC_API_KEY`. Without a response: the generator returns `None` (no template recipe — the run ends
@@ -184,7 +194,7 @@ The whole system is **data-driven, not code-driven**. Rules live in CSVs; a sing
 - **`formula/chem/`** — RDKit input pipeline. `build_profile(api_name|smiles)` → `ApiProfile` (descriptors, SMARTS structural flags, advisory estimates, 2D SVG). Salts are stripped before SMARTS matching; `fr_*` counts cross-check every pattern. **Solubility/permeability estimates are `confidence=low` and must never set `bcs_class`** — the manifest gates `bcs_classification` behind measured values.
 - **`formula/orchestrator/`** — LangGraph `StateGraph` (`graph.py`), shared state with a reset-aware `accumulate` reducer (`state.py`; return `None` to clear a fan-out list between reflection rounds), and the `TraceEvent` bus (`events.py`). Every node emits events; the web UI consumes only that stream.
 - **`formula/agents/`** — Claude nodes. All use structured output (`messages.parse`) and **all have deterministic fallbacks**; `consensus.py` is pure Python driven by `severity_scoring_config.csv` (B model: judge scores rank, never block).
-- **`web/`** — FastAPI + SSE + a no-build SPA. Two result inputs, deliberately separate: `POST /api/runs/{id}/confirmation` (pre-experiment — returns into the input/evidence layer and re-runs the assessment) and `POST /api/runs/{id}/wetlab` (post-batch — returns into design/protocol revision). Merging them into one box erases *where* a result goes back to, which is the point of the dual loop. `POST /api/runs/{id}/approve` is the human gate; it 409s while evidence is missing. `/api/rules/{rule_id}` powers the evidence drill-down that shows the originating CSV row and its SOURCES document. `static/explainer.{js,css}` is the 8-step visual walkthrough of the README (auto-opens on first visit, reopened from the masthead, deep-linkable via `?guide=N`); its content mirrors README.md chapters, so **update it when the design story changes** — it's what a first-time visitor reads instead of the README.
+- **`web/`** — FastAPI + SSE + a no-build SPA. Two result inputs, deliberately separate: `POST /api/runs/{id}/confirmation` (pre-experiment — returns into the input/evidence layer and re-runs the assessment) and `POST /api/runs/{id}/wetlab` (post-batch — returns into design/protocol revision). Merging them into one box erases *where* a result goes back to, which is the point of the dual loop. `POST /api/runs/{id}/approve` is the human gate; it 409s while evidence is missing. `/api/rules/{rule_id}` powers the evidence drill-down that shows the originating CSV row and its SOURCES document. `static/explainer.{js,css}` is the 16-step visual walkthrough of the README (auto-opens on first visit, reopened from the masthead, deep-linkable via `?guide=N`); its content mirrors README.md chapters, so **update it when the design story changes** — it's what a first-time visitor reads instead of the README.
 
 ### Front-end rules (learned the hard way — don't regress these)
 
@@ -559,7 +569,7 @@ read about it. Keep them in sync with the graph — they are the demo.
 ## Conventions specific to this repo
 
 - **Never hardcode a rule in Python.** If a new check is needed, first ask whether one of the eight strategies plus a new CSV + manifest entry covers it. Only add a ninth strategy (and register it in the `STRATEGIES` dict) if the shape is genuinely new.
-- **Don't let the generator do the checker's job.** The design agent's fallback deliberately reaches for lactose (the most common diluent) and lets the rulebook reject it. Pre-avoiding known incompatibilities hides what the verification layer catches — which is the entire point of the system.
+- **Don't let the generator do the checker's job.** The generator prompt reads the incompatibility evidence and tries to avoid known clashes, so on the live LLM path an unpinned request usually produces *no* reject (measured 2026-09-24: pediatric fluoxetine → MCC-based candidates, zero hard-fails). The verification story is therefore demonstrated through `required_excipients` (a pinned ingredient the designer may not route around → INC002 → `infeasible`), never through a template recipe. There is no generator fallback recipe anymore — do not add one "for the demo".
 - **Never assert chemistry the data doesn't support.** Acetaminophen is an amide, not an amine; the original demo hardcoded `["Primary Amine"]` and that was wrong. `tests/test_smarts.py` pins the truth table — if it fails, the chemistry changed, not just the code.
 - Comments and docstrings are in Korean; match that style when editing existing files.
 - `database/` is the canonical rulebook (이도영's 30 CSVs + 15 SOURCES.md), `database/reference/` holds 조하준's 5 lookup tables, `database/legacy/` holds the 1st-gen CSVs kept only for regression comparison (`config/legacy_manifest.yaml` still points at them). Stale top-level copies of `incompatibility_rules.csv`/`process_failure_rules.csv` remain in the repo root and are unused.
@@ -626,3 +636,39 @@ workflow and has different contracts).
   belongs in this file and git, not on screen.
   The explainer gained steps 11–13 (studio overview, authority/evidence, Lornoxicam region) and step 4/5 were
   rewritten for the two-graph structure — keep them in sync with this section.
+
+## Front part merged (PR #1 spec) + input agent (2026-09-24)
+
+PR #1 on `zihwaan/formula1-qbd` changed only README/CLAUDE.md; its spec is now implemented and merged into one
+current-only README (18 chapters). Graph: `intake → phase_gates → drq_narrow → plan → generate(≤3 Send) → gate →
+{drq_refine → summon → judge → consensus | backtrack → reflect → generate(GATE) or plan | infeasible | escalate |
+exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
+
+- **`formula/planner/backtrack.py`** reads `database/06_config/backtrack_transitions.csv`. Rule-verdict rows pick the
+  return phase (GATE/G6R/G4/G3B) + constraint patch (`exclude_ingredient`, `exclude_strategy`, `exclude_route`,
+  `require_family`, `penalize_family`); deepest phase wins, patches accumulate, 3 returns to one phase escalate one
+  level (`PHASE_LIMIT`). **Measurement rows substitute `{recipe.strategy}` only for strategies whose
+  `strategy_families.required_measurements` (trigger ids → `data_request_triggers.measurement_id`) include that
+  measurement** — before this, ASD immiscibility also excluded MICRO. Pinned by `tests/test_backtrack_plan.py`.
+- **`strategy_planner.plan(..., constraints=)`** applies the constraints; an empty plan routes to `qtpp_review`.
+  With no flow data the route probe returns nothing, so `phase_gates` opens DC/DG/WG provisionally
+  (`routes_provisional`) instead of the removed legacy fallback — otherwise every cold-start run ended in qtpp_review.
+- **DRQ UX:** `group_requests()` merges requests by measurement (DSC once for SOLIDFORM+TM), sorts by tier then
+  sample mg, carries per-trigger reason kinds (`disagreement` / `low_or_unknown`) and fallbacks;
+  `POST /api/runs/{id}/decline` skips (candidates stay provisional). Packaging is excluded from candidate output
+  (`recipe.packaging=None`; `process_steps` come from the strategy family row).
+- **Input agent** — `formula/agents/input_agent.py`, `POST /api/agent/turn` · `/api/agent/nudge`, UI `web/static/agent.{js,css}`
+  (launcher bottom-right, bottom sheet on phones). Context is a **server-built snapshot** (run summary / study view) —
+  never trust client state. Guardrails are code, not prompt: `strip_ungrounded` drops any proposal number not present in
+  recent user text; SMILES only from user text / `KNOWN_SMILES` / PubChem (`CanonicalSMILES`|`SMILES`|`ConnectivitySMILES`
+  — PubChem renamed the field); measurement keys only from the inputs allowlist ∪ measurement-catalog outputs; studio
+  actions only from `prompt.actions`, and the card refuses to run if `state_version` changed; `start_run` needs SMILES +
+  dose (`ready:false` + ask otherwise). The `start_run` reply text is built in code (the LLM kept re-asking for a SMILES the
+  system had already found). If the LLM only clarifies but the rule parser reads a concrete action ("압축력은 몰라요"),
+  the rule result wins (`source: "llm+rules"`). Execution goes through the same functions as a human click
+  (`F1Discovery.startRunWith` fills the form first, `submitMeasurements`, `F1Studio.runAction` = `act()`,
+  `startFromCandidate`); `app.js`/`studio.js` dispatch `f1:run` / `f1:study` / `f1:tab` for nudges.
+  Tests: `tests/test_input_agent.py`, `tests/browser/agent.mjs`.
+- **Report** — `scripts/report/{figdata,build_report}.py` → `docs/report/`. Every number in the PDF comes from
+  `figdata.json` (engine run on the Lornoxicam fixture, CSV row counts) or the CLI args (actual test counts). Served by the hub
+  at `zihwan.com/pdf` from `hub/reports/formula1_report.pdf`.

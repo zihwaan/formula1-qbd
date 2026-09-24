@@ -192,6 +192,7 @@ class Recipe(BaseModel):
     packaging: Optional[str] = None  # "pvc_blister" | "alu_alu_blister" ...
     candidate_id: str = "cand-0"
     strategy: str = ""  # 이 후보를 만든 설계 전략 (DC / WG / 가용화 …)
+    process_steps: List[str] = Field(default_factory=list)  # 전략 가족 표의 공정 단계(결정론)
     rationale: str = ""  # 설계 에이전트의 근거 서술
 
     # ── v3 — 후보 신뢰도 태그 (Formula1_v3/IMPLEMENTATION_GUIDE.md §4.2) ─────
@@ -555,9 +556,10 @@ class EventKind(str, Enum):
     ERROR = "error"
     PREDICTIONS = "predictions"
     LITERATURE = "literature"
-    # v3 — 페이즈 게이트(BCS/DCS·고체상·가용화 전략)와 lab-in-the-loop 데이터 요청
+    # 페이즈 게이트(BCS/DCS·고체상·가용화 전략)와 lab-in-the-loop 데이터 요청
     PHASE_GATE = "phase.gate"
     DATA_REQUEST = "data.request"
+    BACKTRACK = "backtrack"  # 반려 사유별 복귀 지점 결정 (backtrack_transitions.csv)
 
 
 class TraceEvent(BaseModel):
@@ -589,6 +591,7 @@ class PendingRequest(BaseModel):
     why: str = ""
     fallback: str = ""  # 거절해도 무엇으로 계속하는지(fallback_if_declined)
     strategy: str = ""  # refines_confidence일 때만 — 어느 후보에 붙는 요청인지
+    reason_kind: str = ""  # 같은 요청이라도 발동 사유가 다를 수 있다(예: 예측이 낮음 vs 두 예측이 어긋남)
 
 
 # ---------------------------------------------------------------------------

@@ -46,13 +46,13 @@ await page.keyboard.press('ArrowRight');
 check('→ 키로 3단계', (await page.textContent('.guide-kicker')).trim() === '설계 원칙');
 await page.keyboard.press('ArrowLeft');
 check('← 키로 2단계', (await page.textContent('.guide-kicker')).trim() === '함정');
-await page.click('#guide-nav li:nth-child(7)');
-check('목차 클릭 → 7단계', (await page.textContent('.guide-kicker')).trim() === '페이즈 게이트');
+await page.click('#guide-nav li:nth-child(8)');
+check('목차 클릭 → 8단계', (await page.textContent('.guide-kicker')).trim() === '페이즈 게이트');
 check('현재 항목 하이라이트', await page.evaluate(
-  () => document.querySelectorAll('#guide-nav li')[6].classList.contains('on')));
+  () => document.querySelectorAll('#guide-nav li')[7].classList.contains('on')));
 
 console.log('\n[2b] 가이드 레이아웃 — 셸 밖으로 삐져나가지 않고 내부 스크롤이 산다');
-for (const step of [1, 4, 6, 7, 8]) {
+for (const step of [1, 4, 6, 7, 8, 9, 11, 16]) {
   const r = await page.evaluate((s) => {
     document.querySelectorAll('#guide-nav li')[s - 1].click();
     const shell = document.querySelector('.guide-shell').getBoundingClientRect();

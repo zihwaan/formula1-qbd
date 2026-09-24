@@ -39,6 +39,7 @@ from langgraph.types import Send
 
 from formula.agents import consensus as consensus_mod
 from formula.agents import generator, intake, judge, reflect
+from formula.planner import backtrack as backtrack_mod
 from formula.biopharm import (
     compute_derived_quantities,
     evaluate_triggers,
@@ -172,6 +173,11 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         # 빈 리스트로 두면 "권장 경로 없음"으로 정직하게 읽히고, 조건은 조용히 거짓이 된다.
         ctx.setdefault("recommended_routes", [])
         ctx.setdefault("excluded_routes", [])
+        # 유동성 자료가 없어 경로 결정트리가 아무것도 권하지 못하면 좁히지 않고 넓힌다 —
+        # 세 경로를 모두 잠정 후보로 열고(routes_provisional), 유동성 측정 요청(DRQ_PFLOW)이 좁힌다.
+        if not ctx["recommended_routes"] and not ctx.get("flow_character"):
+            ctx["recommended_routes"] = [r for r in ("DC", "DG", "WG") if r not in ctx["excluded_routes"]]
+            ctx["routes_provisional"] = True
 
         # G3A → G3B → G4 → G4B — BCS/DCS·고체상·가용화 전략·ASD 공정 신호.
         # bcs_class(실측 전용, 불변식 I-1)는 여기서 절대 쓰지 않는다 — bcs_solubility_provisional 등
@@ -182,32 +188,47 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
                  assigned=signal["assigned"], action=signal["action"], rationale=signal["rationale"],
                  citation=signal["citation"])
 
-        # DRQ_NARROW — 전략을 좁히는 데 쓰일 실측 요청. **차단하지 않는다**(불변식 I-9) —
-        # plan()은 이 결과와 무관하게 항상 진행한다.
-        profile = state.get("api_profile")
-        flag_names = profile.flag_names() if profile else []
-        pending_narrow = evaluate_triggers(ctx, "narrows_strategy", base_dir, flags=flag_names)
-        emit("phase_gates", EventKind.DATA_REQUEST, urgency="narrows_strategy",
-             pending=[p.model_dump(mode="json") for p in pending_narrow])
-
-        # PLAN — strategy_families.csv 기반 채점. 아무 전략도 못 살아남으면(데이터 공백)
-        # 레거시 휴리스틱(BCS class 기반)으로 안전하게 물러난다 — 후보 0개로 죽지 않는다.
-        planned = strategy_planner.plan(ctx, base_dir)
-        if planned:
-            strategies = [p.strategy_code for p in planned]
-        else:
-            strategies = generator.plan_strategies(spec, ctx)
-        plan_sig = strategy_planner.signature(planned)
-
         public_derived = _public_derived(ctx)
-        emit("phase_gates", EventKind.NODE_EXIT, derived=public_derived, strategies=strategies,
-             plan_signature=plan_sig, pending_narrow_count=len(pending_narrow))
-        return {
-            "strategies": strategies,
-            "phase_derived": public_derived,
-            "pending_narrow": [p.model_dump(mode="json") for p in pending_narrow],
-            "plan_signature": plan_sig,
-        }
+        emit("phase_gates", EventKind.NODE_EXIT, derived=public_derived)
+        return {"phase_derived": public_derived}
+
+    # ── DRQ_NARROW — 전략을 좁히는 실측 요청 (비차단) ──────────────────
+    def node_drq_narrow(state: FormulationState) -> Dict[str, Any]:
+        """판정이 갈리는 지점의 실측만 요청한다. **그래프를 멈추지 않는다** — 다음은 항상 계획이다."""
+        emit("drq_narrow", EventKind.NODE_ENTER)
+        ctx = dict(state.get("phase_derived") or {})
+        profile = state.get("api_profile")
+        pending = evaluate_triggers(ctx, "narrows_strategy", base_dir,
+                                    flags=profile.flag_names() if profile else [])
+        payload = [p.model_dump(mode="json") for p in pending]
+        emit("drq_narrow", EventKind.DATA_REQUEST, urgency="narrows_strategy", pending=payload)
+        emit("drq_narrow", EventKind.NODE_EXIT, pending_narrow_count=len(pending))
+        return {"pending_narrow": payload}
+
+    # ── PLAN — 전략 채점 → 상위 3개 (같은 입력 = 같은 계획) ──────────────
+    def node_plan(state: FormulationState) -> Dict[str, Any]:
+        """strategy_families.csv로 전략을 채점한다. 되돌림이 쌓은 제약(전략·경로 제외, 가족 요구/감점)을
+        그대로 반영한다. 살아남는 전략이 없으면 임의의 기본 전략을 지어내지 않고 QTPP 재검토로 보낸다."""
+        emit("plan", EventKind.NODE_ENTER)
+        constraints = state.get("constraints") or {}
+        planned = strategy_planner.plan(dict(state.get("phase_derived") or {}), base_dir,
+                                        constraints=constraints)
+        strategies = [p.strategy_code for p in planned]
+        sig = strategy_planner.signature(planned)
+        emit("plan", EventKind.NODE_EXIT, strategies=strategies, plan_signature=sig,
+             scores=[{"strategy": p.strategy_code, "family": p.family, "label": p.label_kr,
+                      "score": p.score, "process_steps": p.process_steps,
+                      "coverage": p.rulebook_coverage} for p in planned],
+             constraints=constraints)
+        return {"strategies": strategies, "plan_signature": sig,
+                "planned": [{"strategy": p.strategy_code, "family": p.family,
+                             "process_steps": p.process_steps, "coverage": p.rulebook_coverage}
+                            for p in planned]}
+
+    def route_after_plan(state: FormulationState):
+        if not state.get("strategies"):
+            return "qtpp_review"
+        return fan_out_generators(state)
 
     # ── P2 · 설계 후보 병렬 생성 (LLM) ─────────────────────────────────
     def fan_out_generators(state: FormulationState) -> List[Send]:
@@ -219,7 +240,8 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
                 "candidate_id": f"cand-{attempt}-{strategy}",
                 "directive": state.get("reflection_directive", ""),
             })
-            for strategy in state.get("strategies") or ["DC"]
+            for strategy in state.get("strategies") or []
+            if strategy not in set((state.get("constraints") or {}).get("exclude_strategy", []))
         ]
 
     def node_generate(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -352,7 +374,37 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
             return "escalate"
         if state.get("reflection_count", 0) >= MAX_REFLECTION_LOOPS:
             return "exhausted"
-        return "reflect"
+        return "backtrack"
+
+    # ── BACKTRACK — 반려 사유별 복귀 지점 (backtrack_transitions.csv) ────────
+    def node_backtrack(state: FormulationState) -> Dict[str, Any]:
+        emit("backtrack", EventKind.NODE_ENTER)
+        attempts = dict(state.get("phase_attempts") or {})
+        decision = backtrack_mod.combine(
+            backtrack_mod.match_rejection(state.get("results", []), base_dir), attempts)
+        if decision is None:
+            # 표에 없는 반려 — 같은 전략으로 성분만 다시 설계한다(가장 얕은 복귀)
+            decision = backtrack_mod.Decision(transition_id="UNMAPPED", return_phase="GATE",
+                                              directive_hint="반려 사유를 해소하도록 성분을 조정")
+        attempts[decision.return_phase] = attempts.get(decision.return_phase, 0) + 1
+        constraints = backtrack_mod.apply(state.get("constraints") or {}, decision.patch)
+        emit("backtrack", EventKind.BACKTRACK, **decision.as_dict(), attempts=attempts,
+             constraints=constraints)
+        emit("backtrack", EventKind.NODE_EXIT, return_phase=decision.return_phase)
+        return {"constraints": constraints, "phase_attempts": attempts, "backtrack": decision.as_dict()}
+
+    def route_after_reflect(state: FormulationState):
+        if (state.get("backtrack") or {}).get("return_phase", "GATE") == "GATE":
+            sends = fan_out_generators(state)
+            return sends or "plan"
+        return "plan"
+
+    def node_qtpp_review(state: FormulationState) -> Dict[str, Any]:
+        emit("qtpp_review", EventKind.WARNING,
+             reason="남은 전략이 없습니다 — 목표(QTPP) 재검토가 필요합니다. 용량·대상 환자·제형이나 "
+                    "고정한 제약을 조정하거나, 전략을 가르는 실측값을 넣어 주세요.",
+             constraints=state.get("constraints") or {})
+        return {"status": "qtpp_review"}
 
     # ── P5 · 심사관 동적 소집 ──────────────────────────────────────────
     def node_summon(state: FormulationState) -> Dict[str, Any]:
@@ -365,6 +417,22 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         # REV004·REV005가 **구조적으로 소집될 수 없었다.** 게이트 결과와 부형제 마스터에서
         # 실제로 계산해 넣는다 — 조건을 없애는 게 아니라 근거를 만들어 주는 방향.
         derived.update(_summon_signals(registry, passed))
+        # 전략·페이즈 게이트에서 오는 소집 신호 — 가용화/미분화/ASD 후보, 룰북 커버리지 공백,
+        # 고체상 구간(염·공결정 경계), 염 안정성 주의. 이게 없으면 REV002·REV005·REV007이
+        # 조건식에서 참조하는 이름이 비어 영영 소집되지 않는다.
+        phase = state.get("phase_derived") or {}
+        families = {p["strategy"]: p for p in (state.get("planned") or [])}
+        strategies = {getattr(r["recipe"], "strategy", "") for r in passed}
+        fam = {s_: (families.get(s_) or {}).get("family", "") for s_ in strategies}
+        derived.setdefault("solid_form_zone", phase.get("solid_form_zone"))
+        derived.setdefault("salt_stability_watch", phase.get("salt_stability_watch"))
+        derived["enabling_candidates_present"] = any(f == "ENABLING" for f in fam.values())
+        derived["particle_size_candidates_present"] = any(f == "PARTICLE_SIZE" for f in fam.values())
+        derived["asd_candidates_present"] = any(s_.startswith("ASD_") for s_ in strategies)
+        # 전략이 요구하는 공정 규칙표가 룰북에 없으면(ASD·HME·CD 등) 커버리지 공백
+        known = {e.id for e in registry.entries}
+        derived["coverage_gap_present"] = any(
+            c and c not in known for s_ in strategies for c in (families.get(s_) or {}).get("coverage", []))
 
         judges = registry.active_judges(state["spec"], derived)
         emit("summon", EventKind.NODE_EXIT,
@@ -418,9 +486,18 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         failures = [v for r in state.get("results", []) for v in r["verdicts"] if v.failed]
         attempt = state.get("reflection_count", 0) + 1
         outcome = reflect.reflect(failures, base_dir, attempt)
+        bt = state.get("backtrack") or {}
+        constraints = state.get("constraints") or {}
+        parts = [outcome["directive"]]
+        if bt.get("directive_hint"):
+            parts.append(f"되돌림 규칙({bt.get('transition_id')}): {bt['directive_hint']}")
+        if constraints.get("exclude_ingredient"):
+            parts.append("다음 성분은 쓰지 않는다: " + ", ".join(constraints["exclude_ingredient"]))
+        for combo in constraints.get("exclude_ingredient_set", []):
+            parts.append(f"금지 조합에서 하나를 뺀다: {combo}")
         return {
             "reflection_count": attempt,
-            "reflection_directive": outcome["directive"],
+            "reflection_directive": " / ".join(p for p in parts if p),
             "reject_reasons": [v.reason for v in failures if v.blocking],
             # 다음 라운드를 위해 후보/결과를 비운다.
             # reducer가 누적형이라 []로는 안 지워진다 — None이 초기화 센티널이다.
@@ -488,23 +565,29 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         ("consensus", node_consensus), ("reflect", node_reflect),
         ("escalate", node_escalate), ("exhausted", node_exhausted),
         ("infeasible", node_infeasible), ("no_design", node_no_design),
+        ("drq_narrow", node_drq_narrow), ("plan", node_plan), ("backtrack", node_backtrack),
+        ("qtpp_review", node_qtpp_review),
     ]:
         graph.add_node(name, fn)
 
     graph.add_edge(START, "intake")
     graph.add_edge("intake", "phase_gates")
-    graph.add_conditional_edges("phase_gates", fan_out_generators, ["generate"])
+    graph.add_edge("phase_gates", "drq_narrow")
+    graph.add_edge("drq_narrow", "plan")
+    graph.add_conditional_edges("plan", route_after_plan, ["generate", "qtpp_review"])
     graph.add_edge("generate", "gate")
     graph.add_conditional_edges("gate", route_after_gate,
-                                ["drq_refine", "reflect", "escalate", "exhausted", "infeasible", "no_design"])
+                                ["drq_refine", "backtrack", "escalate", "exhausted", "infeasible", "no_design"])
+    graph.add_edge("backtrack", "reflect")
     graph.add_edge("drq_refine", "summon")
     graph.add_conditional_edges("summon", fan_out_judges, ["judge", "consensus"])
     graph.add_edge("judge", "consensus")
-    graph.add_conditional_edges("reflect", fan_out_generators, ["generate"])
+    graph.add_conditional_edges("reflect", route_after_reflect, ["generate", "plan"])
     graph.add_edge("consensus", END)
     graph.add_edge("escalate", END)
     graph.add_edge("exhausted", END)
     graph.add_edge("no_design", END)
+    graph.add_edge("qtpp_review", END)
     graph.add_edge("infeasible", END)
 
     return graph.compile()

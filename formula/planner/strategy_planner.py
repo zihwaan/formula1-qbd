@@ -58,16 +58,30 @@ def _route_index(ctx: Dict[str, Any]):
     return route_index
 
 
-def plan(ctx: Dict[str, Any], base_dir: Path, max_strategies: int = 3) -> List[PlannedStrategy]:
+def plan(ctx: Dict[str, Any], base_dir: Path, max_strategies: int = 3,
+         constraints: Dict[str, List[str]] | None = None) -> List[PlannedStrategy]:
     """조건에 맞는 전략을 채점해 점수 내림차순으로 최대 max_strategies개 돌려준다.
 
     실패해도(행 하나가 예외를 내도) 그 행만 건너뛴다 — 전략 선정 전체가 죽지 않는다.
     아무 전략도 살아남지 않으면 빈 리스트를 돌려주고, 호출부(그래프)가 QTPP 재검토로
     보낸다 — 임의의 기본 전략을 지어내지 않는다.
     """
+    constraints = constraints or {}
+    excluded = set(constraints.get("exclude_strategy", []))
+    required_family = set(constraints.get("require_family", []))
+    penalized = set(constraints.get("penalize_family", []))
+    ctx = dict(ctx)
+    # 되돌림이 뺀 공정 경로는 권장 경로에서도 빠진다 — 전략 조건식이 그대로 읽는다
+    extra_routes = [r for r in constraints.get("exclude_route", []) if r]
+    if extra_routes:
+        ctx["excluded_routes"] = list(dict.fromkeys(list(ctx.get("excluded_routes") or []) + extra_routes))
+        ctx["recommended_routes"] = [r for r in (ctx.get("recommended_routes") or []) if r not in extra_routes]
     scope = {**ctx, "route_index": _route_index(ctx)}
     scored: List[PlannedStrategy] = []
     for row in _rows(Path(base_dir)):
+        code, family = str(row.get("strategy_code") or ""), str(row.get("family") or "")
+        if code in excluded or (required_family and family not in required_family):
+            continue
         applies = str(row.get("applies_when") or "true").strip()
         if not evaluate(applies, scope):
             continue
@@ -76,6 +90,8 @@ def plan(ctx: Dict[str, Any], base_dir: Path, max_strategies: int = 3) -> List[P
             score = float(raw_score) if raw_score is not None else 0.0
         except Exception:
             continue
+        if family in penalized or f"{family}_{code.split('_')[0]}" in penalized:
+            score -= 2   # 배제가 아니라 감점 — 예: 유리형성능 Class I이어도 ASD를 닫지 않는다
         min_score = float(row.get("min_score_to_generate") or 0)
         if score < min_score:
             continue

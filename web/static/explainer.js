@@ -126,8 +126,11 @@
              연구자가 고른 후보를 얼려 둔 <b>불변 Handoff</b> 하나로만 이어진다.`,
       art: `
         <div class="f1-arch f1-seq">
-          <div class="f1-io">사용자 요청 · 주성분(SMILES) · 대상 환자 · 제형 · 반드시 포함할 부형제 · 이미 아는 실측값</div>
-          <div class="f1-flowmark">▼</div>
+          <div class="f1-io">연구자 — 말 · 폼 입력 · 측정값 · 승인</div>
+          <div class="f1-flowmark">▲▼</div>
+          <div class="f1-box f1-llm"><b>입력 에이전트</b><span>맥락(진행 중인 설계·남은 요청·스튜디오 상태)을 읽고 말을 <b>제안 카드</b>로 —
+            숫자·구조식은 사용자 글과 공개 DB에서만, 빠진 값은 되묻고, 실행은 연구자가 누른다</span></div>
+          <div class="f1-flowmark">▼ 확인한 카드만 — 사람이 누르는 것과 같은 경로</div>
           <div class="f1-tier t1">
             <header><span>① 후보 탐색 — CandidateDiscoveryGraph</span><span>분 단위</span></header>
             <div class="f1-cols c3">
@@ -139,7 +142,9 @@
               <div class="f1-box f1-jud"><b>동적 심사위원단</b><span>요청에 맞는 심사관만 소집 · 순위만 매기고 반려 권한 없음</span></div>
               <div class="f1-box f1-det"><b>비차단 데이터 요청</b><span>값을 몰라도 후보는 나온다 — 전략이 갈리는 값만 되묻는다</span></div>
             </div>
-            <div class="f1-cap">⟲ 규칙 반려 → 반성 에이전트 → 재설계 (최대 5회) · 출력 = <b>권고 후보 처방 목록</b></div>
+            <div class="f1-cap">계획이 전략 점수 상위 3개를 고른다(같은 입력 = 같은 계획) ·
+              ⟲ 규칙 반려 → <b>사유별 복귀 지점</b>(성분만 / 공정부터 / 전략부터) → 재설계 (최대 5회) ·
+              남는 전략이 없으면 목표 재검토 · 출력 = <b>권고 후보 처방 목록</b>(포장 사양 제외)</div>
           </div>
           <div class="f1-flowmark">▼ 연구자가 후보 카드에서 <b>이 후보로 개발 착수</b>를 누를 때만 (1위 자동 진입 없음)</div>
           <div class="f1-io">불변 Handoff — <span class="f1-mono">candidate_id@version</span> · 조성 · 공정 · 고정 공정변수 · QTPP · fingerprint</div>
@@ -163,8 +168,8 @@
             <div class="f1-io win">✓ VERIFIED 영역 + 성립 조건(scope)</div>
           </div>
         </div>`,
-      note: `뼈대는 <b>“누가 무엇을 정하는가”가 단계마다 고정돼 있다</b>는 점이다. AI는 후보와 가설을
-             <b>제안</b>하고, 결정론 규칙과 엔진이 <b>판정·계산</b>하며, 연구자가 <b>선택·승인</b>한다.
+      note: `뼈대는 <b>“누가 무엇을 정하는가”가 단계마다 고정돼 있다</b>는 점이다. 입력 에이전트는 말을
+             입력으로 <b>정리</b>하고, AI는 후보와 가설을 <b>제안</b>하고, 결정론 규칙과 엔진이 <b>판정·계산</b>하며, 연구자가 <b>선택·승인</b>한다.
              ①은 “만들기 전에 실패를 걸러내는” 쪽이고, ②는 “만든 뒤 실제 데이터로 운전 영역을 증명하는” 쪽이다.
              ②는 ①의 1위를 자동으로 가져가지 않는다 — 어떤 후보를 개발할지는 연구자의 판단이다.`,
     },
@@ -194,6 +199,39 @@
              연구자가 하듯 진행한다 — 폼을 채워 보여 준 뒤 같은 버튼을 누른다. 한 단계씩 넘기거나 끝까지
              자동으로 흘려 볼 수 있고, 판정과 계산은 매번 서버가 새로 한다. 휴대폰에서는 한 열로 쌓이고
              편집 표는 행마다 카드로 바뀌며, 행동 버튼 줄은 항상 손 닿는 아래쪽에 붙어 있다.`,
+    },
+
+    {
+      nav: "입력 에이전트 ★",
+      kicker: "사용자와 시스템 사이",
+      title: "말로 요청하면, 맥락을 읽고 실행할 수 있는 입력으로 정리한다",
+      lead: `오른쪽 아래 <b>입력 에이전트</b>는 두 그래프 앞에 선 대화 창이다. 폼을 채우는 대신
+             말로 요청하면, 에이전트가 <b>지금 맥락</b> — 진행 중인 설계, 남은 실험 요청, 되돌림 기록,
+             개발 스튜디오의 상태와 막힌 규칙 — 을 서버에서 직접 읽고, 그 말을 <b>제안 카드</b>로 바꾼다.
+             카드의 [실행]은 사람이 버튼을 누른 것과 똑같은 경로로 간다.`,
+      art: `
+        <div class="f1-story f1-seq">
+          <div class="f1-beat"><div class="who">연구자</div><div class="what"><div class="card">
+            “고령자용 로사르탄 캡슐 설계해 줘”</div></div></div>
+          <div class="f1-beat fix"><div class="who">에이전트</div><div class="what"><div class="card">
+            <b>설계 실행 카드 — 미완성(점선)</b>
+            <span class="f1-mono">구조: PubChem CID 3961 (링크) · 용량: 없음 → “1회 용량(mg)이 얼마인가요?”</span></div></div></div>
+          <div class="f1-beat"><div class="who">연구자</div><div class="what"><div class="card">“50 mg이야”</div></div></div>
+          <div class="f1-beat win"><div class="who">에이전트</div><div class="what"><div class="card">
+            <b>앞 대화와 합쳐 완성된 카드</b> <span class="f1-mono">[실행] → 폼을 채워 보여 준 뒤 같은 startRun()으로 시작</span></div></div></div>
+          <div class="f1-beat jud"><div class="who">에이전트 (먼저)</div><div class="what"><div class="card">
+            설계가 끝나면 권고 후보와 가장 가벼운 남은 요청을 짚고 <b>개발 착수 카드</b>를 낸다 ·
+            스튜디오에서 “압축력은 몰라요” → 진입 자료 카드(압축력 UNKNOWN 기록)</div></div></div>
+        </div>
+        <div class="f1-cols c3" style="margin-top:10px">
+          <div class="f1-box f1-det"><b>숫자는 사용자 글에서만</b><span>카드의 모든 숫자를 최근 발화의 숫자와 대조 — 없으면 빼고 알린다. LLM이 낸 값도 예외 없음</span></div>
+          <div class="f1-box f1-det"><b>구조식은 출처가 있는 곳에서만</b><span>사용자 입력 · 내장 사전 · PubChem 조회. 기억으로 쓴 SMILES는 버린다</span></div>
+          <div class="f1-box f1-det"><b>지금 가능한 것만</b><span>허용목록 안의 측정 키, 현재 상태가 허용하는 스튜디오 행동, 통과한 후보만. 상태 버전이 바뀌면 실행 안 함</span></div>
+        </div>`,
+      note: `가드레일은 프롬프트가 아니라 <b>코드</b>다. 에이전트는 어떤 것도 스스로 실행하지 않고,
+             판정은 여전히 룰북과 엔진이 한다 — 에이전트가 하는 일은 “말을 시스템이 받을 수 있는 입력으로
+             옮기고, 빠진 것을 묻고, 다음에 할 일을 먼저 짚는 것”이다. LLM이 응답하지 않으면 규칙 기반
+             해석기가 글에서 값만 읽어 같은 카드를 만들고, 그 사실을 표시한다.`,
     },
 
     {
@@ -281,8 +319,8 @@
             <div class="f1-lvl key"><span class="n">4</span><span>가용화 전략이 필요한가</span><em>sig_enabling_required</em></div>
             <div class="f1-lvl"><span class="n">4B</span><span>필요하면 어떤 ASD 공정인가</span><em>asd_process</em></div>
           </div>
-          <div class="f1-flowmark">▼ 여기서 켜진 신호로 전략을 채점한다(strategy_families.csv)</div>
-          <div class="f1-io win">경쟁 전략 목록 — 예: 미분화(MICRO) · 고체분산체(ASD_SDD)</div>
+          <div class="f1-flowmark">▼ 켜진 신호로 전략을 채점해 상위 3개를 고른다(strategy_families.csv · 계획 서명)</div>
+          <div class="f1-io win">경쟁 전략 목록 — 예: 미분화(MICRO) · 고체분산체(ASD_SDD) · 판정이 안 갈리면 양쪽을 모두 연다</div>
         </div>`,
       note: `이 게이트에는 <b>반려 권한이 없다.</b> "금기가 있는가"를 묻는 배합금기 게이트와
              다르게, 여기는 "전략 후보를 얼마나 넓게/좁게 볼 것인가"만 정한다. 값을 모르면
@@ -291,6 +329,40 @@
              <span class="f1-mono">데이터 요청</span> 패널에 남긴다. 연구자가 값을 넣으면
              같은 전략 집합이면 신뢰도만 다시 계산하고(LLM 호출 없음), 전략 집합 자체가
              바뀌면 그때만 새로 설계한다 — 값 하나 들어왔다고 매번 처음부터 다시 돌리지 않는다.`,
+    },
+
+    {
+      nav: "실험 요청",
+      kicker: "lab-in-the-loop",
+      title: "무엇을, 언제, 왜 묻는가 — 그리고 절대 멈추지 않는다",
+      lead: `시스템이 “어떤 실험이 존재하는지” 아는 근거는 <b>측정 카탈로그 20종</b>뿐이다 — 목록에 없는
+             시험은 요청하지 않는다. 언제·무엇을·왜 묻는지는 <b>트리거 표 16행</b>에 한 줄씩 적혀 있고,
+             한 행은 발동 조건 · 요청할 시험 · 해결 조건 · 사유 · <b>거절했을 때의 대체 경로</b>를 담는다.`,
+      art: `
+        <div class="f1-arch f1-seq">
+          <div class="f1-cols c2">
+            <div class="f1-box f1-det"><b>전략을 좁히는 요청 (계획 전, 한 번)</b><span>결과에 따라 어느 전략을 고를지가 바뀐다 —
+              녹는점을 모르면 용융압출과 분무건조를 가를 수 없다</span></div>
+            <div class="f1-box f1-det"><b>신뢰도를 높이는 요청 (후보마다)</b><span>이미 고른 전략의 신뢰도만 바뀐다 —
+              ASD 후보의 고분자 혼화성</span></div>
+          </div>
+          <div class="f1-flowmark">▼ 화면에서는</div>
+          <div class="f1-stack f1-seq">
+            <div class="f1-lvl"><span class="n">1</span><span>시료가 적게 드는 시험부터 — Tier 1(~10 mg: XRPD·DSC·TGA·KF) → Tier 2(~30 mg) → Tier 3</span><span></span></div>
+            <div class="f1-lvl"><span class="n">2</span><span>같은 시험을 가리키는 요청은 한 칸으로 — 고체상 세트와 녹는점이 모두 DSC면 DSC 한 번</span><span></span></div>
+            <div class="f1-lvl"><span class="n">3</span><span>사유를 구분해 표시 — “예측이 낮거나 모름” vs “예측 간 불일치(1 log 이상)”</span><span></span></div>
+            <div class="f1-lvl key"><span class="n">4</span><span>건너뛰기 — 시험별 또는 전체. 예측값으로 계속하고 후보는 provisional 유지</span><em>대체 경로 표시</em></div>
+          </div>
+          <div class="f1-flowmark">▼ 값이 들어오면</div>
+          <div class="f1-cols c2">
+            <div class="f1-io">계획 서명이 같다 → 신뢰도 태그만 다시 (LLM 0회)</div>
+            <div class="f1-io">서명이 바뀐다 → 새 전략 집합으로 다시 설계</div>
+          </div>
+        </div>`,
+      note: `신뢰도 태그는 AI가 매기지 않는다 — <b>남은 신뢰도 요청이 없을 때만 grounded</b>다. 측정 결과가
+             전략의 전제를 부정하면(예: ASD 혼화성 부적합) 되돌림 표가 <b>그 측정을 요구하는 전략만</b> 빼고
+             전략 선택으로 돌아간다 — ASD가 실패했다고 미분화 후보까지 지우지 않는다. 계산값·예측값·실측값은
+             서로 다른 변수라 실측이 예측을 덮지 않고, BCS 등급은 실측으로만 확정한다.`,
     },
 
     {
@@ -323,54 +395,36 @@
     },
 
     {
-      nav: "실제로 이렇게 돌았다",
-      kicker: "동작 예시",
-      title: "설계 → 반려 → 재설계 → 통과",
-      lead: `요청: <b>"소아용 플루옥세틴 정제를 설계하라."</b>
-             아래는 실제 실행 트레이스를 따라간 것이다. 이 화면 오른쪽에서 직접 돌려 볼 수 있다.`,
+      nav: "반려되면 어디로",
+      kicker: "되돌림",
+      title: "반려되면 처음부터가 아니라, 사유가 가리키는 자리로 돌아간다",
+      lead: `규칙 게이트만 후보를 반려할 수 있다. 반려되면 어느 단계로 돌아갈지는 코드가 아니라
+             <b>되돌림 전이표(14행)</b>의 한 행이 정한다 — 반려 판정이 행의 조건에 맞으면 그 행의 복귀 지점으로
+             가고, 행이 적은 <b>제약</b>을 쌓는다. 다음 계획과 설계는 그 제약을 벗어날 수 없다.`,
       art: `
-        <div class="f1-story f1-seq">
+        <div class="f1-stack f1-seq">
+          <div class="f1-lvl key"><span class="n">GATE</span><span>1대1 배합 금기 · 어린이 안전 상한 · 다성분 상호작용</span><em>같은 전략, 문제 성분만 제외</em></div>
+          <div class="f1-lvl flow"><span class="n">G6R</span><span>공정 규칙 미충족 · 공정 경로 배제</span><em>그 전략·경로 제외 → 계획부터</em></div>
+          <div class="f1-lvl flow"><span class="n">G4</span><span>실측 BCS II/IV인데 가용화 요소 없음 · 측정이 전략 전제를 부정</span><em>가족 요구 / 전략 제외 → 전략 선택부터</em></div>
+        </div>
+        <div class="f1-story f1-seq" style="margin-top:10px">
           <div class="f1-beat"><div class="who">RDKit</div><div class="what"><div class="card">
-            구조 플래그 검출 <span class="f1-mono">Fluoxetine → ['has_secondary_amine']</span></div></div></div>
-
-          <div class="f1-beat"><div class="who">phase_gates</div><div class="what"><div class="card">
-            분류 신호가 없으면(값 불충분) 레거시 휴리스틱으로 물러난다
-            <span class="f1-mono">경쟁 전략: DC, WG</span></div></div></div>
-
-          <div class="f1-beat"><div class="who">설계</div><div class="what"><div class="card">
-            가장 흔한 희석제로 초안을 만든다
-            <span class="f1-mono">cand-0-DC · cand-0-WG — 희석제 Lactose monohydrate</span></div></div></div>
-
+            플루옥세틴 → <span class="f1-mono">secondary_amine</span> 검출</div></div></div>
           <div class="f1-beat reject"><div class="who">게이트</div><div class="what"><div class="card">
-            <b>⛔ INC002 반려</b> — 2차 아민 + 유당 → Maillard 반응
-            <span class="f1-mono">cand-0-DC 반려 (판정 11 · 위반 2)</span></div></div></div>
-
-          <div class="f1-beat fix"><div class="who">반성</div><div class="what"><div class="card">
-            <b>chemical 계층에서 2건 반려 — 성분 선택 재검토 필요</b>
-            <span class="f1-mono">지시 → Mannitol</span>
-            <span class="f1-mono">(반려 사유에 담긴 alternative_excipient_name 이 그대로 재설계 지시가 된다)</span></div></div></div>
-
-          <div class="f1-beat win"><div class="who">설계·게이트</div><div class="what"><div class="card">
-            <b>✓ 통과</b> <span class="f1-mono">cand-1-DC — 희석제 Mannitol · 통과 (판정 10 · 위반 1)</span></div></div></div>
-
-          <div class="f1-beat jud"><div class="who">소집</div><div class="what"><div class="card">
-            <b>심사관 2명만 소집됐다</b>
-            <span class="f1-mono">REV001 소아 안전 — 조건 target_population=='pediatric'</span>
-            <span class="f1-mono">REV003 공정 실현성 — 조건 always</span>
-            <span class="f1-mono">REV002 가용화 심사관은 조건 불일치 → 아예 생성되지 않음</span></div></div></div>
-
-          <div class="f1-beat win"><div class="who">합의</div><div class="what"><div class="card">
-            <b>선정 cand-1-DC</b> <span class="f1-mono">가중치 {REV001: 0.545, REV003: 0.455}</span></div></div></div>
+            <b>⛔ INC002</b> — 2차 아민 + 유당 → Maillard 갈변 <span class="f1-mono">대안: Mannitol</span></div></div></div>
+          <div class="f1-beat fix"><div class="who">되돌림</div><div class="what"><div class="card">
+            <b>BT001 → GATE</b> <span class="f1-mono">exclude_ingredient = Lactose monohydrate</span>
+            <span class="f1-mono">반성 → “같은 전략으로 성분만 교체, 대안 Mannitol”</span></div></div></div>
+          <div class="f1-beat win"><div class="who">예외</div><div class="what"><div class="card">
+            유당을 <b>반드시 넣으라고 고정</b>했다면 되돌리지 않는다 → <b>“이 제약으로는 통과가 없다”</b> + 대체 성분 (시나리오 1)</div></div></div>
         </div>`,
-      note: `주목할 점 — <b>설계 에이전트는 금기를 미리 피하지 않는다.</b> 가장 흔한 희석제인 유당으로 초안을
-             만들고, 검증이 그걸 잡아낸다. 설계자가 검증의 일을 대신하면 시스템이 무엇을 잡아내는지 보이지 않기
-             때문이다. 실험실에서라면 "만들어 보고 갈변을 확인한 뒤 다시 설계하는" 데 며칠이 걸렸을 과정이고,
-             <b>이 판정은 몇 번을 다시 돌려도 똑같이 나온다.</b><br><br>
-             다만 걸리려면 <b>두 쪽이 실제로 만나야 한다.</b> 룰북은 <span class="f1-mono">Lactose monohydrate</span>라
-             적고 처방은 "유당"이라 적는다. 글자만 비교하면 둘은 영영 만나지 않으므로,
-             부형제 마스터를 사전 삼아 표기·국문명·계열명을 맞춘 뒤에 대조한다. 같은 이유로,
-             <b>구조를 못 읽었으면 통과가 아니라 판정 불가</b>다 — SMILES 오타 하나로 작용기가 0개가 되면
-             구조 기반 금기는 발동할 수 없고, 그 침묵을 합격으로 세면 게이트가 있으나 마나가 된다.`,
+      note: `한 라운드에 반려가 여럿이면 <b>가장 깊은 복귀 지점</b>으로 가되 제약은 모두 쌓는다. 같은 자리로
+             3번 돌아가도 풀리지 않으면 한 단계 위로 올리고, 전체 5회를 넘으면 사람에게 넘긴다. 제약이 모든
+             전략을 지우면 설계하지 않고 <b>목표(QTPP) 재검토</b>로 끝난다.<br><br>
+             설계 에이전트도 근거를 읽고 알려진 금기를 피하려 하지만, 판정 권한은 없다 — 현장 제약으로
+             <b>반드시 넣어야 하는 성분</b>은 설계자가 회피하지 않고 그대로 넣으며, 걸리는지는 룰북이 판정한다. 다만 걸리려면 <b>두 쪽이 실제로 만나야 한다.</b> 룰북은
+             <span class="f1-mono">Lactose monohydrate</span>, 처방은 “유당”이라 적으므로 부형제 마스터를 사전 삼아
+             표기·국문명·계열명을 맞춘 뒤 대조한다. 같은 이유로 <b>구조를 못 읽었으면 통과가 아니라 판정 불가</b>다.`,
     },
 
     {
