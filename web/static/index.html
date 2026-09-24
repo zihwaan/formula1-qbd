@@ -78,7 +78,7 @@
       <p class="inputs-help">
         이미 측정한 값이 있으면 넣어 주세요. <b>실측값은 추정보다 우선</b>하며,
         각 항목이 무엇을 여는지 아래에 적어 두었습니다. 넣지 않으면 시스템은 “모른다”로 보고
-        <b>선행 확인시험</b>을 먼저 요청합니다.
+        후보는 그대로 내되, 전략이 갈리는 지점에서만 <b>데이터 요청</b>을 남깁니다.
       </p>
       <div id="inputs-body" class="inputs-grid"></div>
       <div class="inputs-actions">
@@ -170,7 +170,7 @@
              전략과 신뢰도만 다시 계산된다(그래프를 다시 돌리지 않는다). -->
         <section class="drq" id="drq" hidden aria-live="polite">
           <header>
-            <h3>데이터 요청 <small>Lab-in-the-loop v3 · 비차단</small></h3>
+            <h3>데이터 요청 <small>비차단 · 값을 몰라도 진행</small></h3>
             <p>값을 몰라도 후보는 이미 나와 있습니다. Tier가 낮은(적은 시료로 되는) 항목부터
               채우면 전략이 좁혀지고 후보 신뢰도가 grounded로 올라갑니다.</p>
           </header>
@@ -188,7 +188,7 @@
             <span><i class="sw det"></i>결정론 (오차 0%)</span>
             <span><i class="sw llm"></i>LLM 판단</span>
             <span><i class="sw jud"></i>동적 소집 심사관</span>
-            <span><i class="sw loop"></i>되먹임 (반려 · 확인시험 · 배치 결과)</span>
+            <span><i class="sw loop"></i>되먹임 (규칙 반려 → 재설계)</span>
           </div>
         </div>
 
@@ -215,12 +215,12 @@
       <div class="studio-bar">
         <div class="studio-id" id="studio-id">
           <b>아직 연 study가 없습니다</b>
-          <span>①에서 후보 카드의 <em>이 후보로 개발 착수</em>를 누르거나, 아래 데모로 시작하세요.</span>
+          <span>①에서 후보 카드의 <em>이 후보로 개발 착수</em>를 누르거나, 가이드 시연으로 시작하세요.</span>
         </div>
         <div class="studio-bar-actions">
           <label class="sr-only" for="studio-list">최근 study</label>
           <select id="studio-list"><option value="">최근 study…</option></select>
-          <button id="studio-demo" class="primary" type="button">데모 시작 — Lornoxicam 분산정</button>
+          <button id="studio-demo" class="primary" type="button">▶ 가이드 시연 — Lornoxicam 분산정</button>
         </div>
       </div>
       <div id="studio-empty" class="studio-empty">
@@ -237,6 +237,7 @@
           <div class="studio-mode" id="studio-mode"></div>
         </nav>
         <main class="studio-main">
+          <section class="guide-bar" id="studio-guide" aria-live="polite" hidden></section>
           <section class="ask" id="studio-ask" aria-live="polite"></section>
           <section class="dialogue">
             <h3>지금까지의 대화 <small>시스템 판정과 연구자 결정 — 최신이 위</small></h3>

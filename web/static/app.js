@@ -33,9 +33,7 @@ function clearNotice() {
 let runId = null;
 let source = null;
 const candidates = new Map();   // candidate_id → {recipe, verdicts[], judges[], gate}
-const assessments = new Map();  // candidate_id → 근거 충족 판정 (evidence 이벤트)
 let winnerId = null;            // 합의가 고른 권고 후보
-let lastApplied = {};           // 확인시험 결과가 실측값 자리에 꽂힌 내역
 let pendingRequests = [];       // v3 — 아직 안 풀린 데이터 요청(narrows_strategy)
 
 /* ── 고정 그래프 레이아웃 ────────────────────────────────────────────
@@ -234,20 +232,13 @@ function handle(kind, ev) {
         if (at >= 0) entry.judges[at] = p;
         else entry.judges.push(p);
       }
-      addTrace(ev.seq, ev.node, `점수 ${p.score} — ${p.rationale.slice(0, 80)}`);
+      if (p.score === null || p.score === undefined) {
+        unavailable.judges += 1;
+        addTrace(ev.seq, ev.node, `${p.persona}: 점수 없음 — LLM 응답 없음`, "warn");
+      } else {
+        addTrace(ev.seq, ev.node, `점수 ${p.score} — ${p.rationale.slice(0, 80)}`);
+      }
       renderCandidates();
-      break;
-    }
-
-    case "evidence": {
-      assessments.set(p.candidate_id, p);
-      const blocking = (p.gaps || []).filter((g) => isBlocking(g)).length;
-      addTrace(ev.seq, "evidence",
-        `${p.candidate_id}: ${READINESS[p.readiness]?.label || p.readiness}`
-        + (blocking ? ` · 선행 확인시험 ${blocking}건 필요` : ""),
-        p.readiness === "blocked" ? "warn" : "");
-      renderCandidates();
-      renderEvidence();
       break;
     }
 
@@ -269,7 +260,6 @@ function handle(kind, ev) {
 
     case "consensus": renderConsensus(p);
       winnerId = p.winner || null;
-      renderEvidence();
       addTrace(ev.seq, "consensus", `권고 후보: ${p.winner || "없음"} (보고 ${p.reported}건)`);
       break;
 
@@ -278,14 +268,14 @@ function handle(kind, ev) {
       break;
 
     case "warning":
-      addTrace(ev.seq, ev.node, p.reason + (p.fallback ? " → 규칙 기반 대체" : ""), "warn");
+      addTrace(ev.seq, ev.node, p.message || (p.reason + (p.fallback ? " → 규칙 기반 처리(LLM 미사용)" : "")), "warn");
       if (p.fallback) degraded.add(ev.node);
+      if (p.no_candidate) unavailable.designs += 1;
       break;
     case "error":
       addTrace(ev.seq, ev.node, `오류: ${p.error}`, "hard_fail");
       notice(`실행 중 오류가 발생했습니다 — ${p.error}`, "error", true);
       break;
-    case "wetlab": renderWetlab(p); break;
     case "run.end":
       addTrace(ev.seq, "run", `완료 · status=${p.status} · winner=${p.winner || "없음"}`);
       finishRun(p);
@@ -319,19 +309,6 @@ function renderChem(p) {
 }
 
 /* 프로토콜 실행 상태 — 룰 통과와는 다른 축이다. 라벨을 한 곳에서만 관리한다. */
-const READINESS = {
-  blocked: { label: "실행 불가 초안", hint: "선행 근거 부족 — 확인시험이 먼저입니다" },
-  ready_for_review: { label: "검토용 프로토콜", hint: "선행 근거 충족 — 연구자 승인 대기" },
-  approved: { label: "실행 가능 프로토콜", hint: "연구자 승인 완료" },
-};
-const TIMING = {
-  before_protocol: { label: "프로토콜 전 필수", note: "결과가 없으면 실행 가능한 프로토콜을 내지 않습니다" },
-  parallel: { label: "병행 수행", note: "전략은 그대로 두고 함께 진행 — 중단/변경 기준을 같이 봅니다" },
-  post_batch: { label: "배치 후 조건부", note: "첫 배치 결과를 본 뒤에 필요하면 수행합니다" },
-};
-const isBlocking = (gap) =>
-  gap.status === "failed" || (gap.timing === "before_protocol" && gap.status !== "satisfied");
-
 function renderCandidates() {
   const box = $("cands");
   if (!candidates.size) return;
@@ -339,7 +316,6 @@ function renderCandidates() {
   box.innerHTML = "";
   for (const [id, entry] of candidates) {
     const gate = entry.gate;
-    const assessment = assessments.get(id);
     const card = document.createElement("div");
     card.className = "card " + (gate ? (gate.passed ? "pass" : "fail") : "");
     const ings = entry.recipe.ingredients
@@ -347,13 +323,10 @@ function renderCandidates() {
     const chips = entry.verdicts.map((v) =>
       `<span class="chip ${esc(v.status)}" data-rule="${esc(v.rule_id)}">${esc(v.rule_id)}</span>`).join("");
     const judges = entry.judges.map((j) =>
-      `<div class="judge-note ${j.source === "deterministic-fallback" ? "stand-in" : ""}"><b>${esc(j.persona)}</b> ${esc(j.score)}${j.source === "deterministic-fallback" ? ' <span class="stand-in-tag">규칙 기반 대체 점수 · LLM 미사용</span>' : ""} — ${esc(j.rationale)}</div>`).join("");
-    // 룰 통과와 별개로 "실행해도 되는 상태인가"를 카드에서 바로 읽을 수 있어야 한다.
-    const readiness = assessment
-      ? `<div class="readiness ${esc(assessment.readiness)}">
-           <b>${esc(READINESS[assessment.readiness]?.label || assessment.readiness)}</b>
-           <span>${esc(READINESS[assessment.readiness]?.hint || "")}</span></div>`
-      : "";
+      j.score === null || j.score === undefined
+        ? `<div class="judge-note unscored"><b>${esc(j.persona)}</b> 점수 없음 <span class="stand-in-tag">LLM 응답 없음 · 점수를 만들지 않음</span></div>`
+        : `<div class="judge-note"><b>${esc(j.persona)}</b> ${esc(j.score)} — ${esc(j.rationale)}</div>`).join("");
+    const readiness = "";
     // v3 — confidence는 pending_refinements가 비어 있는지로 정확히 정해진다(불변식 I-10).
     // LLM이 이 값을 직접 쓰지 않는다 — drq_refine이 매긴 값을 그대로 보여줄 뿐이다.
     const confidence = entry.recipe.confidence
@@ -385,189 +358,15 @@ function renderConsensus(p) {
   el.hidden = false;
   const rows = (p.ranked || []).map((r) =>
     `<div>${r.rank ? `#${esc(r.rank)} ` : "— "}<b>${esc(r.candidate_id)}</b>
-      점수 ${esc(r.weighted_score ?? "-")} · 분산 ${esc(r.variance ?? "-")} · 심사관 ${esc(r.reviewers)}
-      ${r.low_confidence ? " <span class='tag'>저신뢰</span>" : ""}
+      ${r.unscored ? "심사 점수 없음 — 순위 없음" : `점수 ${esc(r.weighted_score ?? "-")} · 분산 ${esc(r.variance ?? "-")} · 심사관 ${esc(r.reviewers)}`}
+      ${r.low_confidence && !r.unscored ? " <span class='tag'>저신뢰</span>" : ""}
       ${r.eligible ? "" : " <span class='tag'>반려</span>"}</div>`).join("");
   // "최종 처방"이 아니라 **권고 후보**다 — 실행 여부는 근거 게이트와 연구자 승인이 정한다.
   el.innerHTML = `<h3>합의 · 권고 후보 처방 (${esc(p.model)})</h3>
-    <div class="win">권고 후보: ${esc(p.winner || "없음")}</div>${rows}
+    <div class="win">권고 후보: ${esc(p.winner || ((p.ranked || []).some((r) => r.unscored) ? "없음 — 심사 점수가 없어 순위를 매기지 않았습니다" : "없음"))}</div>${rows}
     <div class="tag" style="margin-top:6px">심사관 점수는 순위 결정 전용 — 반려 권한 없음</div>
-    <div class="tag">권고 후보 ≠ 실행 가능 프로토콜 — 아래 근거 충족 게이트에서 상태가 정해집니다</div>
+    <div class="tag">권고 후보는 1위라도 자동으로 개발되지 않습니다 — 카드의 “이 후보로 개발 착수”로 선택합니다</div>
     ${(p.rulebook_feedback || []).map((f) => `<div class="warn">${esc(f)}</div>`).join("")}`;
-}
-
-/* ── 근거 충족 게이트 (실험 전 루프) ────────────────────────────────────
-   룰을 통과한 뒤에도 "실행할 만큼 아는가"를 따로 묻는다. 선행 근거가 비어 있으면
-   실행 가능한 공정 프로토콜 대신 **확인시험 요청**을 내고, 그 결과를 여기서 되받는다. */
-function renderEvidence() {
-  const box = $("evidence");
-  const id = (winnerId && assessments.has(winnerId)) ? winnerId : [...assessments.keys()][0];
-  const a = id ? assessments.get(id) : null;
-  if (!a) return;
-  box.hidden = false;
-
-  const state = READINESS[a.readiness] || { label: a.readiness, hint: "" };
-  const groups = ["before_protocol", "parallel", "post_batch"].map((timing) => {
-    const gaps = (a.gaps || []).filter((g) => g.timing === timing);
-    if (!gaps.length) return "";
-    const meta = TIMING[timing];
-    return `<div class="ev-group">
-      <h4>${esc(meta.label)} <small>${esc(meta.note)}</small></h4>
-      ${gaps.map((g) => evidenceRow(g, timing === "before_protocol")).join("")}</div>`;
-  }).join("");
-
-  const blocking = (a.gaps || []).filter(isBlocking);
-  const actions = `<div class="ev-actions">
-      ${blocking.length ? `<button id="ev-submit" type="button">확인시험 결과 제출 → 근거 재평가</button>
-        <button id="ev-example" class="ghost" type="button">예시 결과 넣기</button>`
-      : `<button id="ev-approve" type="button">연구자 승인 → 실행 가능 프로토콜</button>`}
-    </div>`;
-
-  box.innerHTML = `
-    <h3>근거 충족 게이트 <small>${esc(id)} · 룰 통과 ≠ 정보 충분</small></h3>
-    <div class="ev-state ${esc(a.readiness)}"><b>${esc(state.label)}</b>
-      <span>${esc(a.summary || state.hint)}</span></div>
-    ${a.approved_by ? `<div class="ev-approved">승인: ${esc(a.approved_by)}</div>` : ""}
-    ${Object.keys(lastApplied).length ? `<div class="ev-applied">입력 계층에 반영된 실측값:
-      ${Object.entries(lastApplied).map(([k, v]) =>
-        `<code>${esc(k)} = ${esc(v)}</code>`).join(" ")}</div>` : ""}
-    ${groups}
-    ${actions}
-    <div id="ev-out"></div>`;
-
-  if ($("ev-submit")) $("ev-submit").onclick = () => submitConfirmation(id);
-  if ($("ev-example")) $("ev-example").onclick = () => fillConfirmationExample();
-  if ($("ev-approve")) $("ev-approve").onclick = () => approveProtocol(id);
-}
-
-function evidenceRow(gap, withInput) {
-  const done = gap.status === "satisfied";
-  const failed = gap.status === "failed";
-  const source = gap.source_url
-    ? `<a href="${esc(gap.source_url)}" target="_blank" rel="noopener">${esc(gap.source_reference)}</a>`
-    : esc(gap.source_reference);
-  // 이 시험이 canonical 측정값을 내면 숫자 칸을 함께 준다 — 그 값은 요약 문구가 아니라
-  // 스펙의 실측값 자리에 그대로 꽂혀서 다음 판정의 입력이 된다.
-  const numeric = gap.result_key ? `
-      <input type="number" step="any" class="ev-num" data-unit="${esc(gap.result_unit || "")}"
-             placeholder="${esc(gap.result_key)}${gap.result_unit ? ` (${esc(gap.result_unit)})` : ""}">` : "";
-  const input = (withInput && !done) ? `
-    <div class="ev-input" data-req="${esc(gap.requirement_id)}">
-      <select aria-label="${esc(gap.label)} 결과">
-        <option value="pass">적합 — 근거 확보</option>
-        <option value="fail">부적합 — 이 전략 배제</option>
-      </select>
-      ${numeric}
-      <input type="text" maxlength="120" class="ev-text"
-             placeholder="측정값·요약 (예: 25°C/75%RH 7일, 분해물 0.3%)">
-    </div>` : "";
-  return `<div class="ev-item ${done ? "done" : failed ? "failed" : "missing"}">
-    <div class="ev-head"><b>${esc(gap.label)}</b>
-      <code class="ll-id">${esc(gap.test_id)}</code>
-      <span class="ev-status">${done ? "충족" : failed ? "부적합" : "미확보"}</span></div>
-    <div class="ev-why">${esc(gap.why)}</div>
-    ${gap.risk ? `<div class="ev-risk">근거 없이 진행하면: ${esc(gap.risk)}</div>` : ""}
-    <div class="ll-spec">시험: ${esc(gap.test_name)} · 측정 ${esc(gap.output_variable)}
-      ${gap.unit ? `(${esc(gap.unit)})` : ""} · 판정 ${esc(gap.acceptance_logic)}</div>
-    ${gap.stop_criteria ? `<div class="ev-stop">중단/변경 기준: ${esc(gap.stop_criteria)}</div>` : ""}
-    ${gap.source_reference ? `<div class="ll-src">근거 ${source}</div>` : ""}
-    ${gap.result_note ? `<div class="ev-result">입력된 결과: ${esc(gap.result_note)}</div>` : ""}
-    ${input}</div>`;
-}
-
-const EV_EXAMPLE = "37°C 수계 조건 7일, 총 분해물 0.4% (규격 이내)";
-
-function fillConfirmationExample() {
-  document.querySelectorAll("#evidence .ev-input .ev-text").forEach((el) => {
-    if (!el.value) el.value = EV_EXAMPLE;
-  });
-}
-
-async function submitConfirmation(candidateId) {
-  const entries = [...document.querySelectorAll("#evidence .ev-input")].map((row) => {
-    const num = row.querySelector(".ev-num");
-    const value = row.querySelector(".ev-text").value.trim();
-    const raw = num && num.value.trim() !== "" ? Number(num.value) : null;
-    return {
-      requirement_id: row.dataset.req,
-      outcome: row.querySelector("select").value,
-      value,
-      value_num: Number.isFinite(raw) ? raw : null,
-    };
-  }).filter((e) => e.value || e.value_num !== null || e.outcome === "fail");
-
-  if (!entries.length) {
-    notice("확인시험 결과를 한 건 이상 적어 주세요 (부적합은 값 없이도 제출됩니다).", "warn");
-    return;
-  }
-  const btn = $("ev-submit");
-  btn.disabled = true;
-  btn.textContent = "재평가 중…";
-  try {
-    const res = await fetch(api(`/api/runs/${runId}/confirmation`), {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ candidate_id: candidateId, entries }),
-    });
-    if (!res.ok) {
-      const detail = await res.json().catch(() => ({}));
-      throw new Error(detail.detail || `근거 재평가에 실패했습니다 (${res.status})`);
-    }
-    const updated = await res.json();
-    assessments.set(updated.candidate_id, updated);
-    lastApplied = updated.applied_measurements || {};
-    narrateEvidenceLoop(updated);
-    renderCandidates();
-    renderEvidence();
-    loadWorkflow();
-  } catch (err) {
-    notice(err.message, "error", true);
-    btn.disabled = false;
-    btn.textContent = "확인시험 결과 제출 → 근거 재평가";
-  }
-}
-
-async function approveProtocol(candidateId) {
-  const btn = $("ev-approve");
-  btn.disabled = true;
-  btn.textContent = "승인 중…";
-  try {
-    const res = await fetch(api(`/api/runs/${runId}/approve`), {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ candidate_id: candidateId }),
-    });
-    if (!res.ok) {
-      const detail = await res.json().catch(() => ({}));
-      throw new Error(detail.detail || `승인에 실패했습니다 (${res.status})`);
-    }
-    const updated = await res.json();
-    assessments.set(updated.candidate_id, updated);
-    narrate("approved", {
-      layer: "연구자 승인", kind: "det",
-      title: "이제서야 실행 가능한 프로토콜이 된다",
-      body: `${esc(updated.candidate_id)} — ${esc(updated.summary)}
-        <span class="nr-why">왜 중요한가: 근거가 충족돼도 시스템이 스스로 실행 가능으로
-        올리지 않습니다. 사람이 승인해야 상태가 바뀌고, 승인 이력이 함께 남습니다.</span>`,
-    });
-    renderCandidates();
-    renderEvidence();
-    loadWorkflow();
-  } catch (err) {
-    notice(err.message, "error", true);
-    btn.disabled = false;
-    btn.textContent = "연구자 승인 → 실행 가능 프로토콜";
-  }
-}
-
-function narrateEvidenceLoop(updated) {
-  const failed = (updated.gaps || []).filter((g) => g.status === "failed");
-  narrate(`confirm-${narrationCount}`, {
-    layer: "실험 전 루프 · 결정론", kind: failed.length ? "fail" : "det", once: false,
-    title: failed.length ? "확인시험이 전제를 부정했다" : "확인시험 결과로 근거가 채워졌다",
-    body: `${esc(updated.summary)}
-      <span class="nr-why">왜 중요한가: 확인시험 결과는 <b>입력·근거 계층으로</b> 돌아갑니다.
-      배치 결과가 설계·프로토콜 개정으로 가는 것과 되먹임 지점이 다릅니다 — 그래서 입력창도
-      둘로 나눠 둡니다.</span>`,
-  });
 }
 
 const tokenBuffers = new Map();
@@ -588,59 +387,6 @@ function streamToken(candidateId, reviewerId, delta) {
 
 /* Lab-in-the-loop 결과 — 판독(LLM) → 판정(규칙) → 지시(LLM + 확인시험 마스터).
    세 단계를 화면에서도 분리해 보여준다: 무엇을 읽었는지 / 규칙이 뭘 잡았는지 / 다음에 뭘 할지. */
-function renderWetlab(report) {
-  const read = report.read || {};
-  const directive = report.directive || {};
-  const off = (report.findings || []).filter((f) => f.off_target);
-
-  // 이 데이터가 어떤 상태의 프로토콜에서 나왔는지를 함께 남긴다 — 승인 전 배치의 결과를
-  // 승인된 프로토콜의 결과와 같은 무게로 읽으면 안 된다.
-  const stateBlock = report.protocol_state && report.protocol_state !== "unknown"
-    ? `<div class="ll-state ${esc(report.protocol_state)}">이 배치의 프로토콜 상태:
-        <b>${esc(READINESS[report.protocol_state]?.label || report.protocol_state)}</b></div>`
-    : "";
-
-  const measured = Object.entries(read.measurements || {});
-  const readBlock = measured.length
-    ? `<h4>1 · 판독한 측정값 <small>문장에 적힌 수치만</small></h4>
-       <table class="ll-read">${measured.map(([k, v]) =>
-         `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table>
-       ${(read.observations || []).length
-         ? `<div class="ll-obs">관찰: ${(read.observations || []).map(esc).join(" · ")}</div>` : ""}
-       ${(read.unreadable || []).length
-         ? `<div class="warn">판독 못한 표현: ${(read.unreadable || []).map(esc).join(" / ")}</div>` : ""}`
-    : "";
-
-  const verdictBlock = `<h4>2 · 규격 판정 <small>결정론 · 같은 데이터면 같은 결과</small></h4>
-    <div class="ll-summary ${off.length ? "off" : "ok"}">${esc(report.summary)}</div>
-    ${off.map((f) => `<div class="ll-finding">
-        <b>${esc(f.metric)}</b> ${esc(f.measured)} (목표 ${esc(f.operator)}${esc(f.target)})
-        <div>${esc(f.interpretation)}</div>
-        <div class="ll-fix">→ ${esc(f.suggested_revision)}</div>
-      </div>`).join("")}`;
-
-  const experiments = directive.experiments || [];
-  const directiveBlock = experiments.length
-    ? `<h4>3 · 다음 실험 지시 <small>확인시험 마스터 ${esc(directive.master_size || "")}종에서 선정</small></h4>
-       ${directive.hypothesis ? `<div class="ll-hypo"><b>가설</b> ${esc(directive.hypothesis)}</div>` : ""}
-       ${experiments.map((e, i) => `<div class="ll-exp">
-          <div class="ll-exp-head"><span class="ll-order">${i + 1}</span>
-            <b>${esc(e.test_name)}</b><code class="ll-id">${esc(e.test_id)}</code></div>
-          <div class="ll-why">${esc(e.why)}</div>
-          <div class="ll-spec">방법: ${esc(e.test_design)}</div>
-          <div class="ll-spec">측정: ${esc(e.output_variable)}${e.unit ? ` (${esc(e.unit)})` : ""}
-            · 판정: ${esc(e.acceptance_logic)}</div>
-          ${e.source_reference ? `<div class="ll-src">근거 ${e.source_url
-            ? `<a href="${esc(e.source_url)}" target="_blank" rel="noopener">${esc(e.source_reference)}</a>`
-            : esc(e.source_reference)}</div>` : ""}
-        </div>`).join("")}
-       ${directive.source === "deterministic-fallback"
-         ? '<div class="warn">이 지시는 LLM 없이 규칙으로 선정됐습니다 (카테고리 매칭).</div>' : ""}`
-    : '<div class="warn">다음 실험을 특정하지 못했습니다.</div>';
-
-  $("wl-out").innerHTML = stateBlock + readBlock + verdictBlock + directiveBlock;
-}
-
 /* ── 근거 드릴다운 ──────────────────────────────────────────────── */
 let modalOpener = null;
 
@@ -678,7 +424,9 @@ document.addEventListener("keydown", (e) => {
 
 /* ── 실행 ───────────────────────────────────────────────────────── */
 let running = false;
-const degraded = new Set();   // 이번 실행에서 규칙 기반 대체로 내려간 노드
+const degraded = new Set();   // 이번 실행에서 LLM 없이 규칙 기반으로 처리된 노드(요청 해석·반성)
+// LLM이 응답하지 않아 비어 있는 결과 — 처방이나 점수를 대신 채우지 않고 개수만 알린다
+const unavailable = { designs: 0, judges: 0 };
 
 /* 스트림이 끊겨도 실행을 잃지 않는다.
    서버는 재구독하는 클라이언트에게 이벤트 이력을 처음부터 다시 흘려 주므로
@@ -774,10 +522,17 @@ function finishRun(summary) {
   setRunning(false);
   if (summary && summary.status === "error") {
     notice("실행이 오류로 끝났습니다. 트레이스를 확인해 주세요.", "error", true);
+  } else if (summary && summary.status === "no_design") {
+    notice("LLM이 응답하지 않아 후보 처방을 설계하지 못했습니다. 처방을 대신 채우지 않았습니다 — 잠시 후 다시 실행해 주세요.", "warn", true);
+  } else if (unavailable.designs || unavailable.judges) {
+    // 비어 있는 결과를 조용히 넘기지 않는다 — 무엇이 LLM 응답 없이 비었는지 분명히 알린다.
+    const parts = [];
+    if (unavailable.designs) parts.push(`설계 ${unavailable.designs}건`);
+    if (unavailable.judges) parts.push(`심사 ${unavailable.judges}건`);
+    notice(`무료 티어 한도로 LLM이 응답하지 않아 ${parts.join(" · ")}이 비어 있습니다. `
+      + "점수나 처방을 대신 채우지 않았고, 순위는 실제로 매겨진 점수만으로 정했습니다.", "warn");
   } else if (degraded.size) {
-    // 가짜 점수를 조용히 넘기지 않는다 — 무엇이 LLM 없이 계산됐는지 분명히 알린다.
-    notice(`무료 티어 한도로 ${degraded.size}개 노드가 LLM 대신 규칙 기반 대체값을 썼습니다. `
-      + "해당 심사 소견에는 표시가 붙어 있습니다.", "warn");
+    notice(`요청 해석·재설계 지시 ${degraded.size}건은 LLM 없이 규칙 기반으로 처리했습니다.`, "info");
   } else {
     clearNotice();
   }
@@ -786,8 +541,9 @@ function finishRun(summary) {
 }
 
 function resetView() {
-  candidates.clear(); tokenBuffers.clear(); degraded.clear(); assessments.clear();
-  winnerId = null; lastApplied = {}; pendingRequests = [];
+  candidates.clear(); tokenBuffers.clear(); degraded.clear();
+  unavailable.designs = 0; unavailable.judges = 0;
+  winnerId = null; pendingRequests = [];
   resetNarration();
   $("trace").innerHTML = ""; $("cands").innerHTML = "";
   $("consensus").hidden = true;
@@ -1013,7 +769,7 @@ function narrateEvent(kind, ev, p) {
         body: `<code>${esc(p.smiles || p.api_name)}</code> 에서 descriptor를 계산하고 구조 플래그를
           검출했습니다 — <b>${on.length ? esc(on.join(", ")) : "검출 없음"}</b>.
           <span class="nr-why">왜 중요한가: 유당이 위험한지는 “아민기가 있는가”에 달려 있습니다.
-          이걸 사람이 손으로 적으면 틀립니다(이 프로젝트의 초기 데모가 실제로 그렇게 틀렸습니다).
+          이걸 사람이 손으로 적으면 틀리기 쉽습니다(아세트아미노펜은 이름과 달리 아미드입니다).
           그래서 판정의 입력을 사람이 아니라 계산이 만듭니다.</span>`,
       });
       break;
@@ -1103,29 +859,12 @@ function narrateEvent(kind, ev, p) {
       });
       break;
 
-    case "evidence": {
-      const blocking = (p.gaps || []).filter(isBlocking);
-      const tests = [...new Set(blocking.map((g) => g.test_id))].slice(0, 3);
-      narrate("evidence", {
-        layer: "P4 · 근거 충족 게이트", kind: blocking.length ? "warn" : "det",
-        title: blocking.length
-          ? "룰은 통과했지만, 실행할 만큼 알지는 못한다"
-          : "선행 근거가 충족돼 검토용 프로토콜을 낼 수 있다",
-        body: `${esc(p.summary || "")}
-          ${tests.length ? `<br>선행 확인시험: ${tests.map((t) => `<code>${esc(t)}</code>`).join(" ")}` : ""}
-          <span class="nr-why">왜 중요한가: 룰북 통과는 "금기를 발견하지 못했다"이지 "안전이
-          확정됐다"가 아닙니다. 신약 API는 정보 자체가 없어서 위반이 안 잡히기도 합니다.
-          그래서 <b>금기 판정과 근거 판정을 분리</b>하고, 근거가 비면 반려 대신
-          <b>실행을 보류</b>하고 확인시험을 먼저 요청합니다.</span>`,
-      });
-      break;
-    }
 
     case "judge.verdict":
       narrate("judge", {
         layer: "P6 · 심사 LLM", kind: "jud",
         title: "심사관은 순위만 매긴다 (반려 권한 없음)",
-        body: `${esc(p.persona)} → 점수 <b>${esc(p.score)}</b>
+        body: `${esc(p.persona)} → ${p.score === null || p.score === undefined ? "<b>점수 없음</b> (LLM 응답 없음 — 대신 채우지 않음)" : `점수 <b>${esc(p.score)}</b>`}
           <span class="nr-why">왜 중요한가: 안전·규제 판정은 이미 룰북이 끝냈습니다. 심사관
           점수는 통과한 후보들 사이의 순위 결정에만 쓰입니다 — LLM에게 안전 판정을 맡기지
           않겠다는 설계가 권한 분리로 구현돼 있습니다.</span>`,
@@ -1137,10 +876,9 @@ function narrateEvent(kind, ev, p) {
         layer: "P7 · 합의 결정론", kind: "det",
         title: "합의는 최종 처방이 아니라 권고 후보를 고른다",
         body: `권고 후보 <b>${esc(p.winner || "없음")}</b> · 모델 ${esc(p.model || "")}
-          ${p.readiness ? `· 상태 <b>${esc(READINESS[p.readiness]?.label || p.readiness)}</b>` : ""}
           <span class="nr-why">왜 중요한가: 결정론 하드페일과 심사 가중점수를 합쳐 순위를
-          정합니다. 다만 그 후보가 <b>실행 가능한 프로토콜인지는 근거 게이트가 따로</b>
-          정하고, 마지막에 연구자가 승인해야 상태가 바뀝니다.</span>`,
+          정합니다. 어떤 후보를 실제로 개발할지는 1위가 자동으로 정하지 않습니다 —
+          연구자가 후보 카드의 <b>이 후보로 개발 착수</b>를 눌러 ② 개발 스튜디오로 넘깁니다.</span>`,
       });
       break;
 
@@ -1189,12 +927,12 @@ const SCENARIOS = [
       가용화·고령자·문헌조사 심사관은 조건에 맞지 않아 <b>아예 만들어지지 않습니다</b> —
       고정 명단이 없다는 증거입니다. 아세트아미노펜은 아미드라 유당 금기에 걸리지 않는 것도
       왼쪽 구조 플래그에서 함께 확인됩니다(<code>is_amide_not_amine</code>).
-      접속이 몰리면 심사 점수가 규칙 기반으로 대체될 수 있고, 그때는 소견에 표시가 붙습니다.`,
+      접속이 몰려 LLM이 응답하지 못하면 그 심사관은 점수 없이 표시되고, 순위는 실제 점수만으로 정합니다.`,
   },
   {
     id: "labloop",
     title: "값을 몰라도 후보부터, 갈리는 지점만 되묻는다",
-    proves: "Lab-in-the-loop v3 (비차단 데이터 요청)",
+    proves: "비차단 데이터 요청 (lab-in-the-loop)",
     // 이 시나리오의 요점은 데이터 요청 루프라 설계 단계는 가볍게 둔다 —
     // 심사관이 많이 소집되면 무료 티어 토큰이 설계에서 다 소모된다.
     request: "성인용 이부프로펜 정제를 설계해줘",
@@ -1205,10 +943,17 @@ const SCENARIOS = [
     goal: `설계가 끝나면 RDKit이 계산 가능한 값(D0·SLAD·logS 등)을 전부 채우고, BCS/DCS·
       고체상·가용화 전략 신호를 판정해 <b>후보를 먼저 냅니다</b> — 값이 없다고 멈추지
       않습니다. 판정이 실제로 갈리는 지점(예: 결정형·Tm을 모름)에서만 오른쪽
-      <b>데이터 요청</b> 패널에 구체적 실측을 요청합니다. 값을 하나 넣어 자동 제출하면
+      <b>데이터 요청</b> 패널에 구체적 실측을 요청합니다. 가진 측정값을 넣어 제출하면
       그래프를 다시 돌리지 않고 <b>그 자리에서 재계산</b>해, 남은 요청이 줄고 후보의
-      신뢰도 태그(<code>grounded</code>/<code>provisional</code>)가 갱신되는 것을 볼 수
-      있습니다.`,
+      신뢰도 태그(<code>grounded</code>/<code>provisional</code>)가 갱신됩니다.
+      시스템은 측정값을 대신 채우지 않습니다.`,
+  },
+  {
+    id: "studio",
+    title: "후보 이후 — 실험계획부터 확인배치까지",
+    proves: "② 개발 스튜디오 · 가이드 시연",
+    duration: "약 3분",
+    studio: true,
   },
 ];
 
@@ -1229,6 +974,11 @@ function buildScenarios() {
         return;
       }
       const scenario = SCENARIOS[Number(btn.dataset.i)];
+      // ② 개발 스튜디오 시연 — 후보 탐색을 돌리지 않고 스튜디오 탭에서 가이드 시연을 연다
+      if (scenario.studio) {
+        if (window.F1Studio) window.F1Studio.startDemo();
+        return;
+      }
       activeScenario = scenario;
       $("request").value = scenario.request;
       $("pinned").value = scenario.pinned;
@@ -1253,28 +1003,26 @@ function buildScenarios() {
   });
 }
 
-/* v3 시나리오 자동 진행 — 설계가 끝나면 데이터 요청 중 하나에 예시값을 자동으로 넣어
-   재계산 결과(요청이 줄고 신뢰도가 갱신되는 것)를 보여준다. 그래프는 다시 돌리지 않는다. */
+/* 시나리오 3 마무리 — 설계가 끝나면 데이터 요청 패널로 안내한다. 값은 연구자가 넣는다. */
 async function continueScenario() {
   if (!activeScenario || !activeScenario.autoLab) return;
   if (!pendingRequests.length) return;
 
+  // 값은 시스템이 채우지 않는다 — 실측이 있어야 의미가 있으므로, 입력칸을 짚어 주고 연구자가 넣게 한다.
   narrate("drq-start", {
     layer: "데이터 요청 (비차단)", kind: "det",
-    title: "값이 없어도 이미 후보가 나와 있다",
-    body: `왼쪽 후보 처방은 이미 확정됐습니다. 오른쪽 <b>데이터 요청</b> 패널에 예시값을
-      자동으로 넣어, 그 값 하나가 남은 요청과 후보 신뢰도를 어떻게 바꾸는지 보여줍니다.
+    title: "값이 없어도 이미 후보가 나와 있다 — 이제 값을 넣어 볼 차례",
+    body: `후보 처방은 이미 확정됐습니다. 가운데 <b>데이터 요청</b> 패널이 전략을 가르는 실측값만 묻습니다.
+      가지고 있는 측정값을 넣고 제출하면, 그래프를 다시 돌리지 않고 그 자리에서 남은 요청과 후보 신뢰도가 다시 계산됩니다.
       <span class="nr-why">왜 중요한가: 요청은 절대 실행을 막지 않습니다 — 값을 넣기 전과
-      후 모두 후보 목록은 그대로 존재합니다.</span>`,
+      후 모두 후보 목록은 그대로 존재합니다. 시스템은 측정값을 대신 지어내지 않습니다.</span>`,
   });
   $("drq").scrollIntoView({ behavior: "smooth", block: "nearest" });
-  await new Promise((done) => setTimeout(done, 500));
-
-  // Tier가 가장 낮은(적은 시료로 되는) 요청의 첫 숫자 필드에 예시값을 채운다.
   const firstInput = document.querySelector("#drq-body .drq-num input");
-  if (!firstInput) return;
-  firstInput.value = firstInput.dataset.key === "tm_c" ? "234" : "1";
-  setTimeout(() => { const b = $("drq-submit"); if (b) b.click(); }, 300);
+  if (firstInput) {
+    firstInput.classList.add("prompted");
+    firstInput.focus({ preventScroll: true });
+  }
 }
 
 /* 예측 계층 — 교차검증·불확실성·BCS. 값이 없으면 "미연결"을 그대로 보여준다. */

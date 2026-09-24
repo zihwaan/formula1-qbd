@@ -424,6 +424,11 @@ class DevelopmentService:
                     changes[k] = float(changes[k])
                 elif k in changes:
                     changes[k] = None
+            for k in ("acceptance_operator", "summary_definition", "test_method_id", "unit", "rationale_refs"):
+                if k in changes and changes[k] == "":
+                    changes[k] = None
+            if changes.get("analysis_role") == "NOT_APPLICABLE" and e.get("evidence_ref"):
+                c["not_applicable_evidence"] = e["evidence_ref"]
             c.update(changes)
             c["version"] += 1
             if changes.get("assumption"):
@@ -431,7 +436,8 @@ class DevelopmentService:
                 if note not in st["assumptions"]:
                     st["assumptions"].append(note)
             applied.append(c["cqa_id"])
-            self._decide(st, "CQA_EDIT", actor, e.get("reason", ""), cqa_id=c["cqa_id"], changes=changes)
+            self._decide(st, "CQA_EDIT", actor, e.get("reason", ""), cqa_id=c["cqa_id"], changes=changes,
+                         evidence_ref=e.get("evidence_ref"))
         self._check_cqas(st)
         self._say(st, "researcher", f"CQA 수정: {', '.join(applied)}")
         return {"applied": applied}
@@ -469,9 +475,10 @@ class DevelopmentService:
             st["fmea"] = {"version": st["fmea"]["version"] + 1, "rows": rows + hyp["rows"],
                           "hypotheses_generated_by": hyp["generated_by"], "status": "DRAFT"}
             n_h = len(hyp["rows"])
-            self._say(st, "system", f"FMEA 초안: seed {len(rows)}행 + LLM 가설 {n_h}행"
-                                    f" ({'LLM' if hyp['generated_by'] == 'llm' else '규칙 기반 대체 — LLM 미사용'}). "
-                                    "O는 관찰자료가 없으면 UNKNOWN이고, 그 행은 RPN을 계산하지 않습니다.")
+            self._say(st, "system", f"FMEA 초안: seed {len(rows)}행"
+                                    + (f" + LLM 누락 가설 {n_h}행" if hyp["generated_by"] == "llm"
+                                       else " (LLM 응답 없음 — 누락 가설 없이 seed 행만)")
+                                    + ". O는 관찰자료가 없으면 UNKNOWN이고, 그 행은 RPN을 계산하지 않습니다.")
         self._check_fmea(st)
         self._move(st, "WAITING_FMEA_APPROVAL", "FMEA_DRAFTED")
 
@@ -1242,7 +1249,11 @@ class DevelopmentService:
     def _scope(self, st, plan) -> Dict[str, Any]:
         h = st["handoff"]
         unmanaged = [p["name"] for p in h["fixed_parameters"] if p["status"] == "UNKNOWN"]
+        if str(h.get("batch_scale") or "").upper().startswith("UNKNOWN"):
+            unmanaged.append("batch_scale")
         not_eval = [c["name"] for c in st["cqas"].values() if c["analysis_role"] == "MONITOR_ONLY"]
+        not_eval += [f"{c['name']} (해당없음 — {c.get('not_applicable_evidence') or '근거 기록'})"
+                     for c in st["cqas"].values() if c["analysis_role"] == "NOT_APPLICABLE"]
         zones = []
         if plan["design_type"] == "BOX_BEHNKEN":
             zones.append({"zone": "정육면체 꼭짓점 영역", "reason": "BBD 설계점 convex hull 밖 (DV010) — 영역에서 제외"})
@@ -1392,6 +1403,24 @@ class DevelopmentService:
         required = [q for q in v["plan"]["points"] if q["role"] in ("SETPOINT", "BOUNDARY", "ROBUSTNESS")]
         if all(q["point_id"] in v["results"] for q in required) and st["status"] == "VERIFICATION_EXECUTION":
             self._move(st, "VERIFICATION_GATE", "ALL_RUNS_CONFIRMED")
+            return {}
+        # 필수 확인점이 아직이면 2×2 판정은 하지 않는다. 계획 전부터 있던 참고 배치만 잠근 예측과
+        # 비교해 보여 준다(VR016 — 승격·무효화 근거 아님).
+        refs = {q["point_id"]: self._point_eval(st, q, v["results"].get(q["point_id"]))
+                for q in v["plan"]["points"] if q["role"] == "REFERENCE_EXISTING" and q["point_id"] in v["results"]}
+        if refs:
+            for x in refs.values():
+                x["judged"] = x["results_confirmed"] and x["coverage_complete"]
+            strip = lambda d: {k: val for k, val in d.items() if k != "per_cqa"}   # noqa: E731
+            ev = self._eval(st, "verification_reference", "VERIFICATION_GATE",
+                            [(pid, {"point": strip(x)}) for pid, x in refs.items() if x["judged"]],
+                            rule_ids=["VR016"])
+            v["gate"] = {"points": refs, "decisive": None, "partial": True, "at": ho.now()}
+            consistent = all(x["spec_pass_all_applicable"] and x["within_family_pi_all_doe"] for x in refs.values())
+            self._say(st, "system", "참고 배치 평가: 공개된 관측값이 "
+                      + ("규격 안 · 잠근 예측구간 안 — 모델과 일치합니다." if consistent and not ev.warnings
+                         else "예측과 다릅니다 — 검토 요청(VR016). 영역에는 영향이 없습니다.")
+                      + " 승격 판정은 필수 확인점 3개의 새 독립 배치로만 합니다.")
         return {}
 
     def _applicable_cqas(self, st) -> List[str]:
@@ -1427,6 +1456,14 @@ class DevelopmentService:
         v = st["verification"]
         vp = v["plan"]
         pts = {q["point_id"]: self._point_eval(st, q, v["results"].get(q["point_id"])) for q in vp["points"]}
+        # 확인 판정에 쓸 수 없는 근거 등급(문헌·합성·미확인)의 점은 2×2를 매기지 않는다 — 값이 규격 안이어도
+        # "통과"로 보이면 안 되고, VR011(전부 통과)이 VR015(근거 불허)와 함께 켜지면 안 된다.
+        for pid, x in pts.items():
+            x["judged"] = bool(x["results_confirmed"] and x["coverage_complete"] and (
+                x["role"] == "REFERENCE_EXISTING" or self.rb.evidence_permits(x["evidence_status"], "VERIFICATION", st["mode"])))
+            if not x["judged"] and x["results_confirmed"]:
+                x["spec_pass_all_applicable"] = None
+                x["within_family_pi_all_doe"] = None
         required = [pts[q["point_id"]] for q in vp["points"] if q["role"] in ("SETPOINT", "BOUNDARY", "ROBUSTNESS")]
         fit_batches = [r.get("batch_id") for r in self._fit_results(st)]
         model_ctx = {"input_batch_ids": [b for b in fit_batches if b]}
@@ -1440,10 +1477,7 @@ class DevelopmentService:
                   "points": [strip(x) for x in pts.values()]}
         # 점별 2×2 판정은 결과가 완결·확정되고 확인 판정에 쓸 수 있는 근거 등급일 때만 한다.
         # 미완결(VR014)이나 문헌·합성값(VR015)을 점별 규격 실패로 읽으면 영역을 잘못 무효화한다.
-        judgeable = {pid: x for pid, x in pts.items()
-                     if x["results_confirmed"] and x["coverage_complete"] and (
-                         x["role"] == "REFERENCE_EXISTING" or
-                         self.rb.evidence_permits(x["evidence_status"], "VERIFICATION", st["mode"]))}
+        judgeable = {pid: x for pid, x in pts.items() if x["judged"]}
         subjects = [("확인계획", common)] + [(pid, {"point": strip(x)}) for pid, x in judgeable.items()]
         ev = self._eval(st, "verification_gate", "VERIFICATION_GATE", subjects,
                         rulebooks=["verification_rules", "provenance_versioning_rules"])
@@ -1636,13 +1670,17 @@ class DevelopmentService:
         d = agents.diagnose(trig, [{"rule_id": o["rule_id"], "decision": o["researcher_decision"]} for o in st["overrides"]],
                             assumptions + st["assumptions"], tests)
         st["diagnosis"] = {**d, "trigger": trig, "at": ho.now()}
-        self._say(st, "system", f"진단: 경쟁 원인가설 {len(d['hypotheses'])}개, 제안 방향 {d['directive']} "
-                                f"({'LLM' if d['generated_by'] == 'llm' else '규칙 기반 대체 — LLM 미사용'}).")
+        if d["generated_by"] == "llm":
+            self._say(st, "system", f"진단: 경쟁 원인가설 {len(d['hypotheses'])}개, 제안 방향 {d['directive'] or '없음'}.")
+        else:
+            self._say(st, "system", "진단: LLM 응답 없음 — 가설·방향 제안 없이 연구자가 방향을 고릅니다.")
         self._move(st, "REFLECTING", "CAUSE_PROPOSED")
 
     def _act_directive_approve(self, st, p, actor):
         self._require(st, "WAITING_DIRECTIVE_APPROVAL")
-        directive = p.get("directive") or st["diagnosis"]["directive"]
+        directive = p.get("directive") or (st.get("diagnosis") or {}).get("directive")
+        if not directive:
+            raise StudyError("다음 방향을 골라 주세요.", status=422)
         target = {"DOE_AUGMENT": "RSM_AUGMENTATION", "FACTOR_RANGE_REVISION": "FACTOR_READINESS",
                   "METHOD_PROCESS_CONTROL": "DESIGN_SELECTION", "CANDIDATE_REVISION": "CLOSED_SUPERSEDED"}.get(directive)
         if not target:

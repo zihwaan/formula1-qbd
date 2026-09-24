@@ -227,7 +227,7 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
             payload["spec"], payload["strategy"], base_dir,
             payload["candidate_id"], payload.get("directive", ""),
         )
-        return {"candidates": [recipe]}
+        return {"candidates": [recipe] if recipe is not None else []}
 
     # ── P3 · 결정론 게이트 (순수 파이썬, 오차 0%) ──────────────────────
     def node_gate(state: FormulationState) -> Dict[str, Any]:
@@ -336,6 +336,8 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
     # ── 분기: 통과 후보가 있으면 신뢰도 요청으로, 없으면 반성으로 ────────
     def route_after_gate(state: FormulationState) -> str:
         results = state.get("results", [])
+        if not results:
+            return "no_design"   # 설계 LLM이 이번 라운드 후보를 하나도 내지 못했다
         if any(r["passed"] for r in results):
             return "drq_refine"
         failures = [v for r in results for v in r["verdicts"] if v.failed]
@@ -385,7 +387,7 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
     def node_judge(payload: Dict[str, Any]) -> Dict[str, Any]:
         verdict = judge.evaluate(payload["judge"], payload["spec"],
                                  payload["recipe"], payload["verdicts"], base_dir)
-        return {"judge_verdicts": [verdict]}
+        return {"judge_verdicts": [verdict] if verdict is not None else []}
 
     # ── P6 · 합의 도출 (결정론) ────────────────────────────────────────
     def node_consensus(state: FormulationState) -> Dict[str, Any]:
@@ -393,8 +395,8 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         summary = consensus_mod.build_consensus(
             state.get("results", []), state.get("judge_verdicts", []), base_dir)
 
-        # v3: 출력 경계가 여기서 끝난다(§1) — 실행 가능 프로토콜 상태 대신 권고 후보의
-        # confidence 태그(grounded/provisional)와 남은 데이터 요청을 함께 낸다.
+        # 후보 탐색의 출력 경계 — 권고 후보의 confidence 태그(grounded/provisional)와
+        # 남은 데이터 요청을 함께 낸다. 개발은 연구자가 후보를 골라 ② 개발 스튜디오에서 한다.
         winner_result = next((r for r in state.get("results", [])
                               if r.get("candidate_id") == summary.get("winner")), None)
         if winner_result is not None:
@@ -406,7 +408,9 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         emit("consensus", EventKind.NODE_EXIT, winner=summary["winner"])
         return {"consensus": summary,
                 "final_candidate": summary["winner"],
-                "status": "passed" if summary["winner"] else "rejected",
+                # 통과 후보는 있는데 심사 점수가 하나도 없으면 "통과 · 순위 없음" — 반려가 아니다
+                "status": "passed" if summary["winner"] else (
+                    "passed_unranked" if any(r.get("unscored") for r in summary["ranked"]) else "rejected"),
                 "pending_requests": state.get("pending_narrow", [])}
 
     # ── P7 · 반성 → 재설계 ────────────────────────────────────────────
@@ -430,6 +434,11 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
                    if v.status.value == "escalate"]
         emit("escalate", EventKind.WARNING, reason="사람 판단 필요", details=reasons)
         return {"status": "escalated"}
+
+    def node_no_design(state: FormulationState) -> Dict[str, Any]:
+        emit("no_design", EventKind.WARNING,
+             reason="설계 LLM이 응답하지 않아 검사할 후보 처방이 없습니다 — 잠시 후 다시 실행하세요.")
+        return {"status": "no_design"}
 
     def node_exhausted(state: FormulationState) -> Dict[str, Any]:
         emit("exhausted", EventKind.WARNING,
@@ -478,7 +487,7 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         ("summon", node_summon), ("judge", node_judge),
         ("consensus", node_consensus), ("reflect", node_reflect),
         ("escalate", node_escalate), ("exhausted", node_exhausted),
-        ("infeasible", node_infeasible),
+        ("infeasible", node_infeasible), ("no_design", node_no_design),
     ]:
         graph.add_node(name, fn)
 
@@ -487,7 +496,7 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
     graph.add_conditional_edges("phase_gates", fan_out_generators, ["generate"])
     graph.add_edge("generate", "gate")
     graph.add_conditional_edges("gate", route_after_gate,
-                                ["drq_refine", "reflect", "escalate", "exhausted", "infeasible"])
+                                ["drq_refine", "reflect", "escalate", "exhausted", "infeasible", "no_design"])
     graph.add_edge("drq_refine", "summon")
     graph.add_conditional_edges("summon", fan_out_judges, ["judge", "consensus"])
     graph.add_edge("judge", "consensus")
@@ -495,6 +504,7 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
     graph.add_edge("consensus", END)
     graph.add_edge("escalate", END)
     graph.add_edge("exhausted", END)
+    graph.add_edge("no_design", END)
     graph.add_edge("infeasible", END)
 
     return graph.compile()

@@ -63,8 +63,8 @@ def evaluate(
     recipe: Recipe,
     verdicts: List[Verdict],
     base_dir: Path,
-) -> JudgeVerdict:
-    """심사관 1명이 후보 1건을 평가한다. 토큰은 실시간으로 UI에 흘린다."""
+) -> Optional[JudgeVerdict]:
+    """심사관 1명이 후보 1건을 평가한다. LLM이 응답하지 않으면 None(점수 없음). 토큰은 실시간으로 UI에 흘린다."""
     node = f"judge:{judge.reviewer_id or judge.persona}"
     emit(node, EventKind.JUDGE_SUMMONED,
          reviewer_id=judge.reviewer_id, persona=judge.persona,
@@ -129,11 +129,13 @@ API {spec.api_name} · 대상 {spec.target_patient} · 제형 {spec.dosage_form}
             "이 소견을 스키마에 맞춰 점수로 정리하라. rationale에는 소견의 핵심을 옮긴다.",
             system_suffix=system_suffix, effort="low", max_tokens=400,
         )
-        source = "llm"
     except LLMUnavailable as exc:
-        output = _fallback(flagged)
-        source = "deterministic-fallback"
-        emit(node, EventKind.WARNING, reason=str(exc), fallback=True)
+        # 심사는 LLM의 판단이다. 응답이 없으면 점수를 지어내지 않는다 — "점수 없음"을 그대로 알리고,
+        # 합의는 실제로 매겨진 점수만으로 순위를 정한다.
+        emit(node, EventKind.JUDGE_VERDICT, source="unavailable", rulebook_id=recipe.candidate_id,
+             reviewer_id=judge.reviewer_id, persona=judge.persona, score=None, weight=judge.weight,
+             rationale="LLM 응답 없음 — 이 심사관의 점수를 만들지 않았습니다.", reason=str(exc)[:160])
+        return None
 
     verdict = JudgeVerdict(
         rulebook_id=recipe.candidate_id,   # 후보 기준으로 집계하므로 candidate_id를 키로 쓴다
@@ -146,18 +148,5 @@ API {spec.api_name} · 대상 {spec.target_patient} · 제형 {spec.dosage_form}
         suggestion=output.suggestion,
         citations=output.citations,
     )
-    emit(node, EventKind.JUDGE_VERDICT, source=source, **verdict.model_dump())
+    emit(node, EventKind.JUDGE_VERDICT, source="llm", **verdict.model_dump())
     return verdict
-
-
-def _fallback(flagged: List[Verdict]) -> JudgeOutput:
-    """LLM 없이 만드는 점수 — 룰북 지적 건수에 반비례하는 단순 규칙.
-
-    시연 안전장치이지 실제 심사가 아니므로 rationale에 그 사실을 명시한다.
-    """
-    penalty = min(0.1 * len(flagged), 0.5)
-    return JudgeOutput(
-        score=round(0.75 - penalty, 3),
-        rationale=f"[결정론 폴백] LLM 미사용. 룰북 지적 {len(flagged)}건을 감점 요인으로 반영한 기본 점수.",
-        suggestion="실제 심사 소견을 얻으려면 GROQ_API_KEY(또는 ANTHROPIC_API_KEY)를 설정하고 재실행할 것.",
-    )

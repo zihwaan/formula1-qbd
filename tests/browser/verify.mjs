@@ -47,7 +47,7 @@ check('→ 키로 3단계', (await page.textContent('.guide-kicker')).trim() ===
 await page.keyboard.press('ArrowLeft');
 check('← 키로 2단계', (await page.textContent('.guide-kicker')).trim() === '함정');
 await page.click('#guide-nav li:nth-child(7)');
-check('목차 클릭 → 7단계', (await page.textContent('.guide-kicker')).trim() === 'v3 · 페이즈 게이트');
+check('목차 클릭 → 7단계', (await page.textContent('.guide-kicker')).trim() === '페이즈 게이트');
 check('현재 항목 하이라이트', await page.evaluate(
   () => document.querySelectorAll('#guide-nav li')[6].classList.contains('on')));
 

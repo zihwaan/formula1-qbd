@@ -5,8 +5,8 @@
 - 근거 등급을 바꾸지 못한다 (출력은 무조건 `LLM_HYPOTHESIS`로 태그된다 — AA005),
 - 존재하지 않는 CQA·요인·시험을 쓰면 서비스가 그 항목을 버린다.
 
-LLM이 없거나 토큰 예산을 못 받으면 결정론 대체로 내려가고, 대체 사용 사실을 `generated_by`에
-그대로 남긴다(대체 결과가 LLM 의견처럼 보이면 안 된다 — 기존 심사관과 같은 원칙).
+LLM이 없거나 토큰 예산을 못 받으면 **가설을 만들지 않는다.** 틀에 박힌 문장을 가설처럼 채우지 않고,
+`generated_by = "unavailable"`로 "LLM 응답 없음"을 그대로 알린다 — 판단은 연구자와 seed 행으로 이어진다.
 """
 
 from __future__ import annotations
@@ -54,8 +54,8 @@ def fmea_hypotheses(handoff: Dict[str, Any], cqas: Dict[str, Dict[str, Any]], se
         out = parse_structured(FmeaHypotheses, FMEA_SYSTEM, user, effort="low", max_tokens=1200,
                                wait_budget=WAIT)
         items, by = out.hypotheses, "llm"
-    except LLMUnavailable as exc:
-        items, by = _fmea_fallback(handoff, cqas), f"deterministic_stand_in ({str(exc)[:60]})"
+    except LLMUnavailable:
+        items, by = [], "unavailable"
     rows = []
     for n, h in enumerate(items):
         effect = [c for c in h.cqa_effect if c in applicable]
@@ -74,19 +74,6 @@ def fmea_hypotheses(handoff: Dict[str, Any], cqas: Dict[str, Dict[str, Any]], se
             "approval_ref": None, "deleted": False, "origin": "LLM_HYPOTHESIS",
         })
     return {"rows": rows, "generated_by": by}
-
-
-def _fmea_fallback(handoff: Dict[str, Any], cqas: Dict[str, Dict[str, Any]]) -> List[FmeaHypothesis]:
-    names = " ".join(i["name"].lower() for i in handoff["ingredients"])
-    out = []
-    diss = next((c for c in cqas if c.startswith("CQA_DISSOLUTION") and cqas[c]["analysis_role"] != "NOT_APPLICABLE"), None)
-    if diss and ("stearate" in names or "lauryl" in names or "sls" in names):
-        out.append(FmeaHypothesis(
-            cause="주혼합 시간 연장 시 소수성 활택·습윤 성분의 과분산", failure_mode="과혼합(over-mixing)",
-            local_effect="입자 표면 피막 → 젖음 지연", cqa_effect=[diss], candidate_factor="blend_time",
-            rationale="처방에 스테아르산마그네슘/SLS가 있고 혼합시간이 요인 후보다",
-            missing_evidence="혼합시간 극단 조건의 용출 비교"))
-    return out
 
 
 class Hypothesis(BaseModel):
@@ -120,21 +107,11 @@ def diagnose(trigger: Dict[str, Any], overrides: List[Dict[str, Any]], assumptio
     try:
         d = parse_structured(Diagnosis, DIAG_SYSTEM, user, effort="low", max_tokens=1200, wait_budget=WAIT)
         by = "llm"
-    except LLMUnavailable as exc:
-        d, by = _diag_fallback(trigger, tests), f"deterministic_stand_in ({str(exc)[:60]})"
+    except LLMUnavailable:
+        # 가설도 방향 제안도 만들지 않는다 — 연구자가 판별시험 목록과 실패 신호를 보고 직접 고른다
+        return {"hypotheses": [], "directive": None, "directive_reason": "LLM 응답 없음 — 방향 제안 없음",
+                "generated_by": "unavailable", "status": "PROPOSED", "evidence_status": "LLM_HYPOTHESIS"}
     hyps = [h.model_dump() for h in d.hypotheses if h.distinguishing_test in ids]
-    directive = d.directive if d.directive in DIRECTIVES else "DOE_AUGMENT"
+    directive = d.directive if d.directive in DIRECTIVES else None
     return {"hypotheses": hyps, "directive": directive, "directive_reason": d.directive_reason,
             "generated_by": by, "status": "PROPOSED", "evidence_status": "LLM_HYPOTHESIS"}
-
-
-def _diag_fallback(trigger: Dict[str, Any], tests: List[Dict[str, str]]) -> Diagnosis:
-    first = tests[0]["test_id"] if tests else ""
-    code = trigger.get("reason_code", "")
-    hyps = [Hypothesis(statement="모델이 확인점 근처 반응을 과소·과대 예측 (국소 곡률·상호작용 누락)",
-                       distinguishing_test=first, expected_pattern="확인점 주변 추가 run에서 잔차가 한 방향")]
-    if code == "VERIF_SPEC_FAIL":
-        hyps.append(Hypothesis(statement="확인배치 제조 편차 (가정한 고정 조건이 실제와 다름)",
-                               distinguishing_test=first, expected_pattern="배치 기록의 고정 조건 이탈"))
-    return Diagnosis(hypotheses=hyps, directive="DOE_AUGMENT",
-                     directive_reason="규칙 기반 대체: 모델 보강을 기본 방향으로 제안 (LLM 미사용)")

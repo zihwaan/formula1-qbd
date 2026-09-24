@@ -99,8 +99,8 @@ def generate(
     base_dir: Path,
     candidate_id: str,
     directive: str = "",
-) -> Recipe:
-    """전략 하나에 대한 후보 처방 1건을 만든다."""
+) -> Optional[Recipe]:
+    """전략 하나에 대한 후보 처방 1건을 만든다. LLM이 응답하지 않으면 None."""
     node = f"generator:{strategy}"
     emit(node, EventKind.NODE_ENTER, strategy=strategy, candidate_id=candidate_id)
 
@@ -132,70 +132,17 @@ API descriptor: {descriptor_text}
         recipe = parse_structured(Recipe, SYSTEM, user)
         recipe.candidate_id = candidate_id
         recipe.strategy = strategy
-        source = "llm"
     except LLMUnavailable as exc:
-        recipe = _fallback(spec, strategy, candidate_id, directive, base_dir)
-        source = "deterministic-fallback"
-        emit(node, EventKind.WARNING, reason=str(exc), fallback=True)
+        # 설계는 AI의 몫이다. 응답이 없으면 틀에 박힌 처방을 대신 내놓지 않는다 — 후보를 만들지 않고
+        # 그 사실을 알린다. 가짜 후보가 룰북을 통과하면 검증 결과까지 가짜가 된다.
+        emit(node, EventKind.WARNING, reason=str(exc), no_candidate=True, strategy=strategy,
+             message=f"{strategy} 전략 후보를 설계하지 못했습니다 — LLM 응답 없음")
+        emit(node, EventKind.NODE_EXIT, candidate_id=candidate_id)
+        return None
 
-    emit(node, EventKind.CANDIDATE, source=source, candidate=recipe.model_dump())
+    emit(node, EventKind.CANDIDATE, source="llm", candidate=recipe.model_dump())
     emit(node, EventKind.NODE_EXIT, candidate_id=candidate_id)
     return recipe
-
-
-_PROCESS_BY_STRATEGY = {
-    "DC": "direct_compression", "DG": "dry_granulation", "WG": "wet_granulation",
-    "CONV_DC": "direct_compression", "CONV_DG": "dry_granulation", "CONV_WG": "wet_granulation",
-    "MICRO": "direct_compression",
-}
-
-
-def _fallback(spec: FormulationSpec, strategy: str, candidate_id: str, directive: str,
-             base_dir: Path) -> Recipe:
-    """LLM 없이 만드는 표준 처방 — 시연 안전장치.
-
-    **배합금기를 미리 피하지 않는다.** 초안은 가장 흔한 희석제(유당)를 그대로 쓰고,
-    반려된 뒤 반성 지시를 받았을 때만 교체한다. 설계자가 룰북의 일을 대신하면
-    '검증이 무엇을 잡아내는지'가 보이지 않기 때문이다 — 이 시스템의 요점이 사라진다.
-    """
-    directive_lower = directive.lower()
-    avoid_lactose = any(k in directive_lower for k in ("유당", "lactose", "만니톨", "mannitol"))
-    diluent = "Mannitol" if avoid_lactose else "Lactose monohydrate"
-    process = _PROCESS_BY_STRATEGY.get(strategy, "direct_compression")
-    hygroscopic = bool(spec.properties.get("hygroscopic"))
-
-    ingredients = [
-        Ingredient(name=spec.api_name, role="api", amount_mg=160, percent=53.3),
-        Ingredient(name=diluent, role="diluent", amount_mg=95, percent=31.7),
-        Ingredient(name="Microcrystalline cellulose", role="diluent", amount_mg=30, percent=10.0),
-        Ingredient(name="Croscarmellose sodium", role="superdisintegrant", amount_mg=9, percent=3.0),
-        Ingredient(name="Magnesium stearate", role="lubricant", amount_mg=3, percent=1.0),
-        Ingredient(name="Colloidal silicon dioxide", role="glidant", amount_mg=3, percent=1.0),
-    ]
-    if strategy in ("SOLUBILIZATION", "ASD_SDD", "ASD_HME", "LBF_SEDDS", "CD"):
-        ingredients.append(Ingredient(name="Poloxamer 188", role="surfactant_wetting",
-                                      amount_mg=6, percent=2.0))
-
-    # 현장 제약으로 못 박은 성분은 폴백에서도 반드시 넣는다(회피하지 않는다).
-    present = {i.name.lower() for i in ingredients}
-    for name in spec.required_excipients:
-        if name.lower() not in present:
-            ingredients.append(Ingredient(name=name, role="excipient", amount_mg=20, percent=6.7))
-
-    # 이 후보는 신뢰도를 매길 근거 게이트를 거치지 않았다(그래프 없이 만든 대체값) —
-    # provisional로 두는 것이 정직하다.
-    return Recipe(
-        api_name=spec.api_name,
-        candidate_id=candidate_id,
-        strategy=strategy,
-        ingredients=ingredients,
-        process=process,
-        packaging="Alu-Alu blister" if hygroscopic else "PVC blister",
-        rationale=f"[결정론 폴백] {_brief_for(strategy, base_dir)} "
-                  f"희석제는 {diluent}을 선택했다.",
-        confidence="provisional",
-        pending_refinements=["fallback-no-llm"],
-    )
 
 
 def plan_strategies(spec: FormulationSpec, derived: Optional[Dict] = None) -> List[str]:

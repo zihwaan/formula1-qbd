@@ -1,6 +1,8 @@
 """골든 시나리오 회귀 테스트 — 전체 파이프라인이 기대대로 움직이는지 고정한다.
 
-LLM 없이(결정론 폴백) 돌아야 한다. 시연 환경에 API 키가 없어도 통과해야 하기 때문이다.
+시스템은 LLM 응답이 없으면 처방·점수를 지어내지 않는다. 그래서 그래프 전체를 도는 테스트는
+설계·심사 LLM 자리에 **테스트 대역(test double)** 을 명시적으로 꽂는다 — 제품 코드가 아니라
+이 파일 안에서만 쓰는 고정 응답이다. 규칙 게이트·반성·소집·합의는 실제 코드 그대로 돈다.
 """
 
 from __future__ import annotations
@@ -91,19 +93,60 @@ def test_sls_row_is_excluded_by_evidence_policy(registry):
 # ---------------------------------------------------------------------------
 # 2장 — 전체 그래프: 반려 → 반성 → 통과
 # ---------------------------------------------------------------------------
+def _test_designer(spec, strategy, base_dir, candidate_id, directive=""):
+    """테스트 대역 — 설계 LLM 자리. 첫 라운드는 흔한 희석제(유당), 반성 지시를 받으면 만니톨."""
+    recipe = _lactose_recipe(spec.api_name)
+    if any(k in directive.lower() for k in ("유당", "lactose", "만니톨", "mannitol")):
+        recipe.ingredients[1] = Ingredient(name="Mannitol", role="diluent", amount_mg=95, percent=32)
+    recipe.candidate_id, recipe.strategy = candidate_id, strategy
+    return recipe
+
+
+def _test_llm(output_format, *args, **kwargs):
+    """테스트 대역 — 심사 점수만 고정값으로 돌려준다. 그 밖의 LLM 호출은 '응답 없음'."""
+    from formula.agents.client import LLMUnavailable
+    from formula.agents.judge import JudgeOutput
+    if output_format is JudgeOutput:
+        return JudgeOutput(score=0.7, rationale="테스트 대역 점수")
+    raise LLMUnavailable("test double")
+
+
 @pytest.fixture(scope="module")
 def golden_run():
+    import formula.agents.client as client
+    import formula.agents.generator as generator
+    import formula.agents.judge as judge
+
     async def go() -> Run:
         run = Run(ROOT, "소아용 플루옥세틴 정제를 설계해줘")
         async for _ in run.stream():
             pass
         return run
 
-    return asyncio.run(go())
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(generator, "generate", _test_designer)
+        mp.setattr(client, "parse_structured", _test_llm)
+        mp.setattr(judge, "stream_text", lambda *a, **k: "테스트 대역 소견")
+        return asyncio.run(go())
 
 
-def test_graph_completes_without_llm(golden_run):
-    """API 키 없이도 그래프가 끝까지 완주해야 한다(시연 안전장치)."""
+def test_no_llm_means_no_candidate_not_a_template(monkeypatch):
+    """설계 LLM이 응답하지 않으면 틀에 박힌 처방을 만들지 않고 no_design으로 끝난다."""
+    monkeypatch.setenv("FORMULA1_LLM_PROVIDER", "none")
+
+    async def go() -> Run:
+        run = Run(ROOT, "소아용 플루옥세틴 정제를 설계해줘")
+        async for _ in run.stream():
+            pass
+        return run
+
+    run = asyncio.run(go())
+    assert run.summary()["status"] == "no_design"
+    assert run.summary()["candidates"] == []
+    assert not [e for e in run.bus.history if e.kind.value == "candidate"]
+
+
+def test_graph_completes(golden_run):
     assert golden_run.summary()["status"] == "passed"
 
 

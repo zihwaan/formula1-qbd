@@ -32,8 +32,15 @@ python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.j
 .venv/bin/python scripts/import_rulebook.py       # re-import rulebook zips from 추가자료/
 ```
 
-Everything runs **without an API key** — LLM nodes fall back to deterministic stand-ins so
-demos never break. Set `GROQ_API_KEY` (free tier) or `ANTHROPIC_API_KEY` to enable a real LLM path.
+**No fabricated output, ever (user requirement, 2026-09-24).** AI steps need `GROQ_API_KEY` (free tier)
+or `ANTHROPIC_API_KEY`. Without a response: the generator returns `None` (no template recipe — the run ends
+`no_design` if a round has zero candidates), a judge returns `None` and emits `judge.verdict` with
+`score: null, source: "unavailable"` (UI: "점수 없음"), consensus ranks only real scores (`unscored` rows,
+status `passed_unranked`), FMEA/diagnosis agents return no hypotheses and no directive. Deterministic
+*procedures* that only read the user's own input remain (intake keyword parser, reflect from rulebook
+suggestions). Discovery browser suites therefore need a real key — run them against an image started with
+the k8s `formula1-secrets` key. Demo data must come from a cited source (the Lornoxicam demo is Almotairi
+2022, PMC9785951); never add example/synthetic values to the UI or scenarios.
 
 ## Deployment — this repo is served live at zihwan.com/formula1
 
@@ -107,9 +114,8 @@ The Groq path differs from Anthropic in ways that caused real failures:
   `low`, otherwise reasoning eats the cap and `content` arrives empty. Applies to any model whose
   ID contains `"gpt-oss"` (substring match), so `openai/gpt-oss-20b` gets it automatically too.
 
-Deterministic stand-ins still exist for the no-key case, but they must never masquerade as real
-judgements: the UI tags them (`.judge-note.stand-in` + "규칙 기반 대체 점수 · LLM 미사용") and the
-run summary says how many nodes used them. Keep both signals if you touch that path.
+When the LLM does not answer, nothing is substituted: the UI shows "점수 없음 · LLM 응답 없음" per judge
+and the run notice counts empty designs/judgements. Do not reintroduce stand-in scores or template recipes.
 
 ## Architecture — the manifest is the linchpin
 
@@ -607,6 +613,16 @@ workflow and has different contracts).
   (`ASK[...]`), inputs are collected by `COLLECT[action]`, and the demo's "데모 입력 채우기" (`FILL[...]`) only fills
   forms; the researcher always clicks submit. The two tabs (`#view-discovery` / `#view-studio`) wrap the old
   layout; `app.js` candidate cards call `F1Studio.startFromCandidate(runId, id)` only for gate-passed candidates.
-  Browser regression: `tests/browser/studio.mjs` walks scenes 1–9 by clicking (30 checks, 390/820px overflow).
+  Browser regression: `tests/browser/studio.mjs` walks scenes 1–9 by clicking, then on a 390px phone starts from
+  discovery scenario card 4 and auto-plays the **guided demo** to the end with no overflow at any scene.
+  The guided demo (`SCENES`/`nextStep()`/`guideStep()` in studio.js) drives the *same* `doAction(btn)` path a
+  human click uses — fill the form, show it, press the button. When you change a state's form or button, update
+  `nextStep()` too or auto-play will stop at that scene. It deliberately ends at VERIFICATION_GATE blocked by
+  VR015 (synthetic data) — there is no honest way to reach VERIFIED without real batch data.
+- **Unjudgeable verification points get no 2×2** (`judged: false`, spec/PI fields nulled): otherwise synthetic
+  results render as "규격 통과 · PI 안" and VR011 ("all passed") fires next to the VR015 block.
+- **User-facing text is current-state only** (README, explainer, UI copy, experimental_inputs.yaml): no version
+  labels, dates, or "previously it was…" narratives — the user asked for this explicitly (2026-09-24). History
+  belongs in this file and git, not on screen.
   The explainer gained steps 11–13 (studio overview, authority/evidence, Lornoxicam region) and step 4/5 were
   rewritten for the two-graph structure — keep them in sync with this section.

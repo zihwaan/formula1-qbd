@@ -8,7 +8,7 @@
 
    숫자·판정은 전부 서버(결정론 엔진·룰북)가 낸다. 이 파일은 입력을 모아 보내고 받은 것을 그릴 뿐이다.
    모든 `${}`는 esc()를 거친다(CSV·LLM·사용자 입력이 섞여 들어온다).
-   데모 study는 "데모 입력 채우기"가 폼을 **채우기만** 한다 — 제출은 항상 연구자 버튼이다. */
+   가이드 시연의 "이 장면 입력 채우기"는 폼을 **채우기만** 한다 — 제출은 항상 연구자 버튼이다. */
 
 (function () {
   let study = null;
@@ -38,8 +38,10 @@
   const EFFECT_KO = { BLOCK_STAGE: "차단", INVALIDATE: "무효화", REQUEST_DATA: "자료 요청", ROUTE: "경로 전환",
                       AUGMENT: "보강", EXCLUDE_POINT: "점 제외", WARNING: "경고", PASS: "통과" };
   const ROLE_KO = { DOE_RESPONSE: "DoE 반응", MONITOR_ONLY: "모니터링", NOT_APPLICABLE: "해당없음" };
-  const EVIDENCE = ["MEASURED_UNCONFIRMED", "MEASURED_CONFIRMED", "LITERATURE_DIRECT", "LITERATURE_DIGITIZED",
-                    "EXPERT_ASSUMPTION", "SYNTHETIC_DEMO"];
+  // 확인배치 결과의 근거 등급. 자체 실측(확인 전)만 확인 판정에 쓸 수 있고, 문헌값은 참고 평가용이다.
+  const EVIDENCE = ["MEASURED_UNCONFIRMED", "LITERATURE_DIRECT", "LITERATURE_DIGITIZED"];
+  const EVIDENCE_KO = { MEASURED_UNCONFIRMED: "자체 실측 (확인 전)", LITERATURE_DIRECT: "문헌 표 수치",
+                        LITERATURE_DIGITIZED: "문헌 그림 디지타이징" };
   const OPS = ["", "LE", "GE", "BETWEEN", "TARGET_TOL", "PASS_FAIL"];
   const DISP = { DOE_CANDIDATE: "DoE 요인", FIXED: "고정 관리", REQUEST_DATA: "자료 요청", EXCLUDED: "제외" };
 
@@ -67,20 +69,53 @@
   }
 
   async function act(action, payload = {}) {
-    if (!study || busy) return;
+    if (!study || busy) return false;
     setBusy(true);
     lastError = null;
+    const before = study.status;
     try {
       const next = await req("POST", `/api/development-studies/${study.study_id}/actions/${action}`, { payload },
         { "Idempotency-Key": uid(), "Expected-State-Version": String(study.state_version) });
       render(next);
+      if (next.status !== before) bringAskIntoView();
+      return true;
     } catch (e) {
       lastError = { message: e.message, verdicts: e.verdicts || [] };
       if (e.status === 409 && /먼저 바뀌었/.test(e.message)) await load(study.study_id);
-      else renderAsk();
+      else { renderAsk(); renderGuide(); }
+      bringAskIntoView();
+      return false;
     } finally {
       setBusy(false);
     }
+  }
+
+  // 상태가 바뀌면 질문 카드가 화면 밖에 있을 수 있다(특히 휴대폰) — 카드 머리로 데려온다.
+  function bringAskIntoView() {
+    const a = el("studio-ask");
+    if (!a) return;
+    const r = a.getBoundingClientRect();
+    if (r.top < 60 || r.top > window.innerHeight * 0.6) {
+      const y = window.scrollY + r.top - 76;
+      window.scrollTo({ top: Math.max(0, y), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    }
+  }
+
+  // 버튼 → 입력 수집 → 서버. 가이드 시연도 이 함수를 그대로 쓴다(사람이 누른 것과 같은 경로).
+  async function doAction(btn) {
+    if (!btn || busy) return false;
+    const root = el("studio-ask");
+    const collect = COLLECT[btn.dataset.act];
+    let payload = {};
+    try { payload = collect ? collect(root, btn) : {}; }
+    catch (e) { lastError = { message: e.message }; renderAsk(); renderGuide(); return false; }
+    if (payload === null) return false;
+    const label = btn.textContent;
+    btn.classList.add("working");
+    btn.textContent = "처리 중…";
+    const ok = await act(btn.dataset.act, payload);
+    if (document.contains(btn)) { btn.textContent = label; btn.classList.remove("working"); }
+    return ok;
   }
 
   async function load(id) {
@@ -95,13 +130,19 @@
     if (ask) ask.classList.toggle("busy", on);
   }
 
-  async function startDemo() {
+  async function startDemo(opts = {}) {
+    guide.on = true;
+    guide.auto = false;
+    guide.blockShown = false;
     setBusy(true);
     try {
       const s = await req("POST", "/api/development-studies/demo/lornoxicam", null, { "Idempotency-Key": uid() });
       showTab("studio");
+      lastError = null;
       render(s);
       refreshList();
+      bringAskIntoView();
+      if (opts.auto) autoPlay();
     } catch (e) {
       notice(`데모 study를 만들지 못했습니다: ${e.message}`, "error");
     } finally {
@@ -159,6 +200,7 @@
         study <code>${esc(s.study_id)}</code> · v${esc(s.state_version)} ${assumptions}</span>`;
     renderPhases();
     renderAsk();
+    renderGuide();
     renderLog();
     renderSide();
   }
@@ -216,7 +258,7 @@
     const err = lastError ? `
       <div class="ask-error" role="alert"><b>${esc(lastError.message)}</b>
         ${verdictList(lastError.verdicts || [], "막은 규칙")}</div>` : "";
-    const demo = s.script && FILL[s.status] ? `<button type="button" class="ghost fill" id="ask-fill">데모 입력 채우기</button>` : "";
+    const demo = s.script && FILL[s.status] ? `<button type="button" class="ghost fill" id="ask-fill">이 장면 입력 채우기</button>` : "";
     el("studio-ask").innerHTML = `
       <header class="ask-head">
         <span class="ask-state">${esc(STATE_KO[s.status] || s.status)}</span>
@@ -232,15 +274,7 @@
   function wire() {
     const root = el("studio-ask");
     root.querySelectorAll("[data-rule]").forEach((b) => { b.onclick = () => showRule(b.dataset.rule); });
-    root.querySelectorAll("[data-act]").forEach((b) => {
-      b.onclick = () => {
-        const collect = COLLECT[b.dataset.act];
-        let payload = {};
-        try { payload = collect ? collect(root, b) : {}; } catch (e) { lastError = { message: e.message }; renderAsk(); return; }
-        if (payload === null) return;
-        act(b.dataset.act, payload);
-      };
-    });
+    root.querySelectorAll("[data-act]").forEach((b) => { b.onclick = () => doAction(b); });
     const fill = el("ask-fill");
     if (fill) fill.onclick = () => FILL[study.status](root, study.script);
     (WIRE[study.status] || (() => {}))(root);
@@ -285,15 +319,15 @@
         return `<tr data-cqa="${esc(c.cqa_id)}" class="${vs.some((v) => v.effect === "BLOCK_STAGE" || v.effect === "REQUEST_DATA") ? "blocked" : ""}">
           <td><b>${esc(c.name)}</b><small class="sub">${esc(c.cqa_id)} · ${esc(c.requirement)}${c.assumption ? " · 가정" : ""}</small>
             <div class="rowchips">${chips(vs)}</div></td>
-          <td><select data-f="analysis_role">${Object.entries(ROLE_KO).map(([k, v]) => `<option value="${k}" ${c.analysis_role === k ? "selected" : ""}>${v}</option>`).join("")}</select></td>
-          <td><select data-f="acceptance_operator">${OPS.map((o) => `<option value="${o}" ${(c.acceptance_operator || "") === o ? "selected" : ""}>${o || "—"}</option>`).join("")}</select></td>
-          <td><input data-f="lower" type="number" step="any" value="${esc(c.lower ?? "")}"></td>
-          <td><input data-f="upper" type="number" step="any" value="${esc(c.upper ?? "")}"></td>
-          <td><input data-f="unit" value="${esc(c.unit ?? "")}"></td>
-          <td><input data-f="practical_effect_threshold" type="number" step="any" value="${esc(c.practical_effect_threshold ?? "")}" placeholder="δ" title="실질 효과 기준 δ — 비우면 screening 판정이 INCONCLUSIVE(CR007)"></td>
-          <td><input data-f="summary_definition" value="${esc(c.summary_definition ?? "")}" placeholder="요약값"></td>
-          <td><input data-f="test_method_id" value="${esc(c.test_method_id ?? "")}"></td>
-          <td><select data-f="criterion_source">${["PHARMACOPEIA", "PROJECT_TARGET", "REGULATORY", "OTHER"].map((o) => `<option ${c.criterion_source === o ? "selected" : ""}>${o}</option>`).join("")}</select></td>
+          <td data-label="역할"><select data-f="analysis_role">${Object.entries(ROLE_KO).map(([k, v]) => `<option value="${k}" ${c.analysis_role === k ? "selected" : ""}>${v}</option>`).join("")}</select></td>
+          <td data-label="판정"><select data-f="acceptance_operator">${OPS.map((o) => `<option value="${o}" ${(c.acceptance_operator || "") === o ? "selected" : ""}>${o || "—"}</option>`).join("")}</select></td>
+          <td data-label="하한"><input data-f="lower" type="number" step="any" value="${esc(c.lower ?? "")}"></td>
+          <td data-label="상한"><input data-f="upper" type="number" step="any" value="${esc(c.upper ?? "")}"></td>
+          <td data-label="단위"><input data-f="unit" value="${esc(c.unit ?? "")}"></td>
+          <td data-label="δ (실질 효과)"><input data-f="practical_effect_threshold" type="number" step="any" value="${esc(c.practical_effect_threshold ?? "")}" placeholder="δ" title="실질 효과 기준 δ — 비우면 screening 판정이 INCONCLUSIVE(CR007)"></td>
+          <td data-label="요약값"><input data-f="summary_definition" value="${esc(c.summary_definition ?? "")}" placeholder="요약값"></td>
+          <td data-label="시험법"><input data-f="test_method_id" value="${esc(c.test_method_id ?? "")}"></td>
+          <td data-label="규격 근거"><select data-f="criterion_source">${["PHARMACOPEIA", "PROJECT_TARGET", "REGULATORY", "OTHER"].map((o) => `<option ${c.criterion_source === o ? "selected" : ""}>${o}</option>`).join("")}</select></td>
         </tr>`;
       }).join("");
       const all = subjectVerdicts("cqa", "CQA 전체");
@@ -317,18 +351,18 @@
         return `<tr data-row="${esc(r.row_id)}" class="${r.evidence_status === "LLM_HYPOTHESIS" ? "hyp" : ""}">
           <td><b>${esc(r.row_id)}</b>${r.evidence_status === "LLM_HYPOTHESIS" ? `<span class="hyp-tag">LLM 가설</span>` : ""}
             <div class="rowchips">${chips(vs)}</div></td>
-          <td>${esc(r.cause)} → <b>${esc(r.failure_mode)}</b><small class="sub">${esc(r.local_effect)} → ${esc(cq)}</small>
+          <td data-label="원인 → 실패">${esc(r.cause)} → <b>${esc(r.failure_mode)}</b><small class="sub">${esc(r.local_effect)} → ${esc(cq)}</small>
             ${r.rationale ? `<small class="sub">근거: ${esc(r.rationale)}</small>` : ""}</td>
-          <td class="c">${esc(r.severity ?? "—")}</td>
-          <td><input data-f="occurrence" type="number" min="1" max="5" value="${esc(r.occurrence ?? "")}" placeholder="UNKNOWN"></td>
-          <td><input data-f="occurrence_evidence" value="${esc(r.occurrence_evidence ?? "")}" placeholder="O 근거"></td>
-          <td class="c" title="${esc(r.detect_note || "")}">${esc(r.detectability ?? "—")}</td>
-          <td class="c">${r.rpn === null || r.rpn === undefined ? `<span class="muted">미계산</span>` : esc(r.rpn)}</td>
-          <td><select data-f="disposition">${Object.entries(DISP).map(([k, v]) => `<option value="${k}" ${r.disposition === k ? "selected" : ""}>${v}</option>`).join("")}</select></td>
-          <td><input data-f="alternative_control" value="${esc(r.alternative_control ?? "")}" placeholder="대체 관리"></td>
+          <td class="c" data-label="S (심각도)">${esc(r.severity ?? "—")}</td>
+          <td data-label="O (발생도)"><input data-f="occurrence" type="number" min="1" max="5" value="${esc(r.occurrence ?? "")}" placeholder="UNKNOWN"></td>
+          <td data-label="O 근거"><input data-f="occurrence_evidence" value="${esc(r.occurrence_evidence ?? "")}" placeholder="O 근거"></td>
+          <td class="c" data-label="D (검출)" title="${esc(r.detect_note || "")}">${esc(r.detectability ?? "—")}</td>
+          <td class="c" data-label="RPN">${r.rpn === null || r.rpn === undefined ? `<span class="muted">미계산</span>` : esc(r.rpn)}</td>
+          <td data-label="처리 방향"><select data-f="disposition">${Object.entries(DISP).map(([k, v]) => `<option value="${k}" ${r.disposition === k ? "selected" : ""}>${v}</option>`).join("")}</select></td>
+          <td data-label="대체 관리"><input data-f="alternative_control" value="${esc(r.alternative_control ?? "")}" placeholder="대체 관리"></td>
         </tr>`;
       }).join("");
-      return `<p class="hint">가설 생성: <b>${by === "llm" ? "LLM" : "규칙 기반 대체 (LLM 미사용)"}</b>.
+      return `<p class="hint">${by === "llm" ? "LLM 누락 가설 행이 포함돼 있습니다(태그 LLM_HYPOTHESIS)" : "LLM 응답이 없어 누락 가설 없이 seed 행만 있습니다"}.
           O를 비워 두면 UNKNOWN이고 그 행의 RPN은 계산하지 않습니다. 근거 없이 O를 넣으면 EXPERT_ASSUMPTION으로 표시됩니다.</p>
         <div class="table-wrap"><table class="edit fmea-table">
           <thead><tr><th>행</th><th>원인 → 실패모드 → CQA</th><th>S</th><th>O</th><th>O 근거</th><th>D</th><th>RPN</th><th>처리 방향</th><th>대체 관리</th></tr></thead>
@@ -433,11 +467,13 @@
       const d = s.diagnosis || {};
       return `<div class="diag">
           <p>실패 신호: <b>${esc((d.trigger || {}).reason_code)}</b> — ${esc((d.trigger || {}).message || "")}</p>
-          <p class="hint">생성: ${d.generated_by === "llm" ? "LLM" : "규칙 기반 대체 (LLM 미사용)"} · 태그 LLM_HYPOTHESIS (원인 확정에는 판별시험 필요)</p>
+          ${d.generated_by === "llm" ? `<p class="hint">LLM 가설 · 태그 LLM_HYPOTHESIS (원인 확정에는 판별시험 데이터 필요)</p>` : ""}
           <ol>${(d.hypotheses || []).map((h) => `<li><b>${esc(h.statement)}</b><small class="sub">판별시험 ${esc(h.distinguishing_test)} · 예상 패턴: ${esc(h.expected_pattern)}</small></li>`).join("")}</ol>
         </div>
+        ${(d.hypotheses || []).length ? "" : `<p class="hint">LLM 응답이 없어 가설과 방향 제안이 없습니다. 실패 신호를 보고 직접 방향을 고르세요.</p>`}
         <div class="form"><label><span>다음 방향</span><select id="dg-dir">
-          ${["DOE_AUGMENT", "FACTOR_RANGE_REVISION", "METHOD_PROCESS_CONTROL", "CANDIDATE_REVISION"].map((x) => `<option ${d.directive === x ? "selected" : ""}>${x}</option>`).join("")}
+          <option value="">방향 선택…</option>
+          ${[["DOE_AUGMENT", "모델 보강 실험"], ["FACTOR_RANGE_REVISION", "요인·범위 재설정"], ["METHOD_PROCESS_CONTROL", "시험법·공정 편차 개선"], ["CANDIDATE_REVISION", "후보 개정 (child candidate)"]].map(([x, t]) => `<option value="${x}" ${d.directive === x ? "selected" : ""}>${t}</option>`).join("")}
         </select></label></div>
         ${reasonBox()}
         <div class="ask-actions"><button class="primary" data-act="directive_approve">이 방향 승인</button>
@@ -567,7 +603,7 @@
         <label class="wide"><span>결과 CSV (run별 요인 설정 + 반응 값, batch_id·replicate_independence·evidence_status 열 권장)</span>
           <textarea id="rs-csv" rows="6" placeholder="run,x1,x2,x3,y1,...,batch_id,replicate_independence,evidence_status"></textarea></label>
         <div class="row"><input id="rs-file" type="file" accept=".csv,text/csv">
-          ${s.script ? `<button type="button" class="ghost" id="rs-demo">데모 CSV 불러오기 (Almotairi 2022 Table 3)</button>` : ""}</div>
+          ${s.script ? `<button type="button" class="ghost" id="rs-demo">시연 CSV 불러오기 (Almotairi 2022 Table 3)</button>` : ""}</div>
         <div id="rs-map" class="colmap"></div>
       </div>
       <div class="ask-actions"><button class="primary" data-act="results_submit">결과 제출 → 읽은 값 확인</button></div>`;
@@ -622,7 +658,7 @@
         <div class="vp-ids">
           <label><span>batch_id</span><input data-f="batch_id" value="${esc(r ? r.batch_id || "" : "")}"></label>
           <label><span>parent_blend_id</span><input data-f="parent_blend_id" value="${esc(r ? r.parent_blend_id || "" : "")}"></label>
-          <label><span>근거 등급</span><select data-f="evidence_status">${EVIDENCE.map((e) => `<option ${(r ? r.evidence_status : "MEASURED_UNCONFIRMED") === e ? "selected" : ""}>${e}</option>`).join("")}</select></label>
+          <label><span>근거 등급</span><select data-f="evidence_status">${EVIDENCE.map((e) => `<option value="${e}" ${(r ? r.evidence_status : (p.role === "REFERENCE_EXISTING" ? "LITERATURE_DIRECT" : "MEASURED_UNCONFIRMED")) === e ? "selected" : ""}>${EVIDENCE_KO[e]}</option>`).join("")}</select></label>
         </div>
         <div class="vp-vals">${appl.map((c) => {
           const pr = p.predicted.cqa[c.cqa_id];
@@ -634,7 +670,8 @@
     }).join("");
     return `${v.gate ? gateTable(s) : ""}
       ${verdictList(subjectVerdicts("verification_gate"), "확인 판정 규칙")}
-      <p class="hint">잠근 예측구간과 비교합니다. <b>문헌·합성(SYNTHETIC_DEMO)·미확인 결과는 확인 판정에 쓸 수 없습니다</b>(VR015) — 실제 독립 배치의 실측값이 필요합니다.</p>
+      <p class="hint">잠근 예측구간과 비교합니다. <b>승격 판정(2×2)은 필수 확인점 3개를 새로 만든 독립 배치의 자체 실측으로만</b> 합니다 —
+        문헌값·미확인 결과는 확인 판정에 쓸 수 없습니다(VR015). 계획 전부터 있던 참고 배치는 잠근 예측과 비교만 합니다.</p>
       <div class="vpoints">${cards}</div>
       <div class="ask-actions">
         <button data-act="verification_submit">결과 제출</button>
@@ -646,13 +683,15 @@
     const g = (s.verification || {}).gate;
     if (!g) return "";
     const rows = Object.entries(g.points).map(([pid, x]) => {
-      const cell = x.spec_pass_all_applicable === null || x.spec_pass_all_applicable === undefined ? "—" :
+      const cell = x.judged === false && x.evidence_status ? `판정 제외 — ${x.evidence_status}은 확인 판정에 쓸 수 없음` :
+        x.spec_pass_all_applicable === null || x.spec_pass_all_applicable === undefined ? "—" :
         `${x.spec_pass_all_applicable ? "규격 통과" : "규격 실패"} · ${x.within_family_pi_all_doe ? "PI 안" : "PI 밖"}`;
       const good = x.spec_pass_all_applicable && x.within_family_pi_all_doe;
       return `<tr><td>${esc(x.role)}</td><td class="${good ? "ok" : x.spec_pass_all_applicable === false ? "bad" : ""}">${esc(cell)}</td>
         <td>${esc(x.evidence_status || "—")}</td></tr>`;
     }).join("");
-    return `<div class="table-wrap"><table class="matrix gate"><thead><tr><th>확인점</th><th>2×2 판정</th><th>근거 등급</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    const head = g.partial ? "참고 평가 (예측과 비교)" : "2×2 판정";
+    return `<div class="table-wrap"><table class="matrix gate"><thead><tr><th>확인점</th><th>${head}</th><th>근거 등급</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   function finalCard(s) {
@@ -699,7 +738,8 @@
           if (v !== orig) changes[f] = ["lower", "upper", "practical_effect_threshold"].includes(f) ? numOrNull(v) : (v === "" ? null : v);
         });
         if (tr.dataset.assumption === "1") changes.assumption = true;
-        if (Object.keys(changes).length) edits.push({ cqa_id: tr.dataset.cqa, changes, reason: tr.dataset.reason || reason });
+        const evidence = tr.dataset.evidence || (changes.analysis_role === "NOT_APPLICABLE" ? reason : "") || undefined;
+        if (Object.keys(changes).length) edits.push({ cqa_id: tr.dataset.cqa, changes, reason: tr.dataset.reason || reason, evidence_ref: evidence });
       });
       if (!edits.length) throw new Error("바꾼 값이 없습니다.");
       return { edits };
@@ -810,6 +850,7 @@
         row.querySelector(".fx-unknown").checked = f.status === "UNKNOWN";
         setv(row.querySelector(".fx-reason"), f.reason);
       });
+      (sc.required_data.grades || []).forEach((g) => setv(root.querySelector(`.rd-grade[data-name="${g.name}"]`), g.grade));
     },
     WAITING_CQA_APPROVAL: (root, sc) => {
       sc.cqa_edits.forEach((e) => {
@@ -817,6 +858,7 @@
         if (!tr) return;
         Object.entries(e.changes).forEach(([f, v]) => setv(tr.querySelector(`[data-f="${f}"]`), v));
         if (e.changes.assumption) tr.dataset.assumption = "1";
+        if (e.evidence_ref) tr.dataset.evidence = e.evidence_ref;
         tr.dataset.reason = e.reason;
       });
     },
@@ -838,8 +880,13 @@
       setv(root.querySelector("#ask-reason"), sc.factor_approval.reason);
     },
     RSM_EXECUTION: async (root) => {
-      const btn = root.querySelector("#rs-demo");
-      if (btn) btn.click();
+      const ta = root.querySelector("#rs-csv");
+      if (!ta) return;
+      const d = await req("GET", "/api/development-studies/demo/lornoxicam/csv");
+      ta.value = d.csv;
+      ta.dataset.source = d.source;
+      ta.classList.add("filled");
+      ta.dispatchEvent(new Event("input"));
     },
     WAITING_MODEL_APPROVAL: (root, sc) => {
       const red = sc.model_reduction;
@@ -852,28 +899,19 @@
     WAITING_REGION_APPROVAL: (root, sc) => {
       Object.entries(sc.reference_existing).forEach(([fid, v]) => setv(root.querySelector(`.ref-v[data-fid="${fid}"]`), v));
     },
-    VERIFICATION_EXECUTION: (root) => {
-      // 시연용 합성값: 예측 평균을 그대로 넣고 SYNTHETIC_DEMO로 표시 — 룰북이 확인 판정을 거부하는 장면
-      const s = study;
-      root.querySelectorAll(".vpoint[data-point]").forEach((card, n) => {
-        const p = s.verification.plan.points.find((x) => x.point_id === card.dataset.point);
-        if (p.role === "REFERENCE_EXISTING") return;
-        setv(card.querySelector('[data-f="batch_id"]'), `DEMO-${n + 1}`);
-        setv(card.querySelector('[data-f="parent_blend_id"]'), `DEMO-BL-${n + 1}`);
-        card.querySelector('[data-f="evidence_status"]').value = "SYNTHETIC_DEMO";
-        card.querySelectorAll("[data-cqa]").forEach((i) => {
-          const c = s.cqas[i.dataset.cqa];
-          const pr = p.predicted.cqa[i.dataset.cqa];
-          const v = pr ? pr.mean.toFixed(2) : c.acceptance_operator === "PASS_FAIL" ? "PASS"
-            : c.acceptance_operator === "BETWEEN" ? (c.lower + c.upper) / 2 : c.upper !== null ? c.upper * 0.5 : "";
-          setv(i, v);
-        });
-      });
-      notice("시연용 합성값(SYNTHETIC_DEMO)을 채웠습니다 — 제출하면 룰북(VR015)이 확인 판정을 거부하는 것까지가 시연입니다.", "warn");
+    VERIFICATION_EXECUTION: (root, sc) => {
+      // 논문 최적처방 배치의 공개 관측값(Table 5·6)만 채운다 — 필수 확인점 칸은 비워 둔다(실측은 실험실의 몫)
+      const ref = study.verification.plan.points.find((x) => x.role === "REFERENCE_EXISTING");
+      const card = ref && root.querySelector(`.vpoint[data-point="${ref.point_id}"]`);
+      if (!card) return;
+      const rr = sc.reference_results;
+      setv(card.querySelector('[data-f="batch_id"]'), rr.batch_id);
+      setv(card.querySelector('[data-f="parent_blend_id"]'), rr.parent_blend_id);
+      card.querySelector('[data-f="evidence_status"]').value = rr.evidence_status;
+      Object.entries(rr.values).forEach(([cid, v]) => setv(card.querySelector(`[data-cqa="${cid}"]`), v));
     },
     WAITING_FINAL_APPROVAL: (root, sc) => setv(root.querySelector("#fn-lim"), sc.limitations),
   };
-  FILL.VERIFICATION_GATE = FILL.VERIFICATION_EXECUTION;
 
   function fillFactors(root, sc) {
     Object.entries(sc.factor_inputs).forEach(([src, v]) => {
@@ -1012,7 +1050,8 @@
     blocks.push(`<h4>Handoff (불변)</h4><p class="kv"><code>${esc(h.handoff_id)}</code> · fingerprint <code>${esc(h.formulation_fingerprint)}</code></p>
       <table class="mini"><tbody>${h.ingredients.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.role)}</td><td>${num(i.pct_w_w, 2)}%</td></tr>`).join("")}</tbody></table>
       <p class="kv">공정 ${esc(h.process_route_id)} (${esc(h.process_steps.length)}단계) · 배치 ${esc(h.batch_scale || "—")} · 고정 변수 ${h.fixed_parameters.map((p) => `${esc(p.name)}=${esc(p.status === "SET" ? p.value : p.status)}`).join(", ")}</p>
-      ${(s.assumptions || []).length ? `<ul class="as-list">${s.assumptions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}`);
+      ${(h.sources || []).length ? `<h4>출처</h4><ul class="as-list">${h.sources.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
+      ${(s.assumptions || []).length ? `<h4>가정 (연구자 입력)</h4><ul class="as-list">${s.assumptions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}`);
     body.innerHTML = blocks.join("");
     if (s.region) drawRegion(el("region-side"), false);
   }
@@ -1074,20 +1113,177 @@
     }
   }
 
+
+  // ── 가이드 시연 (Lornoxicam 분산정) ───────────────────────────────────
+  // 장면마다 "무엇을 보여 주는가"를 띄우고, 다음 단계를 사람이 누르듯 실행한다: 폼을 채워 보여 준 뒤
+  // 연구자 버튼을 누른다(doAction — 수동 조작과 같은 경로). 판정·계산은 매번 서버가 새로 한다.
+  const guide = { on: false, auto: false, blockShown: false, running: false, done: false };
+  const SCENES = [
+    { n: 1, states: ["WAITING_REQUIRED_DATA"], title: "진입 — 빠진 자료는 규칙이 짚어 요청한다",
+      watch: "RD006(배치 규모)·RD007(압축력)이 자료를 요청합니다. 압축력은 모른다고 UNKNOWN으로 기록 — 최종 영역의 한계로 끝까지 따라갑니다." },
+    { n: 2, states: ["WAITING_CQA_APPROVAL"], title: "CQA 계약 — 규격 없는 반응은 DoE에 못 들어간다",
+      watch: "먼저 그대로 승인해 봅니다 → CR006·CR002가 막습니다. DE30 ≥ 75 %처럼 연구자가 넣은 기준은 '가정'으로 표시됩니다." },
+    { n: 3, states: ["WAITING_FMEA_APPROVAL"], title: "FMEA — 처리 방향은 연구자가, 가설 태그는 그대로",
+      watch: "O를 모르면 RPN을 계산하지 않습니다(미계산). 압축력은 고심각도·검출 불가, 활택은 고정. LLM 가설 행은 채택해도 LLM_HYPOTHESIS 태그가 남습니다." },
+    { n: 4, states: ["FACTOR_READINESS", "WAITING_FACTOR_DATA", "RANGE_FINDING_RUNS", "WAITING_FACTOR_APPROVAL"],
+      title: "요인·수준 — center는 후보 현재값, 경계는 근거가 있어야",
+      watch: "근거 없는 경계는 만들지 않습니다(FR002). 크로스포비돈 2–10 %는 통상 범위 2–5 % 밖(FR003), balance 구조라 희석 교락 경고(FR007)." },
+    { n: 5, states: ["DESIGN_SELECTION", "RSM_PLANNING", "WAITING_RSM_APPROVAL"], title: "설계 — 3요인 + 사전근거면 RSM 직행",
+      watch: "Box–Behnken 15 run이 코드로 생성됩니다(rank 10/10, 잔차 자유도 5). 설계점 밖 꼭짓점 영역은 외삽 구역으로 빠집니다." },
+    { n: 6, states: ["RSM_EXECUTION", "MODEL_VALIDATION", "WAITING_MODEL_APPROVAL"], title: "결과·모델 — 읽은 값을 확인해야 분석한다",
+      watch: "논문 실측 CSV를 올리면 시스템이 읽은 60개 값을 연구자가 확인합니다. 마손도 예측 R² 0.25 → 선형 축소, 함량균일성 과적합 flag → 사유 달고 수용." },
+    { n: 7, states: ["REGION_COMPUTATION", "WAITING_REGION_APPROVAL"], title: "잠정 영역 — 평균 77 %가 미래 배치로는 48 %",
+      watch: "단면 지도의 초록이 공동 통과확률 ≥ 0.90 영역입니다. 권장 setpoint 2.7 / 12.5분 / 6.8 % (공동확률 0.991)." },
+    { n: 8, states: ["VERIFICATION_PLANNING", "WAITING_VERIFICATION_PLAN_APPROVAL"], title: "확인계획 — 예측구간은 첫 결과 전에 잠근다",
+      watch: "필수 3점 × 4반응 = 12개 비교 → Bonferroni 개별 99.58 %. 논문 최적처방 배치는 결과가 이미 공개돼 참고 평가만 합니다." },
+    { n: 9, states: ["VERIFICATION_EXECUTION", "VERIFICATION_GATE", "WAITING_FINAL_APPROVAL", "COMPLETED"],
+      title: "확인배치 — 승격은 새 독립 배치로만",
+      watch: "논문 최적처방 배치(3:1 · 11분 · 6.23 %)의 공개 관측값(Table 5·6)을 참고점으로 넣어 잠근 예측구간과 비교합니다. 참고 평가는 승격·무효화 근거가 아닙니다 — VERIFIED에는 필수 확인점 3개의 새 독립 배치 실측이 필요합니다." },
+  ];
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const sceneOf = (status) => SCENES.find((x) => x.states.includes(status));
+
+  async function fillNow() {
+    const f = FILL[study.status];
+    if (f) await f(el("studio-ask"), study.script);
+    await sleep(guide.auto ? 900 : 450);
+  }
+  const press = (sel) => doAction(el("studio-ask").querySelector(sel));
+  const lastModel = (cid) => { const ms = (study.models || {})[cid] || []; return ms[ms.length - 1] || {}; };
+
+  function nextStep() {
+    const s = study;
+    switch (s.status) {
+      case "WAITING_REQUIRED_DATA":
+        return { label: "배치 규모 입력 · 압축력 UNKNOWN 기록 → 제출", run: async () => { await fillNow(); return press('[data-act="required_data"]'); } };
+      case "WAITING_CQA_APPROVAL": {
+        const d = s.cqas.CQA_DISSOLUTION || {};
+        if (!d.summary_definition) {
+          if (!guide.blockShown) {
+            return { label: "규격을 비운 채 승인해 보기 — 규칙이 막는 장면", expectBlock: true,
+                     run: async () => { await press('[data-act="cqa_approve"]'); guide.blockShown = true; return true; } };
+          }
+          return { label: "DE30 ≥ 75 % 등 규격 입력 → 저장·재판정", run: async () => { await fillNow(); return press('[data-act="cqa_edit"]'); } };
+        }
+        return { label: "CQA 계약 승인", run: () => press('[data-act="cqa_approve"]') };
+      }
+      case "WAITING_FMEA_APPROVAL": {
+        const fm = (s.fmea.rows || []).find((r) => r.row_id === "FM008");
+        if (fm && fm.disposition !== "FIXED") return { label: "처리 방향·발생도 근거 입력 → 저장", run: async () => { await fillNow(); return press('[data-act="fmea_edit"]'); } };
+        return { label: "FMEA 승인", run: () => press('[data-act="fmea_approve"]') };
+      }
+      case "WAITING_FACTOR_DATA": case "RANGE_FINDING_RUNS":
+        return { label: "연구 범위·출처 입력 → 재판정", run: async () => { await fillNow(); return press('[data-act="factor_data"]'); } };
+      case "WAITING_FACTOR_APPROVAL":
+        return { label: "사전근거 승인과 함께 요인 승인", run: async () => { await fillNow(); return press('[data-act="factor_approve"]'); } };
+      case "WAITING_RSM_APPROVAL":
+        return { label: "Box–Behnken 설계 승인", run: () => press('[data-act="plan_approve"]') };
+      case "RSM_EXECUTION":
+        if (s.result_batch && (s.result_batch.ids || []).length) {
+          return { label: "읽은 값 확인 → 품질 게이트", run: () => press('[data-act="results_confirm"][data-accept="1"]') };
+        }
+        return { label: "논문 실측 CSV 불러오기 → 제출", run: async () => { await fillNow(); return press('[data-act="results_submit"]'); } };
+      case "WAITING_MODEL_APPROVAL": {
+        const fr = lastModel("CQA_FRIABILITY"), av = lastModel("CQA_CU_AV");
+        if (fr.validation_status === "FLAGGED" && !fr._needs_fit) {
+          return { label: "마손도 — 선형 항만 남겨 축소", run: async () => { await fillNow(); return press('.model-card[data-cqa="CQA_FRIABILITY"] [data-act="model_reduce"]'); } };
+        }
+        if (av.validation_status === "FLAGGED") {
+          return { label: "함량균일성 — 사유 달고 flag 수용", run: async () => { await fillNow(); return press('.model-card[data-cqa="CQA_CU_AV"] [data-act="model_accept"]'); } };
+        }
+        return { label: "판단 완료 → 다시 검증", run: () => press('[data-act="model_approve"]') };
+      }
+      case "WAITING_REGION_APPROVAL":
+        return { label: "참고 배치 포함 · PROVISIONAL 승인", run: async () => { await fillNow(); return press('[data-act="region_approve"]'); } };
+      case "WAITING_VERIFICATION_PLAN_APPROVAL":
+        return { label: "확인계획 잠금", run: () => press('[data-act="vplan_lock"]') };
+      case "VERIFICATION_EXECUTION": {
+        const v = s.verification || {};
+        const ref = (v.plan.points || []).find((x) => x.role === "REFERENCE_EXISTING");
+        const r = ref && (v.results || {})[ref.point_id];
+        if (ref && !r) return { label: "논문 최적처방 배치의 공개 관측값 입력 → 제출", run: async () => { await fillNow(); return press('[data-act="verification_submit"]'); } };
+        if (r && r.human_verification_status === "PENDING") return { label: "제출값 확인 → 참고 평가", run: () => press('[data-act="verification_confirm"]') };
+        return null;
+      }
+      default:
+        return null;
+    }
+  }
+
+  async function guideStep() {
+    if (guide.running || busy) return;
+    const st = nextStep();
+    if (!st) { guide.auto = false; renderGuide(); return; }
+    guide.running = true;
+    renderGuide();
+    let ok = false;
+    try { ok = await st.run(); } catch (e) { lastError = { message: e.message }; }
+    guide.running = false;
+    if (!ok && !st.expectBlock) guide.auto = false;
+    renderGuide();
+  }
+
+  async function autoPlay() {
+    guide.auto = true;
+    renderGuide();
+    while (guide.auto && nextStep()) {
+      await guideStep();
+      if (!guide.auto) break;
+      await sleep(1700);
+    }
+    guide.auto = false;
+    renderGuide();
+  }
+
+  function renderGuide() {
+    const box = el("studio-guide");
+    if (!box) return;
+    if (!study || study.demo_script !== "lornoxicam" || !guide.on) { box.hidden = true; return; }
+    box.hidden = false;
+    const sc = sceneOf(study.status);
+    const cur = sc ? sc.n : null;
+    const nx = nextStep();
+    const end = !nx;
+    box.innerHTML = `
+      <div class="gb-head">
+        <b>가이드 시연 · Lornoxicam 분산정</b>
+        <span class="gb-count">${cur ? `장면 ${cur} / ${SCENES.length}` : ""}</span>
+        <button type="button" class="ghost gb-hide">가이드 숨기기</button>
+      </div>
+      <ol class="gb-scenes">${SCENES.map((x) => `<li class="${x.n === cur ? "on" : cur && x.n < cur ? "done" : ""}" title="${esc(x.title)}"><span>${x.n}</span></li>`).join("")}</ol>
+      ${sc ? `<div class="gb-now"><h4>${esc(sc.title)}</h4><p>${esc(sc.watch)}</p></div>` : ""}
+      ${end ? `<div class="gb-end"><b>시연은 여기까지입니다.</b> 여기부터는 실험실의 몫입니다 — 잠근 계획대로 필수 확인점 3개를
+          새 독립 배치로 만들고, 그 실측값을 근거 등급 '자체 실측'으로 넣으면 2×2 판정 → 한계 기록 → VERIFIED로 이어집니다.
+          아래 질문 카드의 확인점 칸에 직접 입력할 수 있습니다.</div>` : ""}
+      <div class="gb-actions">
+        ${end ? `<button type="button" class="primary gb-restart">처음부터 다시</button>` : `
+          <span class="gb-next"><em>다음 단계</em>${esc(nx.label)}</span>
+          <button type="button" class="primary gb-step" ${guide.running || guide.auto ? "disabled" : ""}>${guide.running && !guide.auto ? "진행 중…" : "▶ 이 단계 진행"}</button>
+          ${guide.auto ? `<button type="button" class="gb-pause">❚❚ 멈춤</button>` : `<button type="button" class="gb-auto" ${guide.running ? "disabled" : ""}>▶▶ 끝까지 자동 진행</button>`}`}
+      </div>`;
+    box.querySelector(".gb-hide").onclick = () => { guide.on = false; guide.auto = false; renderGuide(); renderAsk(); };
+    const q = (c) => box.querySelector(c);
+    if (q(".gb-step")) q(".gb-step").onclick = () => guideStep();
+    if (q(".gb-auto")) q(".gb-auto").onclick = () => autoPlay();
+    if (q(".gb-pause")) q(".gb-pause").onclick = () => { guide.auto = false; renderGuide(); };
+    if (q(".gb-restart")) q(".gb-restart").onclick = () => startDemo();
+  }
+
   // ── 시작 ───────────────────────────────────────────────────────────────
   function init() {
     el("tab-discovery").onclick = () => showTab("discovery");
     el("tab-studio").onclick = () => showTab("studio");
-    el("studio-demo").onclick = startDemo;
-    el("studio-list").onchange = (e) => { if (e.target.value) load(e.target.value).catch((err) => notice(err.message, "error")); };
+    el("studio-list").onchange = (e) => { if (e.target.value) { guide.auto = false; load(e.target.value).catch((err) => notice(err.message, "error")); } };
     document.querySelectorAll(".side-tab").forEach((b) => { b.onclick = () => { sideTab = b.dataset.tab; if (study) { renderSide(); } }; });
     let tab = "discovery", last = null;
     try { tab = localStorage.getItem("f1:tab") || "discovery"; last = localStorage.getItem("f1:study"); } catch (e) { /* 무시 */ }
     if (new URLSearchParams(location.search).get("studio") !== null) tab = "studio";
     showTab(tab);
-    if (last) load(last).catch(() => { try { localStorage.removeItem("f1:study"); } catch (e) { /* 무시 */ } });
+    if (last) load(last).then(() => { if (study && study.demo_script === "lornoxicam") { guide.on = true; renderGuide(); } })
+      .catch(() => { try { localStorage.removeItem("f1:study"); } catch (e) { /* 무시 */ } });
   }
 
   window.F1Studio = { startFromCandidate, showTab, startDemo };
+  el("studio-demo").onclick = () => startDemo();
   init();
 })();

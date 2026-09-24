@@ -97,20 +97,23 @@ check('장면 8: 확인점 4개(필수 3 + 참고)', (await page.$$eval('#studio
 await shot('09-vplan');
 await step('장면 8: 확인계획 잠금', 'vplan_lock', '확인배치 결과 대기', { fill: false });
 await page.click('#ask-fill');
+check('장면 9: 필수 확인점 칸은 비워 둔다(값을 지어내지 않음)', await page.evaluate(() =>
+  [...document.querySelectorAll('.vpoint:not(.ref) [data-cqa]')].every((i) => !i.value)));
 await page.click('#studio-ask [data-act="verification_submit"]');
 await page.waitForFunction(() => !document.querySelector('.ask.busy'));
 await page.waitForTimeout(300);
 await page.click('#studio-ask [data-act="verification_confirm"]');
-await waitState('확인 판정 보류');
-check('장면 9: 합성값은 VR015가 확인 판정을 거부', (await page.$eval('#studio-ask', (e) => e.innerHTML)).includes('VR015'));
-await shot('10-vr015');
+await page.waitForFunction(() => (document.querySelector('#studio-ask')?.textContent || '').includes('참고 평가 (예측과 비교)'));
+check('장면 9: 논문 최적처방 배치 — 참고 평가, 잠근 PI 안', (await page.$eval('#studio-ask', (e) => e.textContent)).includes('규격 통과 · PI 안'));
+check('장면 9: 필수 확인점 없이는 판정하지 않음(상태 유지)', (await state()).includes('확인배치 결과 대기'));
+await shot('10-reference');
 
 // 사이드 탭
 await page.click('.side-tab[data-tab="rules"]');
 check('규칙 판정 탭', (await page.$$eval('.rule-block', (r) => r.length)) > 5);
 await page.click('.side-tab[data-tab="trace"]');
 await page.waitForSelector('.tl li');
-check('lineage 탭 (§18 식별자)', (await page.$eval('#studio-side-body', (e) => e.textContent)).includes('HO-LX-DT-001'));
+check('lineage 탭 (§18 식별자)', (await page.$eval('#studio-side-body', (e) => e.textContent)).includes('HO-LX-DT-F2'));
 
 // 모바일 폭 가로 넘침
 for (const w of [390, 820]) {
@@ -119,6 +122,45 @@ for (const w of [390, 820]) {
   const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check(`${w}px 가로 넘침 없음`, over <= 1, `+${over}px`);
 }
+// ── 가이드 시연 · 휴대폰 폭 ─────────────────────────────────────────
+// ① 탭의 4번째 시나리오 카드 → 스튜디오 가이드 시연 → 장면별로 가로 넘침 없이 → 자동 진행으로 끝까지.
+const m = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+m.on('pageerror', (e) => errors.push('mobile: ' + String(e)));
+m.on('console', (x) => { if (x.type() === 'error' && !/status of (409|422)/.test(x.text())) errors.push('mobile: ' + x.text()); });
+await m.addInitScript(() => { try { localStorage.setItem('f1_guide_seen_v1', '1'); localStorage.removeItem('f1:study'); localStorage.setItem('f1:tab', 'discovery'); } catch (e) {} });
+await m.goto(URL, { waitUntil: 'networkidle' });
+const cards = await m.$$('#scenarios .scenario');
+check('① 탭에 시나리오 카드 4개', cards.length === 4, String(cards.length));
+await cards[3].click();
+await m.waitForSelector('#studio-guide:not([hidden]) .gb-step');
+check('카드 4 → 스튜디오 가이드 시연 시작', await m.$eval('#view-studio', (e) => !e.hidden));
+const mover = () => m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+const scenesSeen = new Set();
+const overflowAt = [];
+// 장면 2까지 한 단계씩 — 편집 표가 카드로 바뀌는지 본다
+for (let i = 0; i < 2; i++) {
+  await m.click('.gb-step');
+  await m.waitForFunction(() => !document.querySelector('.gb-step[disabled]'), null, { timeout: 30000 });
+}
+check('휴대폰: CQA 편집 표가 카드로(머리행 숨김)', await m.$eval('table.cqa-table thead', (e) => getComputedStyle(e).display === 'none'));
+check('휴대폰: 규칙이 막은 이유가 카드에', (await m.$eval('#studio-ask', (e) => e.textContent)).includes('CR006'));
+if (SHOTS) await m.screenshot({ path: `${SHOTS}/m-cqa.png`, fullPage: false });
+await m.click('.gb-auto');
+const t0 = Date.now();
+while (Date.now() - t0 < 180000) {
+  const n = await m.$eval('.gb-count', (e) => e.textContent).catch(() => '');
+  if (n) scenesSeen.add(n);
+  const o = await mover();
+  if (o > 1) overflowAt.push(`${n}:+${o}`);
+  if (await m.$('.gb-restart')) break;
+  await m.waitForTimeout(700);
+}
+check('자동 진행이 끝까지 (장면 9 · 시연 종료)', !!(await m.$('.gb-restart')), [...scenesSeen].join(','));
+check('장면 1–9를 모두 거침', scenesSeen.size >= 8, String(scenesSeen.size));
+check('휴대폰: 모든 장면에서 가로 넘침 없음', overflowAt.length === 0, overflowAt.slice(0, 4).join(' '));
+check('시연 끝: 참고 평가 표시 · 합성·예시값 없음', (await m.$eval('#studio-ask', (e) => e.textContent)).includes('참고 평가 (예측과 비교)')
+  && !(await m.content()).includes('SYNTHETIC'));
+if (SHOTS) await m.screenshot({ path: `${SHOTS}/m-end.png`, fullPage: false });
 check('콘솔 오류 0건', errors.length === 0, errors.slice(0, 3).join(' | '));
 await browser.close();
 console.log(failed ? `\n${failed} FAILED` : '\nALL PASS');

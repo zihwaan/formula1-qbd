@@ -101,10 +101,15 @@ def build_consensus(
         })
 
     # 통과 후보만 순위 경쟁. 동점이면 분산이 낮은(이견이 적은) 쪽 우선.
-    contenders = [r for r in ranked if r["eligible"]]
-    contenders.sort(key=lambda r: (-(r["weighted_score"] or 0.0), r["variance"] or 0.0, r["candidate_id"]))
+    # 실제 심사 점수가 없는 후보(LLM 무응답)는 순위를 매기지 않는다 — 없는 점수를 0이나 기본값으로
+    # 채워 줄을 세우면 근거 없는 순위가 된다.
+    contenders = [r for r in ranked if r["eligible"] and r["weighted_score"] is not None]
+    contenders.sort(key=lambda r: (-r["weighted_score"], r["variance"] or 0.0, r["candidate_id"]))
     for rank, row in enumerate(contenders, start=1):
         row["rank"] = rank
+    for row in ranked:
+        if row["eligible"] and row["weighted_score"] is None:
+            row["unscored"] = True
 
     winner = contenders[0]["candidate_id"] if contenders else None
 

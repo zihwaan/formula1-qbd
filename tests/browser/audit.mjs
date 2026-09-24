@@ -9,7 +9,12 @@ const note = (sev, area, msg) => { found.push({ sev, area, msg }); console.log(`
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 950 } });
 const page = await ctx.newPage();
 const consoleErrs = [], netFails = [], reqs = [];
-page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') consoleErrs.push(`${m.type()}: ${m.text()}`); });
+// 섹션 E가 일부러 없는 run을 조회한다 — 그 404는 점검 자신이 만든 것이라 콘솔 오류로 세지 않는다
+page.on('console', (m) => {
+  if (m.type() !== 'error' && m.type() !== 'warning') return;
+  if (m.location && /does-not-exist/.test(m.location().url || '')) return;
+  consoleErrs.push(`${m.type()}: ${m.text()}`);
+});
 page.on('pageerror', (e) => consoleErrs.push('pageerror: ' + e.message));
 page.on('requestfailed', (r) => netFails.push(`${r.url()} — ${r.failure()?.errorText}`));
 page.on('response', (r) => { if (r.status() >= 400) reqs.push(`${r.status()} ${r.url()}`); });
@@ -80,10 +85,6 @@ const xss = await page.evaluate(() => {
     ranked: [{ rank: 1, candidate_id: P, weighted_score: P, variance: P, reviewers: P }],
     rulebook_feedback: [P],
   }));
-  probe('renderWetlab', () => renderWetlab({
-    summary: P,
-    findings: [{ off_target: true, metric: P, interpretation: P, suggested_revision: P }],
-  }));
   probe('renderCandidates', () => {
     candidates.set('x', {
       recipe: { candidate_id: P, strategy: P, process: P, packaging: P,
@@ -102,7 +103,7 @@ const xss = await page.evaluate(() => {
 if (xss.executed > 0 || Object.keys(xss.hit).length) {
   note('HIGH', 'XSS', `주입 실행됨 ${xss.executed}회 — ${JSON.stringify(xss.hit)}`);
 } else {
-  console.log('   ✓ 5개 렌더 경로 모두 이스케이프됨 (실행 0회)');
+  console.log('   ✓ 4개 렌더 경로 모두 이스케이프됨 (실행 0회)');
 }
 await page.reload({ waitUntil: 'networkidle' });
 

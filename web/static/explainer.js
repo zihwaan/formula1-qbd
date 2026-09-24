@@ -171,7 +171,7 @@
 
     {
       nav: "화면도 같은 원칙을 따른다",
-      kicker: "UI · 2026-09-24",
+      kicker: "화면 구성",
       title: "화면의 주인공은 결과가 아니라, 지금 연구자가 내릴 결정이다",
       lead: `이 시스템은 연구자와 <b>주고받으며</b> 진행된다. 그래서 화면은 “결과를 보여 주는 대시보드”가
              아니라 “시스템이 묻고 연구자가 답하는 작업대”로 짰다. 맨 위 두 개의 탭이 곧 두 그래프다 —
@@ -190,9 +190,10 @@
           <div class="f1-flowmark">▼ ① 후보 탐색 탭도 같은 원칙</div>
           <div class="f1-io win">입력·행동 = 가운데 넓은 칸 · 관측(그래프·해설·트레이스) = 바깥 좁은 칸</div>
         </div>`,
-      note: `데모 study에서는 <b>“데모 입력 채우기”</b>가 폼에 값을 <b>채우기만</b> 한다 — 제출·승인 버튼은
-             항상 연구자가 누른다. 채워진 값이 무엇인지 눈으로 확인하고 고칠 수 있어야 “연구자가 정한다”는
-             원칙이 시연에서도 지켜지기 때문이다.`,
+      note: `<b>가이드 시연</b>은 질문 카드 위에 장면마다 “무엇을 보여 주는가”를 띄우고, 다음 단계를
+             연구자가 하듯 진행한다 — 폼을 채워 보여 준 뒤 같은 버튼을 누른다. 한 단계씩 넘기거나 끝까지
+             자동으로 흘려 볼 수 있고, 판정과 계산은 매번 서버가 새로 한다. 휴대폰에서는 한 열로 쌓이고
+             편집 표는 행마다 카드로 바뀌며, 행동 버튼 줄은 항상 손 닿는 아래쪽에 붙어 있다.`,
     },
 
     {
@@ -200,8 +201,8 @@
       kicker: "입력 계층",
       title: "검사를 시작하려면, 이 약의 작용기부터 알아야 한다",
       lead: `유당이 위험한지 아닌지는 <b>약에 아민기가 있느냐</b>에 달려 있다.
-             이걸 사람이 손으로 적어 넣으면 틀린다 — 실제로 이 프로젝트의 초기 데모가 그렇게 틀렸다.
-             그래서 지금은 <b>분자식(SMILES)에서 시작한다.</b>`,
+             이걸 사람이 손으로 적어 넣으면 틀리기 쉽다 — 아세트아미노펜은 이름 때문에 아민처럼 보이지만
+             실제로는 아미드다. 그래서 판정의 입력은 <b>분자식(SMILES)에서 계산한다.</b>`,
       art: `
         <div class="f1-pipe f1-seq">
           <div>
@@ -249,9 +250,9 @@
 
     {
       nav: "분류부터: BCS/DCS ★",
-      kicker: "v3 · 페이즈 게이트",
+      kicker: "페이즈 게이트",
       title: "처방을 만들기 전에 이 약이 어떤 부류인지부터 정한다",
-      lead: `2026-09-18부터 후보를 만들기 <b>전에</b> 한 단계가 더 들어간다. 용해도·투과도로
+      lead: `후보를 만들기 <b>전에</b> 먼저 거치는 단계가 있다. 용해도·투과도로
              약을 분류하는 BCS/DCS, 무정형인지 결정형인지(고체상), 가용화가 필요한지, 필요하면
              어떤 공정(예: 분무건조 ASD)을 쓸지 — 이 네 가지를 먼저 정해야 <b>어떤 전략을
              후보로 올릴지</b>가 정해진다. 실측값이 없어도 멈추지 않는다. <b>계산값 → 예측값 →
@@ -366,49 +367,15 @@
              때문이다. 실험실에서라면 "만들어 보고 갈변을 확인한 뒤 다시 설계하는" 데 며칠이 걸렸을 과정이고,
              <b>이 판정은 몇 번을 다시 돌려도 똑같이 나온다.</b><br><br>
              다만 걸리려면 <b>두 쪽이 실제로 만나야 한다.</b> 룰북은 <span class="f1-mono">Lactose monohydrate</span>라
-             적고 처방은 "유당"이라 적는데, 글자가 같은지만 보던 동안 이 규칙은 조용히 통과했다(2026-08 수정).
-             지금은 부형제 마스터를 사전 삼아 표기·국문명·계열명을 맞춘다. 같은 이유로,
+             적고 처방은 "유당"이라 적는다. 글자만 비교하면 둘은 영영 만나지 않으므로,
+             부형제 마스터를 사전 삼아 표기·국문명·계열명을 맞춘 뒤에 대조한다. 같은 이유로,
              <b>구조를 못 읽었으면 통과가 아니라 판정 불가</b>다 — SMILES 오타 하나로 작용기가 0개가 되면
              구조 기반 금기는 발동할 수 없고, 그 침묵을 합격으로 세면 게이트가 있으나 마나가 된다.`,
     },
 
     {
-      nav: "v2에서 v3로 ★",
-      kicker: "설계가 바뀐 지점 · 2026-09-18",
-      title: "승인·배치·진단으로 이어지던 워크플로는 걷어내고, 후보 목록에서 멈춘다",
-      lead: `이전 버전(v2)에는 여기서부터 근거 충족 게이트 → 연구자 승인 → 배치 등록 → 결과 제출 →
-             AI 진단 → 원인 확정까지 이어지는 <b>장기 실행 워크플로</b>가 있었다. v3 설계
-             문서는 이 시스템이 답해야 할 질문을 <b>"이 약을 어떻게 분류하고, 어떤 전략
-             후보를 낼 것인가"</b>로 다시 좁혔고, 처방 이후의 승인·제조·진단 워크플로는
-             범위 밖으로 뺐다 — 그래서 이번 배포에서 그 워크플로를 껐다.`,
-      art: `
-        <div class="f1-arch f1-seq">
-          <div class="f1-cols c2">
-            <div class="f1-box"><b>v2가 하던 일</b>
-              <span>근거 게이트(16종 요구) → 연구자 승인 → 실행 가능 프로토콜 → 배치 제조 →
-                결과 판독·판정 → AI 경쟁 가설 진단 → 원인 확정 → 자식 후보</span></div>
-            <div class="f1-box f1-det"><b>v3가 하는 일</b>
-              <span>BCS/DCS·고체상·가용화·ASD 페이즈 게이트 → 전략 채점 → 후보 생성 →
-                룰북 검증 → 후보별 신뢰도 요청(비차단) → <b>권고 후보 목록에서 끝</b></span></div>
-          </div>
-          <div class="f1-flowmark">▼</div>
-          <div class="f1-io">근거 게이트·승인·배치·진단 코드는 지우지 않았다 — 주석 처리로 남겨
-            다시 켤 수 있게 했다(<code class="f1-mono">formula/lifecycle/</code>,
-            <code class="f1-mono">formula/evidence/gate.py</code> 사용부)</div>
-        </div>`,
-      note: `그래서 <b>Lab-in-the-loop이라는 이름이 가리키는 대상이 바뀌었다.</b> v2에서는
-             "배치를 만들고 실험 결과를 읽어 다음 실험을 지시하는" 사후 루프였다면, v3에서는
-             "값을 몰라도 후보부터 내고, 전략이 갈리는 지점의 값만 되묻는" 설계 이전 루프다
-             — 다음 장에서 그 루프를 직접 본다. 같은 이름 아래 있던 이전 기능이 궁금하면
-             화면 URL에 <span class="f1-mono">?guide=</span> 대신 코드의 주석 처리된 블록을
-             직접 열어 보면 그대로 남아 있다.<br><br>
-             <b>2026-09-24 (v6.1):</b> 후보 이후의 절반은 옛 워크플로를 되살린 것이 아니라 <b>별도 그래프</b>로
-             새로 만들었다 — 후보 탐색과 상태를 공유하지 않고, 판정은 전부 새 룰북(07_doe)이 한다. 다음 장부터 본다.`,
-    },
-
-    {
       nav: "② 개발 스튜디오 ★",
-      kicker: "v6.1 · ExperimentalDevelopmentGraph · 2026-09-24",
+      kicker: "개발 스튜디오 · ExperimentalDevelopmentGraph",
       title: "고른 후보 하나를, 확인배치로 검증된 운전 영역까지",
       lead: `후보 처방은 “이렇게 만들면 될 것 같다”까지다. 실제 개발은 <b>어떤 품질 특성(CQA)을
              어떤 규격으로 볼지</b> 정하고, 실패 원인을 짚고(FMEA), 바꿀 변수와 범위를 정해
@@ -448,9 +415,9 @@
           <div class="f1-prow drop"><span class="st">BLOCK_STAGE · INVALIDATE</span><span class="to">→</span><span class="act"><b>override 불가</b> (AA017) — 규격 없는 DoE 반응, 계층성 깨는 축소, 확인 실패한 영역</span></div>
         </div>
         <div class="f1-cols c3" style="margin-top:14px">
-          <div class="f1-box f1-det"><b>모델 적합에 쓸 수 있다</b><span>자체 실측(확인됨) · 문헌 표 수치 · (demo) 시연 합성값</span></div>
+          <div class="f1-box f1-det"><b>모델 적합에 쓸 수 있다</b><span>자체 실측(확인됨) · 문헌 표 수치</span></div>
           <div class="f1-box"><b>수준값 근거로만</b><span>연구자 가정(EXPERT_ASSUMPTION, 표시됨) · 모델 예측(참고)</span></div>
-          <div class="f1-box f1-fail"><b>확인 판정에는 못 쓴다</b><span>문헌 · 디지타이징 · 합성값 · 미확인 — 새로 만든 독립 배치의 실측만</span></div>
+          <div class="f1-box f1-fail"><b>확인 판정에는 못 쓴다</b><span>문헌 · 디지타이징 · 미확인 — 새로 만든 독립 배치의 실측만</span></div>
         </div>`,
       note: `집행 모드도 둘이다. <b>production</b>은 약학 담당 검토를 거쳐 <span class="f1-mono">APPROVED</span>된 규칙만 집행하는데,
              지금 171개 규칙은 전부 <span class="f1-mono">DRAFT_PENDING_REVIEW</span>라서 <b>production에서는 아무것도 막지 않는 것이 정상</b>이다.
@@ -460,11 +427,12 @@
 
     {
       nav: "영역은 평균이 아니라 미래 배치로",
-      kicker: "데모 · Lornoxicam 분산정 (Almotairi 2022 실측 15 run)",
+      kicker: "가이드 시연 · Lornoxicam 분산정 (Almotairi 2022 실측 15 run)",
       title: "평균으로는 77%가 규격 안이었지만, 미래 배치로 보면 48%다",
       lead: `실험 15개의 실측값(논문 Table 3)을 결과 제출 화면으로 올리고, 논문의 회귀식·최적점은 쓰지 않은 채
              엔진이 처음부터 다시 계산한다. 규격은 분산시간 ≤ 180 s, 마손도 ≤ 1.0 %, AV ≤ 15, 그리고
-             <b>DE30 ≥ 75 %(연구자 입력 가정 — 화면에 가정으로 표시)</b>.`,
+             <b>DE30 ≥ 75 %(논문 기준이 아닌 프로젝트 목표값 — 화면에 가정으로 표시)</b>. 조성·공정·범위·
+             최적처방 관측값도 전부 논문에 적힌 값이다.`,
       art: `
         <div class="f1-story f1-seq">
           <div class="f1-beat"><div class="who">설계</div><div class="what"><div class="card">3요인 + 사전근거 승인 — RSM 직행 → <b>Box–Behnken 15 run</b> (DS007·DS008). 꼭짓점 영역은 설계점 밖이라 영역 계산에서 뺀다 (DV010)</div></div></div>
@@ -479,11 +447,12 @@
           <div class="f1-box f1-fail"><b>그 밖의 세 칸</b><span>규격 실패 → 영역 INVALIDATED + 진단 · 규격 통과인데 예측구간 밖 → INVALIDATED + 모델 보강</span></div>
         </div>
         <div class="guide-note warn" style="margin-top:14px">
-          <b>구현하면서 명세와 다르게 나온 것 — 숨기지 않고 남겼다.</b><br>
-          ① 명세는 함량균일성에 “예측력 낮음 경고”만 적었지만, 룰북(MV006: 조정 R² − 예측 R² &gt; 0.20)대로 계산하면
-          <b>과적합 flag도 선다</b>(0.885 − 0.481). 그래서 데모에서도 연구자의 수용 판단이 한 번 더 필요하다.<br>
-          ② 명세의 “영향점 run 12”는 실제로 <b>run 3과 run 12가 정확히 동률</b>(Cook's D 1.066)이다. 둘 다 flag하고, 어느 것도 지우지 않는다.<br>
-          ③ 시연용 합성값을 확인배치 결과로 넣으면 룰북(VR015)이 <b>확인 판정 자체를 거부</b>한다. VERIFIED는 실제 독립 배치의 실측으로만 나온다.
+          <b>이 데이터에서 룰북이 실제로 잡아내는 것</b><br>
+          ① 함량균일성 모델은 예측력이 낮을 뿐 아니라 과적합 규칙(MV006: 조정 R² − 예측 R² &gt; 0.20)에도
+          걸린다(0.885 − 0.481). 연구자가 이를 알고 수용한다는 사유를 남겨야 다음으로 간다.<br>
+          ② 분산시간의 영향점은 <b>run 3과 run 12가 정확히 동률</b>(Cook's D 1.066)이다. 둘 다 표시하고, 어느 것도 지우지 않는다.<br>
+          ③ 논문 최적처방 배치의 공개 관측값(분산 4.4 s · DE 80.64 % · AV 4.65 …)은 잠근 예측구간 안에 들어온다 —
+          그래도 <b>참고 평가일 뿐 승격 근거가 아니다</b>(결과가 계획 전에 공개됐기 때문). VERIFIED는 새 독립 배치의 실측으로만 나온다.
         </div>`,
       note: `<b>VERIFIED는 “내부 사전계획을 통과했다”는 뜻이다.</b> 세 점에서 1배치씩 확인한 것은 세 위치의 확인이지
              영역 전체의 증명이 아니며, 규제기관이 승인한 Design Space나 PPQ 완료를 의미하지 않는다. 최종 영역에는
@@ -494,58 +463,41 @@
     {
       nav: "실제로 참고한 연구가 있다",
       kicker: "이 설계의 출처 · Robin (FutureHouse)",
-      title: '"③ 진단" 단계는 실제 연구를 읽고 고친 부분이다',
+      title: "진단 가설은 실제 연구의 지시문을 읽고 설계했다",
       lead: `<b>Robin</b>은 비영리 연구소 FutureHouse가 만든 AI 시스템으로, 2026년 국제 학술지
              <b>Nature</b>에 발표됐다. 사람의 개입 없이 스스로 가설을 세우고 실험을 제안해서,
              노년 실명의 주요 원인인 <b>황반변성을 치료할 수 있는 약 후보(ripasudil)를 실제로
-             찾아낸</b> 사례로 유명하다. FutureHouse는 Robin이 AI에게 내리는 지시문(프롬프트)
-             원문을 그대로 공개했다 — 그래서 직접 읽어 보고, 바로 앞 ③번 "진단" 단계에
-             실제로 반영했다.`,
+             찾아낸</b> 사례다. FutureHouse는 Robin이 AI에게 내리는 지시문(프롬프트) 원문을
+             공개했고, 그 원문을 문장 단위로 대조해 개발 스튜디오의 <b>진단</b>과 후보 탐색의
+             <b>심사</b>에 반영했다.`,
       art: `
         <div class="f1-arch f1-seq">
           <div class="f1-tier">
-            <header><span>Robin 프롬프트 원문에서 그대로 가져온 문장</span>
+            <header><span>Robin 프롬프트 원문</span>
               <span>GitHub Future-House/robin · robin/prompts.py</span></header>
-            <div class="f1-said f1-mono">"Generate exactly <b>{num_candidates}</b> distinct
-              ideas"<br>— CANDIDATE_GENERATION_SYSTEM_MESSAGE</div>
-            <div class="f1-cap">우리 코드에 넣은 지시문(<code class="f1-mono">formula/feedback/labloop.py
-              · DIRECTIVE_SYSTEM</code>): <b>"가설은 최대 3개, 서로 실제로 달라야 한다. 같은
-              원인을 다르게 표현한 문장을 별도 가설로 세지 않는다."</b></div>
+            <div class="f1-said f1-mono">"Generate exactly <b>{num_candidates}</b> distinct ideas"
+              <br>— CANDIDATE_GENERATION_SYSTEM_MESSAGE</div>
+            <div class="f1-said f1-mono">"It is not necessary to propose a follow-up experiment if there is
+              nothing significant to follow up on" — FOLLOWUP_SYSTEM_MESSAGE</div>
           </div>
-          <div class="f1-flowmark">▼ 이 지시문 하나로 무엇이 바뀌었는가 — AI가 실제로 준 응답</div>
-          <div class="f1-versus">
-            <div class="f1-quote bad">
-              <div class="f1-qhead">✕ 가져오기 전 (지난 배포 코드 구조)</div>
-              <div class="f1-said">AI에게는 애초에 "이유 하나만" 요청했다. 그 결과를
-                <span class="f1-mono">H1 / H2 / H3</span> 세 칸에 <b>그대로 복사</b>했다:
-                <br>H1 = <i>"붕해 지연 또는 결합력 과다로 방출이 억제됐을 가능성"</i>
-                <br>H2 = <i>"붕해 지연 또는 결합력 과다로 방출이 억제됐을 가능성"</i>
-                <br>H3 = <i>"붕해 지연 또는 결합력 과다로 방출이 억제됐을 가능성"</i></div>
-              <span class="f1-badge bad">세 칸이 한 문자열을 가리킴</span>
-              <div class="f1-cap">화면은 "경쟁 가설 3개"처럼 보이지만 코드를 보면
-                <code class="f1-mono">directive.get("hypothesis")</code> 하나를 세 번 읽은 것 —
-                구별시험을 셋 다 똑같이 받으니 애초에 가를 수도 없었다.</div>
-            </div>
-            <div class="f1-quote good">
-              <div class="f1-qhead">✓ 가져온 뒤 (지금 배포된 버전 · 실제 응답)</div>
-              <div class="f1-said">이부프로펜 정제 시나리오(용출 미달 + 불순물 초과)에 Groq가
-                실제로 낸 응답:
-                <br>H1 = <i>"API 결정형(다형체)이 바뀌어 용해도가 낮아졌을 가능성"</i>
-                <br>H2 = <i>"제조 중 다른 성분과 교차오염됐을 가능성"</i>
-                <br>H3 = <i>"제형이 pH에 민감해 시험 중 침전됐을 가능성"</i></div>
-              <span class="f1-badge good">서로 다른 test_id가 따로 붙음</span>
-              <div class="f1-cap">가설마다 <b>그 가설만 지지·배제하는 확인시험</b>이 다르게
-                배정된다 — 2026-09-16 실제 실행 로그에서 그대로 가져온 문장이다.</div>
-            </div>
+          <div class="f1-flowmark">▼ 개발 스튜디오 — 확인배치가 실패하면</div>
+          <div class="f1-cols c3">
+            <div class="f1-box f1-llm"><b>서로 다른 원인가설 최대 3개</b>
+              <span>같은 원인을 바꿔 말한 문장은 별도 가설로 세지 않는다. 원인이 하나뿐이면 하나만</span></div>
+            <div class="f1-box f1-det"><b>가설마다 판별시험</b>
+              <span>그 가설만 지지·배제하는 시험을 확인시험 마스터의 실제 행에서만 고른다</span></div>
+            <div class="f1-box"><b>override·가정부터 의심</b>
+              <span>연구자가 넘긴 경고와 EXPERT_ASSUMPTION 근거를 우선 점검 대상으로 넣는다</span></div>
           </div>
+          <div class="f1-flowmark">▼ 그리고 연구자가 방향을 고른다</div>
+          <div class="f1-io">모델 보강 · 요인·범위 재설정 · 시험법·공정 편차 개선 · 후보 개정(child candidate)
+            — 가설은 <span class="f1-mono">LLM_HYPOTHESIS</span>로 남고, 원인 확정은 판별시험 데이터로만 한다</div>
         </div>`,
-      note: `Robin 프롬프트에는 "필요 없으면 만들지 않는다"는 문장(<code class="f1-mono">FOLLOWUP_SYSTEM_MESSAGE</code>)도
-             있었다 — 후속 실험을 억지로 제안하지 말라는 뜻이다. 같은 원칙을 가져와, 경쟁할 원인이
-             정말 하나뿐이면 가설도 하나만 내고 개수를 채우려고 가짜 원인을 만들지 않게 했다.
-             반대로 <b>가져오지 않은 것</b>도 있다 — Robin은 확인시험 이름을 AI가 자유롭게
-             짓게 하지만, 우리는 실제 확인시험 66종 목록 밖의 시험은 화면에 나가기 전에
-             버린다(Robin보다 더 엄격한 제약). 무엇을 가져왔고 무엇을 일부러 안 가져왔는지는
-             README "Robin의 프롬프트에서 무엇을, 왜 가져왔는가"에 항목별로 전부 적어 뒀다.`,
+      note: `후보 탐색의 심사관에게는 Robin의 순위 지시문에서 <b>평가 기준의 우선순위</b>를 가져왔다 —
+             근거 강도 → 잔여 위험 → 실현 가능성 → 참신성 순이고, 참신함만으로 점수를 올리지 않으며
+             "표현의 설득력이 아니라 제시된 근거로" 판단한다. 반대로 <b>가져오지 않은 것</b>도 있다.
+             Robin은 시험 이름을 AI가 자유롭게 짓게 하지만, 여기서는 목록 밖 시험을 버린다(재현 가능한
+             출처와 판정 기준이 남지 않기 때문). 쌍대비교 순위 집계도 호출 수가 제곱으로 늘어 쓰지 않았다.`,
     },
 
     {
@@ -569,13 +521,12 @@
             <span class="to">→</span><span class="act"><b>로딩 단계에서 아예 제외</b> — 메모리에 올라오지도 않는다</span></div>
         </div>
         <div class="guide-note warn" style="margin-top:16px">
-          <b>이 정책은 만들어지자마자 우리 자신의 데모를 반려했다.</b><br>
-          원래 이 문서의 예시는 "아세트아미노펜 + 유당 → 갈변"이었다. 그런데 분자 구조를 계산해 보니
-          아세트아미노펜은 아미드라 반응할 아민이 없었다. 두 번째 반려 사유였던 "소아 SLS 10mg 초과"도,
-          출처를 추적해 보니 EMA 기준의 SLS 항목은 <b>경피 투여 전용</b>이고 경구 소아 상한은 존재하지 않아
-          그 행은 <code class="f1-mono">NO_SOURCE_FOUND / NOT_A_RULE</code>로 폐기됐다.
-          <b>근거가 없는 판정은 하지 않는다는 원칙이 우리 편의보다 먼저 적용된 셈이고, 그것이 이 프로젝트가
-          팔려는 바로 그 가치다.</b>
+          <b>이 정책은 그럴듯해 보이는 규칙에도 예외 없이 적용된다.</b><br>
+          예를 들어 "아세트아미노펜 + 유당 → 갈변" 같은 판정은 나오지 않는다 — 분자 구조를 계산하면
+          아세트아미노펜은 아미드라 반응할 아민이 없기 때문이다. "소아 SLS 10mg 초과" 같은 규칙도
+          출처를 추적하면 EMA 기준의 SLS 항목이 <b>경피 투여 전용</b>이고 경구 소아 상한은 존재하지 않아,
+          <code class="f1-mono">NO_SOURCE_FOUND / NOT_A_RULE</code>로 읽는 단계에서 빠진다.
+          <b>근거가 없는 판정은 하지 않는다 — 그것이 이 시스템이 제공하려는 가치다.</b>
         </div>`,
       note: `규제 기관을 설득해야 하는 분야에서는 "그럴듯한 규칙이 많은 것"보다
              <b>"근거 없는 규칙은 안 돌린다"</b>가 훨씬 중요한 자산이라고 판단했다.`,
@@ -587,9 +538,9 @@
     <div class="f1-cta">
       <p><b>이제 직접 돌려 보세요.</b> <b>① 후보 탐색</b>에서는 입력줄 아래 시연 시나리오가 각각 다른 경로를
         밟습니다 — 규칙이 제약을 반려하는 경우, 인구군에 따라 심사관이 바뀌는 경우, 값을 몰라도 후보부터
-        나오고 갈리는 지점만 되묻는 경우. 후보 카드의 <b>이 후보로 개발 착수</b>를 누르면 ②로 넘어갑니다.<br>
-        <b>② 개발 스튜디오</b>의 <b>데모 시작 — Lornoxicam 분산정</b>은 가운데 질문 카드에 답해 가며
-        CQA부터 확인배치까지 걷습니다. 규칙 ID를 누르면 <b>원본 CSV 행과 출처</b>가 열립니다.</p>
+        나오고 갈리는 지점만 되묻는 경우, 후보 이후의 개발까지. 후보 카드의 <b>이 후보로 개발 착수</b>를 누르면 ②로 넘어갑니다.<br>
+        네 번째 카드 또는 <b>② 개발 스튜디오</b>의 <b>가이드 시연 — Lornoxicam 분산정</b>은 장면 9개를 따라
+        CQA부터 확인배치까지 걷습니다(한 단계씩 또는 자동 진행). 규칙 ID를 누르면 <b>원본 CSV 행과 출처</b>가 열립니다.</p>
       <button type="button" id="guide-finish">설명 닫고 실행하기 →</button>
     </div>`;
 

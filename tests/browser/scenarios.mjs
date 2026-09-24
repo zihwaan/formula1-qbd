@@ -45,8 +45,8 @@ await p.locator('.scenario').nth(2).click();
 await waitDone();
 await p.waitForTimeout(1500);
 
-// finishRun()이 renderDataRequests()로 #drq를 채우고, continueScenario()가 자동으로
-// 첫 숫자 필드에 예시값을 넣어 #drq-submit을 누른다 — 그래프는 다시 돌지 않는다.
+// finishRun()이 renderDataRequests()로 #drq를 채우고, continueScenario()는 입력칸을 짚어 줄 뿐
+// 값을 넣지 않는다(시스템은 측정값을 지어내지 않는다). 아래에서 **테스트가** 연구자 대신 값을 넣는다.
 const drqVisible = await p.evaluate(() => !document.getElementById('drq').hidden);
 ck('데이터 요청 패널이 보인다(후보는 이미 나온 채로)', drqVisible);
 const reqCount = await p.locator('#drq-body .drq-req').count();
@@ -54,13 +54,20 @@ ck('대기 중인 데이터 요청이 1건 이상 렌더된다', reqCount >= 1, 
 const candsBeforeBadge = await p.locator('#cands .drq-badge').count();
 ck('후보 카드에 신뢰도 배지(grounded/provisional)가 보인다', candsBeforeBadge >= 1, `${candsBeforeBadge}개`);
 
-// 자동 제출 완료를 기다린다 — #drq-out에 재계산 결과 문구가 뜬다.
+const autoFilled = await p.evaluate(() => [...document.querySelectorAll('#drq-body .drq-num input')].some((i) => i.value));
+ck('시스템이 측정값을 대신 채우지 않는다', !autoFilled);
+// 테스트 입력: 이부프로펜 녹는점 문헌값(약 76 °C) — 연구자가 가진 값을 넣는 동작을 흉내 낸다
+const tmInput = p.locator('#drq-body .drq-num input[data-key="tm_c"]');
+const firstNum = (await tmInput.count()) ? tmInput : p.locator('#drq-body .drq-num input').first();
+await firstNum.fill((await tmInput.count()) ? '76' : '1');
+await p.click('#drq-submit');
+// 제출 완료를 기다린다 — #drq-out에 재계산 결과 문구가 뜬다.
 await p.waitForFunction(() => {
   const el = document.getElementById('drq-out');
   return el && el.textContent.includes('plan_signature');
 }, null, { timeout: 60000 }).catch(() => {});
 const drqOutText = await p.locator('#drq-out').textContent().catch(() => '');
-ck('예시값 제출 → 재계산 결과가 그 자리에 뜬다(그래프 재실행 없음)',
+ck('값 제출 → 재계산 결과가 그 자리에 뜬다(그래프 재실행 없음)',
   drqOutText.includes('전략') && drqOutText.includes('plan_signature'), drqOutText.slice(0, 160));
 
 console.log('\n[콘솔/페이지 오류]');

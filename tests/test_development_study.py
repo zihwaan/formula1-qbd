@@ -178,17 +178,22 @@ def test_verified_region_and_scope(svc):
     assert tr["identifiers"]["verification_plan_id"]
 
 
-def test_synthetic_verification_results_cannot_promote(svc):
+def test_literature_values_cannot_verify_required_points(svc):
+    """필수 확인점에 문헌값을 넣으면 VR015가 확인 판정 자체를 거부한다 — 무효화도 승격도 아니다."""
     sid, st = _walk_to_verification(svc)
     pts = _verification_values(st)
     for v in pts.values():
-        v["evidence_status"] = "SYNTHETIC_DEMO"
+        v["evidence_status"] = "LITERATURE_DIRECT"
     svc.act(sid, "verification_submit", {"points": pts})
     st = svc.act(sid, "verification_confirm", {})
     assert st["status"] == "VERIFICATION_GATE"
     blocked = {v["rule_id"] for v in st["evaluations"]["verification_gate"]["verdicts"]
                if v["effect"] == "BLOCK_STAGE"}
     assert "VR015" in blocked
+    fired = {v["rule_id"] for v in st["evaluations"]["verification_gate"]["verdicts"] if v["status"] == "FIRES"}
+    assert "VR011" not in fired                                     # 합성값을 "전부 통과"로 세지 않는다
+    assert all(p["judged"] is False for p in st["verification"]["gate"]["points"].values()
+               if p["role"] != "REFERENCE_EXISTING")
     assert st["region"]["design_space"]["status"] == "PROVISIONAL"   # 무효화도 승격도 아님
 
 
@@ -199,7 +204,11 @@ def test_spec_fail_invalidates_region_and_diagnoses(svc):
     st = svc.act(sid, "verification_confirm", {})
     assert st["region"]["design_space"]["status"] == "INVALIDATED"
     assert st["status"] == "WAITING_DIRECTIVE_APPROVAL"
-    assert st["diagnosis"]["generated_by"].startswith("deterministic_stand_in")
+    # LLM 응답이 없으면 가설·방향을 지어내지 않는다 — 연구자가 방향을 직접 고른다
+    assert st["diagnosis"]["generated_by"] == "unavailable"
+    assert st["diagnosis"]["hypotheses"] == [] and st["diagnosis"]["directive"] is None
+    with pytest.raises(StudyError):
+        svc.act(sid, "directive_approve", {})
     st = svc.act(sid, "directive_approve", {"directive": "DOE_AUGMENT"})
     assert st["status"] == "WAITING_RSM_APPROVAL"
 
@@ -248,9 +257,7 @@ def test_screening_path_classifies_by_effect_interval_and_routes_to_rsm(svc):
     """4요인·사전근거 없음 → Res IV 부분요인 screening → 효과구간 판정 → ACTIVE만 RSM으로 (명세 §6 D7)."""
     import random
     h = ho.lornoxicam_demo(svc.rb, "t")
-    h["fixed_parameters"].append({"name": "lubrication_time", "value": 2.0, "unit": "min", "status": "SET",
-                                  "evidence_ref": "t"})
-    h["formulation_fingerprint"] = ho.fingerprint(h)   # 안 하면 PV001이 lineage 불일치로 잡는다(아래 테스트)
+    h["formulation_fingerprint"] = ho.fingerprint(h)
     st = svc.create(h, mode="demo")
     sid = st["study_id"]
     svc.act(sid, "required_data", SCRIPT["required_data"])
@@ -297,7 +304,7 @@ def test_screening_path_classifies_by_effect_interval_and_routes_to_rsm(svc):
         assert st["factors"]["F_lubricant_pct"]["disposition"] == "FIXED"
         assert len(st["plans"][-1]["factor_ids"]) == 3
     # MONITOR_ONLY CQA는 요인 판정의 not_evaluated에 자동 기록 (§15)
-    assert any("파괴강도" in n for n in st["screening"]["decisions"][0]["not_evaluated"])
+    assert any("함량" == n for n in st["screening"]["decisions"][0]["not_evaluated"])
 
 
 def test_tampered_handoff_goes_to_audit_review(svc):
@@ -306,3 +313,28 @@ def test_tampered_handoff_goes_to_audit_review(svc):
     st = svc.create(h, mode="demo")
     assert st["status"] == "WAITING_AUDIT_REVIEW"
     assert any(t["reason"] == "LINEAGE_MISMATCH" for t in st["timeline"])
+
+
+def test_reference_batch_uses_published_values_and_is_not_promotion(svc):
+    """가이드 시연 장면 9 — 논문 최적처방 배치(Table 5·6 공개 관측값)는 참고 평가만 한다."""
+    sid, st = _walk_to_verification(svc)
+    ref = next(p for p in st["verification"]["plan"]["points"] if p["role"] == "REFERENCE_EXISTING")
+    rr = SCRIPT["reference_results"]
+    svc.act(sid, "verification_submit", {"points": {ref["point_id"]: rr}})
+    st = svc.act(sid, "verification_confirm", {})
+    assert st["status"] == "VERIFICATION_EXECUTION"               # 필수 3점 없이는 판정하지 않는다
+    g = st["verification"]["gate"]
+    assert g["partial"] and list(g["points"]) == [ref["point_id"]]
+    x = g["points"][ref["point_id"]]
+    assert x["spec_pass_all_applicable"] and x["within_family_pi_all_doe"]   # 공개 관측값이 잠근 PI 안
+    assert st["region"]["design_space"]["status"] == "PROVISIONAL"
+
+
+def test_demo_candidate_is_the_published_formulation(svc):
+    """시연 후보는 논문 Table 10의 설계 중심점 F2 그대로다 — 지어낸 조성이 없다."""
+    h = ho.lornoxicam_demo(svc.rb, "t")
+    comp = {i["name"]: i["pct_w_w"] for i in h["ingredients"]}
+    assert comp == {"Lornoxicam": 3.2, "Microcrystalline cellulose": 59.2, "Mannitol": 29.6,
+                    "Crospovidone": 6.0, "Sodium lauryl sulfate": 2.0}
+    assert h["unit_weight_mg"] == 250.0 and h["batch_scale"] is None
+    assert all(i["grade"] is None for i in h["ingredients"])        # 논문에 등급이 없다
