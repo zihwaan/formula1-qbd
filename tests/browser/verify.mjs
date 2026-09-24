@@ -76,7 +76,7 @@ console.log('\n[3] 가이드 닫기 (핵심 회귀)');
 await page.click('#guide-close');
 await page.waitForTimeout(200);
 check('닫기 버튼으로 사라진다', !(await shown(page, 'guide')));
-check('대시보드 클릭 가능', (await topAt(page, '#run')) === 'ok', await topAt(page, '#run'));
+check('대시보드 클릭 가능 (입력 에이전트)', (await topAt(page, '#agent-send')) === 'ok', await topAt(page, '#agent-send'));
 
 console.log('\n[4] 다시 열기 / ESC / 배경 클릭');
 await page.click('#guide-open');
@@ -92,6 +92,7 @@ check('닫은 뒤 body 스크롤 복구',
   await page.evaluate(() => document.body.style.overflow === ''));
 
 console.log('\n[5] 설계 실행 → 규칙 모달');
+await page.evaluate(() => { document.getElementById('manual').open = true; });   // 폼은 보조 경로(접힘)
 await page.fill('#request', '소아용 플루옥세틴 정제를 설계해줘');
 await page.click('#run');
 await page.waitForSelector('.chip', { timeout: 240000 });
@@ -140,7 +141,7 @@ await m.waitForTimeout(200);
 check('모바일에서 가이드 닫힘', !(await shown(m, 'guide')));
 const mo = await m.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 check('모바일 가로 오버플로 없음', mo <= 1, `${mo}px`);
-check('모바일에서 실행 버튼 클릭 가능', (await topAt(m, '#run')) === 'ok', await topAt(m, '#run'));
+check('모바일에서 에이전트 보내기 클릭 가능', (await topAt(m, '#agent-send')) === 'ok', await topAt(m, '#agent-send'));
 
 console.log('\n[9] 콘솔 오류');
 check('오류 없음', errors.length === 0, errors.join(' | '));

@@ -29,6 +29,7 @@ const fontOk = await page.evaluate(() => document.fonts.check('16px "Pretendard 
 if (!fontOk) note('MED', '폰트', 'Pretendard 미적용 — 시스템 폰트로 폴백');
 
 console.log('\n── B. 실행 중 버튼/상태 (이중 실행 방지)');
+await page.evaluate(() => { document.getElementById('manual').open = true; });
 await page.fill('#request', '소아용 플루옥세틴 정제를 설계해줘');
 await page.click('#run');
 await page.waitForTimeout(1200);

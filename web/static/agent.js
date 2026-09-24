@@ -9,9 +9,7 @@
 (() => {
   const el = (id) => document.getElementById(id);
   const history = [];          // {role, text} — 서버에 최근 12개만 보낸다
-  let open = false;
   let busy = false;
-  let unread = 0;
   let lastNudgeKey = "";
 
   const KIND_LABEL = {
@@ -37,75 +35,38 @@
     };
   }
 
-  // ── 뼈대 ──────────────────────────────────────────────────────────────
+  // ── 뼈대 — 화면 상단의 주 입력 패널 (두 탭 공용) ─────────────────────
   function mount() {
-    const launcher = document.createElement("button");
-    launcher.id = "agent-launcher";
-    launcher.type = "button";
-    launcher.className = "agent-launcher";
-    launcher.setAttribute("aria-controls", "agent-dock");
-    launcher.setAttribute("aria-expanded", "false");
-    launcher.innerHTML = `<span class="al-dot" aria-hidden="true"></span><span class="al-text">입력 에이전트</span><span class="al-badge" hidden></span>`;
-    launcher.onclick = () => toggle(!open);
-
-    const peek = document.createElement("div");
-    peek.id = "agent-peek";
-    peek.className = "agent-peek";
-    peek.hidden = true;
-    peek.onclick = () => toggle(true);
-
-    const dock = document.createElement("aside");
-    dock.id = "agent-dock";
-    dock.className = "agent-dock";
-    dock.hidden = true;
-    dock.setAttribute("aria-label", "입력 에이전트");
-    dock.innerHTML = `
-      <header class="ad-head">
-        <div><b>입력 에이전트</b><small id="agent-ctx">맥락: 후보 탐색</small></div>
-        <button type="button" class="ad-close" aria-label="닫기">✕</button>
+    const panel = el("agent-panel");
+    panel.innerHTML = `
+      <header class="ap-head">
+        <div class="ap-title"><span class="ap-dot" aria-hidden="true"></span><b>입력 에이전트</b>
+          <small id="agent-ctx">맥락: 후보 탐색</small></div>
+        <p class="ap-intro">말로 요청하면 지금 맥락을 읽고 <b>실행할 수 있는 입력</b>으로 정리해 제안합니다.
+          판정은 룰북이 하고, 카드의 [실행]을 눌러야 반영됩니다. 글에 없는 숫자나 구조식은 채우지 않습니다.</p>
       </header>
-      <p class="ad-intro">말로 요청하면 실행할 수 있는 입력으로 정리해 제안합니다. 판정은 룰북이 하고,
-        실행은 카드의 [실행]을 눌러야 반영됩니다. 글에 없는 숫자나 구조식은 채우지 않습니다.</p>
       <div class="ad-log" id="agent-log" role="log" aria-live="polite"></div>
-      <div class="ad-chips" id="agent-chips"></div>
       <form class="ad-form" id="agent-form">
         <label class="sr-only" for="agent-input">에이전트에게 말하기</label>
         <textarea id="agent-input" rows="2" maxlength="2000" placeholder="예: 소아용 현탁액으로 설계해 줘 · 녹는점 측정값 알려 줄게 · 왜 막혔어?"></textarea>
         <button type="submit" class="primary" id="agent-send">보내기</button>
-      </form>`;
-    document.body.append(launcher, peek, dock);
-    dock.querySelector(".ad-close").onclick = () => toggle(false);
+      </form>
+      <div class="ad-chips" id="agent-chips"></div>`;
     el("agent-form").onsubmit = (e) => { e.preventDefault(); send(); };
     el("agent-input").addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
     });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && open) toggle(false); });
     renderChips();
     say("agent", {
-      reply: "약 이름(또는 SMILES), 대상 환자, 제형, 1회 용량을 말씀해 주시면 설계 실행을 준비합니다. "
+      reply: "무엇을 설계할까요? 약 이름(또는 SMILES), 대상 환자, 제형, 1회 용량을 말씀해 주시면 설계 실행을 준비합니다. "
         + "설계가 끝나면 남은 데이터 요청과 다음 행동을 먼저 알려 드립니다.",
       proposals: [], source: "context",
-    }, { quiet: true });
+    });
   }
 
-  function toggle(on) {
-    open = on;
-    el("agent-dock").hidden = !on;
-    el("agent-launcher").setAttribute("aria-expanded", String(on));
-    el("agent-launcher").classList.toggle("on", on);
-    document.body.classList.toggle("agent-open", on);
-    if (on) {
-      unread = 0; badge(); el("agent-peek").hidden = true;
-      updateCtx();
-      setTimeout(() => el("agent-input").focus({ preventScroll: true }), 30);
-      const log = el("agent-log"); log.scrollTop = log.scrollHeight;
-    }
-  }
-
-  function badge() {
-    const b = document.querySelector("#agent-launcher .al-badge");
-    b.hidden = !unread;
-    b.textContent = unread > 9 ? "9+" : String(unread);
+  function focusAgent() {
+    el("agent-panel").scrollIntoView({ block: "start", behavior: "smooth" });
+    el("agent-input").focus({ preventScroll: true });
   }
 
   function updateCtx() {
@@ -123,13 +84,14 @@
     const i = ids();
     const chips = i.tab === "studio"
       ? ["지금 무엇을 해야 해?", "왜 막혔어?"]
-      : i.run_id ? ["결과 설명해 줘", "다음에 뭘 하면 돼?"] : ["어떤 정보가 필요해?"];
+      : i.run_id ? ["결과 설명해 줘", "다음에 뭘 하면 돼?"]
+        : ["어떤 정보가 필요해?", "성인용 이부프로펜 정제 설계해 줘"];
     box.innerHTML = chips.map((c) => `<button type="button" class="ad-chip">${esc(c)}</button>`).join("");
     box.querySelectorAll(".ad-chip").forEach((b) => { b.onclick = () => { el("agent-input").value = b.textContent; send(); }; });
   }
 
   // ── 말하기 ────────────────────────────────────────────────────────────
-  function say(role, data, opts = {}) {
+  function say(role, data) {
     const log = el("agent-log");
     const row = document.createElement("div");
     row.className = `ad-msg ${role}`;
@@ -144,12 +106,6 @@
         ${(data.notes || []).length ? `<ul class="ad-notes">${data.notes.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}`;
       (data.proposals || []).forEach((p) => row.append(card(p)));
       history.push({ role: "agent", text: data.reply || "" });
-      if (!open && !opts.quiet) {
-        unread += 1; badge();
-        const peek = el("agent-peek");
-        peek.textContent = data.reply || "";
-        peek.hidden = !data.reply;
-      }
     }
     while (history.length > 12) history.shift();
     log.append(row);
@@ -249,6 +205,7 @@
 
   function fillForm(p) {
     if (window.F1Studio) window.F1Studio.showTab("discovery");
+    el("manual").open = true;
     el("request").value = p.request || "";
     el("smiles").value = p.smiles || "";
     el("pinned").value = (p.required_excipients || []).join(", ");
@@ -269,7 +226,6 @@
         S && S.showTab("discovery");
         D.startRunWith(p);
         result("설계를 시작했습니다 — 그래프와 해설이 진행을 보여 줍니다. 끝나면 다음 행동을 알려 드립니다.", "ok");
-        if (window.matchMedia("(max-width: 760px)").matches) toggle(false);
         return true;
       }
       if (p.kind === "submit_measurements") {
@@ -332,5 +288,5 @@
   document.addEventListener("f1:tab", () => updateCtx());
 
   mount();
-  window.F1Agent = { open: () => toggle(true), close: () => toggle(false) };
+  window.F1Agent = { focus: focusAgent };
 })();

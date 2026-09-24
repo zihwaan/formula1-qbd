@@ -123,3 +123,24 @@ def test_daily_token_limit_is_named_and_fails_fast(monkeypatch):
     monkeypatch.setattr(C, "_DAILY_BLOCK", {m: float("inf") for m in C.GROQ_MODELS})
     with pytest.raises(C.LLMUnavailable, match="일일"):
         C._groq_with_fallback(lambda m: 100, lambda m: None)
+
+
+def test_contest_api_quota_exhaustion_falls_back_to_free_model(monkeypatch):
+    """대회 API가 403(누적 한도 소진)이면 그 뒤로는 Groq로 간다 — 결과를 지어내지 않고 실제 모델로."""
+    import httpx
+    from pydantic import BaseModel
+    from formula.agents import client as C
+
+    class A(BaseModel):
+        a: int
+
+    def forbidden(*args, **kwargs):
+        raise httpx.HTTPStatusError("403", request=httpx.Request("POST", "https://x"),
+                                    response=httpx.Response(403, text="quota"))
+
+    monkeypatch.setattr(C, "providers", lambda: ("dacon", "groq"))
+    monkeypatch.setattr(C, "_DACON_EXHAUSTED", {"flag": False})
+    monkeypatch.setattr(httpx, "post", forbidden)
+    monkeypatch.setattr(C, "_groq_parse", lambda fmt, *a, **k: fmt(a=3))
+    assert C.parse_structured(A, "s", "u").a == 3
+    assert C._DACON_EXHAUSTED["flag"] and C.provider() == "groq"

@@ -72,6 +72,14 @@ GROQ_TIMEOUT = 150.0
 # 호출당 토큰을 줄이는 게 답이다. 실측이 더 나았던 75초로 되돌린다.
 GROQ_WAIT_BUDGET = 75.0
 
+# 대회 제공 API (제4회 AI 신약개발 경진대회, OpenAI Responses 호환 · Azure APIM).
+# 인증은 `api-key` 헤더. 팀 누적 한도(3,000만 토큰)를 다 쓰면 403 → 그 뒤로는 무료 Groq로 자동 전환한다.
+DACON_BASE_URL = os.environ.get(
+    "DACON_BASE_URL", "https://dacon-apim-hackathon-0903.azure-api.net/hackathon/openai/v1").rstrip("/")
+DACON_MODEL = os.environ.get("DACON_MODEL", "gpt-5.6-sol").strip()
+DACON_TIMEOUT = 180.0
+DACON_EFFORT = {"high": "medium", "medium": "medium", "low": "low"}
+
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -93,25 +101,46 @@ def _groq_key() -> str:
     return os.environ.get("GROQ_API_KEY", "").strip()
 
 
+def _dacon_key() -> str:
+    return os.environ.get("DACON_API_KEY", "").strip()
+
+
+# 대회 API 누적 한도 소진(403) — 프로세스가 끝날 때까지 다시 시도하지 않는다.
+_DACON_EXHAUSTED = {"flag": False}
+
+
 @lru_cache(maxsize=1)
-def provider() -> str:
-    """이번 프로세스가 쓸 프로바이더 이름. "none"이면 LLM 경로 없음."""
+def providers() -> Tuple[str, ...]:
+    """이번 프로세스가 쓸 프로바이더 순서. 앞의 것이 실패하면 다음 것으로 넘어간다."""
     requested = os.environ.get("FORMULA1_LLM_PROVIDER", "auto").strip().lower()
     if requested == "none":
-        return "none"
+        return ()
     if requested == "anthropic":
-        return "anthropic" if _anthropic_available() else "none"
+        return ("anthropic",) if _anthropic_available() else ()
     if requested == "groq":
-        return "groq" if _groq_key() else "none"
-    # auto
+        return ("groq",) if _groq_key() else ()
+    if requested == "dacon":
+        return tuple(p for p, ok in (("dacon", _dacon_key()), ("groq", _groq_key())) if ok)
+    # auto: 대회 API → 무료 Groq (→ Anthropic 자격증명이 있으면 그것이 최우선)
+    chain = []
     if _anthropic_available():
-        return "anthropic"
+        chain.append("anthropic")
+    if _dacon_key():
+        chain.append("dacon")
     if _groq_key():
-        return "groq"
+        chain.append("groq")
+    return tuple(chain)
+
+
+def provider() -> str:
+    """지금 첫 번째로 시도할 프로바이더. "none"이면 LLM 경로 없음."""
+    for name in providers():
+        if name == "dacon" and _DACON_EXHAUSTED["flag"]:
+            continue
+        return name
     return "none"
 
 
-@lru_cache(maxsize=1)
 def credentials_available() -> bool:
     """LLM 경로를 쓸 수 있는지. `/api/meta`의 `llm_available`이 이 값을 그대로 쓴다."""
     return provider() != "none"
@@ -119,7 +148,8 @@ def credentials_available() -> bool:
 
 def provider_label() -> str:
     """UI에 보여줄 모델 이름 — 어떤 경로로 돌고 있는지 화면에서 구분되게."""
-    return {"anthropic": MODEL, "groq": GROQ_MODELS[0], "none": ""}[provider()]
+    return {"anthropic": MODEL, "dacon": f"{DACON_MODEL} (대회 API)", "groq": GROQ_MODELS[0],
+            "none": ""}[provider()]
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +570,105 @@ def _groq_stream(system_prefix: str, user: str, on_delta: Optional[Callable[[str
 
 
 # ---------------------------------------------------------------------------
+# 대회 API 경로 (OpenAI Responses 호환)
+# ---------------------------------------------------------------------------
+def _dacon_headers() -> Dict[str, str]:
+    key = _dacon_key()
+    return {"api-key": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+
+def _dacon_payload(system: str, user: str, effort: str, max_tokens: int, stream: bool) -> Dict[str, Any]:
+    # 추론 토큰도 max_output_tokens에서 나가므로 Groq용으로 줄여 둔 값보다 넉넉히 준다.
+    return {"model": DACON_MODEL, "instructions": system, "input": user,
+            "reasoning": {"effort": DACON_EFFORT.get(effort, "low")},
+            "max_output_tokens": max(2000, min(16000, max_tokens * 3)), "stream": stream}
+
+
+def _dacon_fail(exc: Exception) -> LLMUnavailable:
+    httpx = _httpx()
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status == 403:
+            _DACON_EXHAUSTED["flag"] = True
+            return LLMUnavailable("대회 API 토큰 한도 소진 — 무료 모델로 전환")
+        if status == 429:
+            return LLMUnavailable("대회 API 단시간 한도 초과")
+        if status in (401, 404, 400):
+            return LLMUnavailable(f"대회 API 요청 거부({status})")
+        return LLMUnavailable("대회 API 서버 오류")
+    if isinstance(exc, ValidationError):
+        return LLMUnavailable("구조화 출력이 스키마를 만족하지 못함")
+    return LLMUnavailable(_friendly(exc))
+
+
+def _dacon_text(body: Dict[str, Any]) -> str:
+    if body.get("output_text"):
+        return body["output_text"]
+    parts = []
+    for item in body.get("output") or []:
+        for c in item.get("content") or []:
+            if isinstance(c, dict) and c.get("type") in ("output_text", "text"):
+                parts.append(c.get("text") or "")
+    return "".join(parts)
+
+
+def _dacon_parse(output_format: Type[T], system_prefix: str, user: str,
+                 system_suffix: str, effort: str, max_tokens: int) -> T:
+    httpx = _httpx()
+    system = (system_prefix + ("\n\n" + system_suffix if system_suffix else "")
+              + _schema_instruction(output_format))
+    hint = ""
+    last: Optional[Exception] = None
+    for _ in range(2):
+        payload = _dacon_payload(system, user + hint + "\n\n(응답은 위 스키마의 JSON 객체 하나)", effort,
+                                 max_tokens, stream=False)
+        payload["text"] = {"format": {"type": "json_object"}}
+        try:
+            res = httpx.post(f"{DACON_BASE_URL}/responses", headers=_dacon_headers(), json=payload,
+                             timeout=DACON_TIMEOUT)
+            res.raise_for_status()
+            return output_format.model_validate_json(_strip_fence(_dacon_text(res.json())))
+        except ValidationError as exc:
+            last = exc
+            hint = f"\n\n## 직전 출력이 스키마를 위반했다 — 고쳐서 다시 출력하라\n{exc}"
+            continue
+        except Exception as exc:   # noqa: BLE001
+            raise _dacon_fail(exc) from exc
+    raise _dacon_fail(last)  # type: ignore[arg-type]
+
+
+def _dacon_stream(system_prefix: str, user: str, on_delta: Optional[Callable[[str], None]],
+                  system_suffix: str, effort: str, max_tokens: int, emitted: List[bool]) -> str:
+    httpx = _httpx()
+    system = system_prefix + ("\n\n" + system_suffix if system_suffix else "")
+    chunks: List[str] = []
+    try:
+        with httpx.stream("POST", f"{DACON_BASE_URL}/responses", headers=_dacon_headers(),
+                          json=_dacon_payload(system, user, effort, max_tokens, stream=True),
+                          timeout=DACON_TIMEOUT) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                try:
+                    frame = json.loads(line[5:].strip())
+                except json.JSONDecodeError:
+                    continue
+                if frame.get("type") == "response.output_text.delta" and frame.get("delta"):
+                    chunks.append(frame["delta"])
+                    emitted[0] = True
+                    if on_delta is not None:
+                        on_delta(frame["delta"])
+                elif frame.get("type") in ("response.failed", "error"):
+                    raise LLMUnavailable("대회 API 응답 실패")
+    except LLMUnavailable:
+        raise
+    except Exception as exc:   # noqa: BLE001
+        raise _dacon_fail(exc) from exc
+    return "".join(chunks)
+
+
+# ---------------------------------------------------------------------------
 # 공개 인터페이스 — 호출부는 이 두 함수만 안다
 # ---------------------------------------------------------------------------
 def parse_structured(
@@ -556,13 +685,21 @@ def parse_structured(
     `wait_budget`: 무료 티어 토큰 예산을 기다릴 최대 초. 사용자가 직접 누른 짧은 요청
     (lab-in-the-loop 판독·지시)은 조금 더 기다려서라도 실제 LLM 결과를 받는 편이 낫다.
     """
-    name = provider()
-    if name == "anthropic":
-        return _anthropic_parse(output_format, system_prefix, user, system_suffix, effort, max_tokens)
-    if name == "groq":
-        return _groq_parse(output_format, system_prefix, user, system_suffix, effort,
-                           max_tokens, wait_budget)
-    raise LLMUnavailable("LLM 자격증명 없음 (ANTHROPIC_API_KEY / GROQ_API_KEY 미설정)")
+    last: Optional[LLMUnavailable] = None
+    for name in providers():
+        try:
+            if name == "anthropic":
+                return _anthropic_parse(output_format, system_prefix, user, system_suffix, effort, max_tokens)
+            if name == "dacon":
+                if _DACON_EXHAUSTED["flag"]:
+                    continue
+                return _dacon_parse(output_format, system_prefix, user, system_suffix, effort, max_tokens)
+            if name == "groq":
+                return _groq_parse(output_format, system_prefix, user, system_suffix, effort,
+                                   max_tokens, wait_budget)
+        except LLMUnavailable as exc:
+            last = exc          # 다음 프로바이더로 (대회 API 소진·오류 → 무료 Groq)
+    raise last or LLMUnavailable("LLM 자격증명 없음 (DACON_API_KEY / GROQ_API_KEY 미설정)")
 
 
 def stream_text(
@@ -574,12 +711,23 @@ def stream_text(
     max_tokens: int = MAX_TOKENS,
 ) -> str:
     """토큰을 흘리며 응답을 받는다 — 심사관 사고 과정을 UI에 실시간 노출하는 용도."""
-    name = provider()
-    if name == "anthropic":
-        return _anthropic_stream(system_prefix, user, on_delta, system_suffix, effort, max_tokens)
-    if name == "groq":
-        return _groq_stream(system_prefix, user, on_delta, system_suffix, effort, max_tokens)
-    raise LLMUnavailable("LLM 자격증명 없음 (ANTHROPIC_API_KEY / GROQ_API_KEY 미설정)")
+    last: Optional[LLMUnavailable] = None
+    emitted = [False]
+    for name in providers():
+        try:
+            if name == "anthropic":
+                return _anthropic_stream(system_prefix, user, on_delta, system_suffix, effort, max_tokens)
+            if name == "dacon":
+                if _DACON_EXHAUSTED["flag"]:
+                    continue
+                return _dacon_stream(system_prefix, user, on_delta, system_suffix, effort, max_tokens, emitted)
+            if name == "groq":
+                return _groq_stream(system_prefix, user, on_delta, system_suffix, effort, max_tokens)
+        except LLMUnavailable as exc:
+            last = exc
+            if emitted[0]:      # 이미 화면에 흘린 뒤라면 다른 모델로 이어 붙이지 않는다
+                raise
+    raise last or LLMUnavailable("LLM 자격증명 없음 (DACON_API_KEY / GROQ_API_KEY 미설정)")
 
 
 def load_prompt(base_dir: Path, relative: str, fallback: str = "") -> str:

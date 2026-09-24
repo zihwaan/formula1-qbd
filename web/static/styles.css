@@ -349,6 +349,12 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 /* ── 실험 데이터 입력 (선택) ────────────────────────────────────────
    비워 두는 것이 기본이고, 채우면 그만큼 선행 확인시험이 줄어든다는 사실이
    화면에서 읽혀야 한다 — 그래서 항목마다 무엇이 열리는지를 작은 글씨로 단다. */
+/* 보조 입력 경로 — 에이전트 아래에 접혀 있다 */
+.manual { margin: 0 0 14px; border: 1px dashed var(--border); border-radius: var(--radius-m); padding: 8px 14px; background: var(--surface-1); }
+.manual > summary { cursor: pointer; font-weight: 650; font-size: 12.5px; padding: 4px 0; }
+.manual[open] > summary { margin-bottom: 10px; }
+.manual-opt { color: var(--ink-muted); font-weight: 500; font-size: 11px; margin-left: 6px; }
+.manual .composer { box-shadow: none; }
 .inputs {
   margin-top: 12px; background: var(--surface-1); border: 1px solid var(--border);
   border-radius: var(--radius-s); padding: 10px 14px; font-size: 12px;

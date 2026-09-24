@@ -27,9 +27,11 @@ async function ask(text, ms = 60000) {
   return lastAgent();
 }
 
-check('런처가 보임', await page.isVisible('#agent-launcher'));
-await page.click('#agent-launcher');
-check('dock이 열림', await page.isVisible('#agent-dock'));
+check('입력 에이전트가 화면의 주 입력(맨 위, 폼보다 먼저)', await page.evaluate(() => {
+  const a = document.getElementById('agent-panel').getBoundingClientRect();
+  const m = document.getElementById('manual');
+  return a.height > 150 && a.top < m.getBoundingClientRect().top && !m.open;
+}));
 
 // 1) 용량이 없으면 실행 카드는 준비되지 않은 상태로 묻는다
 await ask('성인용 이부프로펜 정제로 설계해 줘');
@@ -87,12 +89,11 @@ if (txt.includes('required_data')) {
 const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 await phone.addInitScript(() => { try { localStorage.setItem('f1_guide_seen_v1', '1'); } catch (e) {} });
 await phone.goto(URL, { waitUntil: 'networkidle' });
-await phone.click('#agent-launcher');
 const geo = await phone.evaluate(() => {
-  const r = document.getElementById('agent-dock').getBoundingClientRect();
-  return { w: r.width, bottom: r.bottom, sw: document.documentElement.scrollWidth, vw: innerWidth, vh: innerHeight };
+  const r = document.getElementById('agent-panel').getBoundingClientRect();
+  return { w: r.width, top: r.top, sw: document.documentElement.scrollWidth, vw: innerWidth, vh: innerHeight };
 });
-check('휴대폰: 바닥 시트 전체 폭', Math.abs(geo.w - geo.vw) < 2 && Math.abs(geo.bottom - geo.vh) < 2, JSON.stringify(geo));
+check('휴대폰: 에이전트 패널이 첫 화면 안', geo.top < geo.vh * 0.6 && geo.w > geo.vw - 40, JSON.stringify(geo));
 check('휴대폰: 가로 넘침 없음', geo.sw <= geo.vw, JSON.stringify(geo));
 
 check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));

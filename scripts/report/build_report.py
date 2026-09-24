@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import html
 import json
-from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -264,8 +263,61 @@ def fig_states():
     return svg(720, 262, b)
 
 
+def exp_section(x) -> str:
+    if not x:
+        return ""
+    runs = x["runs"]
+    rows = ""
+    for r in runs:
+        sc = r["judge_scores"]
+        rows += (f"<tr><td>{E(r['label'])}</td><td>{r['repeat']}</td><td>{E(r['status'])}</td>"
+                 f"<td class='mono'>{E(r['plan_signature'] or '')}</td><td>{r['candidates_generated']}</td>"
+                 f"<td>{r['gate_passed']}/{r['gate_total']}</td><td>{E(', '.join(r['hard_fails']) or '—')}</td>"
+                 f"<td>{E(', '.join(r['summoned']) or '—')}</td>"
+                 f"<td>{len(sc) - r['judge_unscored']}/{len(sc)}</td>"
+                 f"<td>{r['pending_requests']}</td><td class='mono'>{E(r['winner'] or '—')}</td><td>{r['elapsed_s']:.0f}</td></tr>")
+    arows = ""
+    for a in x["agent"]:
+        p = (a["proposals"] or [{}])[0]
+        what = p.get("kind") or "—"
+        detail = []
+        if p.get("kind") == "start_run":
+            detail.append("준비됨" if p.get("ready") else f"미완성({', '.join(p.get('missing') or [])})")
+            if p.get("smiles_source"):
+                detail.append(f"구조: {p['smiles_source']}")
+            if p.get("measured_params"):
+                detail.append("값: " + ", ".join(f"{k}={v:g}" for k, v in p["measured_params"].items()))
+        elif p.get("kind") == "studio_action":
+            fp = (p.get("payload") or {}).get("fixed_parameters") or []
+            detail.append(f"{p.get('action')} · " + ", ".join(f"{f.get('name')}={f.get('status')}" for f in fp))
+        arows += (f"<tr><td>{E(a['id'])}</td><td>{E(a['text'])}</td><td>{E(what)}</td>"
+                  f"<td>{E(' · '.join(detail))}</td><td>{E(' / '.join(a.get('asks') or []) or '—')}</td></tr>")
+    sigs = {}
+    for r in runs:
+        sigs.setdefault(r["scenario"], set()).add((r["plan_signature"], r["status"], tuple(r["hard_fails"])))
+    same = all(len(v) == 1 for v in sigs.values())
+    tot = x.get("contest_tokens_used_estimate")
+    return f"""<h3>7.3 대회 API 기반 재실험</h3>
+<p>후보 탐색의 LLM 단계(요청 해석·설계·심사·반성)와 입력 에이전트를 대회 제공 API의 <code>{E(x['llm_model'].split(' (')[0])}</code>(OpenAI Responses 호환)로
+실행했다. 대회 API가 누적 한도 소진(403)이나 오류를 내면 같은 호출이 무료 Groq(gpt-oss-120b)로 넘어가도록 구현했고, 이 실험에서는 전환이
+일어나지 않았다(모든 후보·점수의 출처가 LLM). 화면의 시연 시나리오와 같은 입력 4종을 각 2회 실행했다(표 5).</p>
+<table><thead><tr><th>시나리오</th><th>회</th><th>종결</th><th>계획 서명</th><th>후보</th><th>게이트 통과</th><th>반려 규칙</th><th>소집 심사관</th><th>점수 있음</th><th>남은 요청</th><th>권고</th><th>초</th></tr></thead>
+<tbody>{rows}</tbody></table>
+<div class="tcap"><b>표 5.</b> 시나리오별 실행 결과(서버 응답·이벤트 스트림에서 기록). 점수 있음 = 실제로 매겨진 심사 점수 / 전체 심사 호출.</div>
+<p>결정론 계층의 결과는 반복 간 {'완전히 같았다' if same else '일부 달랐다'} — 계획 서명, 종결 상태, 반려 규칙이 시나리오마다 동일했다.
+유당을 고정한 소아 플루옥세틴은 세 전략의 후보가 모두 INC002로 반려되어 되돌림 없이 “제약 불가능”으로 끝났고, 용량을 준 이부프로펜은 미분화(MICRO)가
+계획에 들어오며 전략을 좁히는 실험 요청 3건(DSC·KF·TGA·XRPD 고체상 세트와 평형용해도)이 남았다. 반면 LLM이 만드는 부분은 달라졌다 —
+권고 후보는 이부프로펜과 메트포르민에서 반복마다 바뀌었고, 문헌 조사 심사관(REV005)은 설계된 성분이 룰북 밖 조합일 때만 소집되므로 고령자 메트포르민의
+1회차에만 나타났다. 심사 호출은 모두 점수를 받았다(무응답 0). 8회 실행과 입력 에이전트 6개 발화에 쓰인 대회 API 토큰은 약 {tot:,}개였다(응답 헤더의 잔여 토큰 추정치 차이).</p>
+<table><thead><tr><th>ID</th><th>사용자 발화</th><th>제안</th><th>카드 내용</th><th>되물음</th></tr></thead><tbody>{arows}</tbody></table>
+<div class="tcap"><b>표 6.</b> 입력 에이전트 응답. U3(“용량은 알아서”)은 용량을 채우지 않고 되물었고, U4(“SMILES는 네가 기억하는 걸로”)의 구조는 LLM이 아니라
+내장 구조 사전에서 왔다. U5의 “안식각 대충 30도”는 모델이 측정값으로 옮기지 않았다(사용자가 쓴 값이므로 옮겨도 가드레일은 통과한다 — 모호한 표현을
+실측값으로 받지 않은 것은 모델의 판단이다). U6은 개발 스튜디오의 진입 자료 단계에서 압축력을 UNKNOWN으로 기록하는 행동이 되었다.</div>
+"""
+
+
 # ── 본문 ──────────────────────────────────────────────────────────────────
-def build(data, tests: int, browser: str) -> str:
+def build(data, tests: int, browser: str, x=None) -> str:
     r = data["region"]
     sp = data["setpoint"]
     c = data["counts"]
@@ -278,7 +330,6 @@ def build(data, tests: int, browser: str) -> str:
         f"<tr><td class='mono'>{E(x['strategy_code'])}</td><td>{E(x['family'])}</td><td>{E(x['label_kr'])}</td>"
         f"<td class='mono'>{E(x['process_steps'])}</td><td class='mono'>{E(x['required_measurements'])}</td></tr>"
         for x in data["strategies"])
-    today = date.today().isoformat()
 
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <title>Formula 1 기술 보고서</title>
@@ -319,7 +370,7 @@ ol.refs li {{ margin-bottom: 2pt; }}
 
 <h1>Formula 1: 결정론적 규칙 검증과 입력 에이전트를 갖춘<br>다중 에이전트 제형 설계 및 실험계획 기반 운전 영역 검증 시스템</h1>
 <div class="sub">팀 Formula 1 · 제4회 인공지능 신약개발 경진대회</div>
-<div class="meta">라이브 시스템 https://zihwan.com/formula1 · 기술 보고서 · {today}</div>
+<div class="meta">라이브 시스템 https://zihwan.com/formula1 · 기술 보고서</div>
 
 <div class="abstract"><b class="h">초록</b>
 거대언어모델(LLM)은 제형 처방을 그럴듯하게 제안하지만, 배합 금기·공정 한계·규제 상한 같은 정량 판단에서
@@ -342,7 +393,7 @@ ol.refs li {{ margin-bottom: 2pt; }}
 <p>신약 하나가 허가되기까지의 비용과 시간 가운데 상당 부분은 주성분을 사람이 복용할 수 있는 형태로 만드는 제형 개발에서 쓰인다.
 주성분만으로는 정제가 형성되지 않으므로 희석제·결합제·붕해제·활택제 같은 첨가제를 섞는데, 바로 그 조합에서 화학적 비상용성
 (예: 2차 아민과 유당의 Maillard 반응), 공정 실패(유동성 부족으로 인한 직접타정 불가), 규제 상한 초과(소아용 첨가제 한도)가 발생한다.
-처방이 정해진 뒤에도 공정 변수를 어느 범위에서 흔들어도 규격을 지키는지 — 운전 영역 — 를 실험으로 증명해야 한다(ICH Q8(R2)).</p>
+처방이 정해진 뒤에도 공정 변수를 어느 범위에서 흔들어도 규격을 지키는지 — 운전 영역 — 를 실험으로 증명해야 한다[1].</p>
 <p>LLM은 넓은 조합 공간에서 후보를 상상하고 상충하는 목표 사이의 타협을 서술하는 데 강하지만, 수치 판단에서 근거 없는 값을
 확신 있게 생성하는 환각 문제가 있다. 제약에서 이러한 오류는 제품 폐기와 허가 반려로 직결된다. 따라서 우리는 LLM에게 판정 권한을
 주지 않고, 판정은 출처가 있는 규칙표와 결정론 엔진에만 맡기는 구조를 설계했다. 본 보고서는 그 구조와 구현, 그리고 공개 실측 데이터에
@@ -353,10 +404,10 @@ ol.refs li {{ margin-bottom: 2pt; }}
 (4) 사용자와 시스템 사이에서 맥락을 읽고 입력을 정리하되 수치·구조식 생성을 코드로 차단한 입력 에이전트.</p>
 
 <h2>2. 관련 연구와 배경</h2>
-<p><b>Quality by Design.</b> ICH Q8(R2)는 품질 목표(QTPP)에서 중요 품질 특성(CQA)을 도출하고, 위험평가(ICH Q9)로 중요 공정 변수를 좁혀
+<p><b>Quality by Design.</b> ICH Q8(R2)[1]는 품질 목표(QTPP)에서 중요 품질 특성(CQA)을 도출하고, 위험평가(ICH Q9[2])로 중요 공정 변수를 좁혀
 실험계획법으로 설계공간을 정의하는 체계를 제시한다. 설계공간의 신뢰성은 평균 반응면이 아니라 미래 배치가 규격을 만족할 확률로
 평가해야 한다는 관점이 베이즈·예측분포 기반 접근으로 제안되어 왔다[4,5].</p>
-<p><b>생물약제학 분류.</b> BCS는 용해도와 투과도로 약물을 분류하고(ICH M9), DCS는 용해 속도 제한(IIa)과 용해도 제한(IIb)을 구분해 제형
+<p><b>생물약제학 분류.</b> BCS는 용해도와 투과도로 약물을 분류하고[3], DCS는 용해 속도 제한(IIa)과 용해도 제한(IIb)을 구분해 제형
 전략(미분화 대 가용화)을 가른다[6]. 용해도 예측에는 ESOL[7]과 일반용해도식(GSE)[8] 같은 경험식이 쓰인다.</p>
 <p><b>LLM 과학 에이전트.</b> FutureHouse의 Robin은 가설 생성·실험 제안·결과 해석을 자동화해 후보 약물을 찾은 사례로, 지시문 원문을
 공개했다[9]. 본 시스템은 그 지시문 패턴(구별되는 가설의 배열 강제, 필요 없으면 제안하지 않기, 근거 우선의 평가 기준)을 가져오되,
@@ -374,6 +425,9 @@ ol.refs li {{ margin-bottom: 2pt; }}
 <tr><td>말을 입력으로 옮기는 것</td><td>“용량은 50 mg”, “압축력은 모름”</td><td>입력 에이전트 (수치·구조식 생성 금지)</td></tr>
 <tr><td>받아들일지 정하는 것</td><td>개발 후보 선택, 과적합 모델 처리</td><td>연구자</td></tr></tbody></table>
 <div class="tcap"><b>표 1.</b> 판단의 성격별 담당.</div>
+<p>LLM 호출은 한 인터페이스(구조화 출력·스트리밍)로 감싸 프로바이더를 바꿔 끼운다. 라이브 시스템은 대회 제공 API(OpenAI Responses 호환,
+gpt-5.6-sol)를 1순위로 쓰고, 팀 누적 한도 소진(403)이나 오류가 나면 같은 호출을 무료 Groq 모델로 넘긴다. 무료 모델의 분·일 단위 토큰 한도는
+클라이언트가 직접 회계해 호출이 몰릴 때 순번을 기다리게 하며, 끝내 응답이 없으면 결과를 지어내지 않고 “응답 없음”으로 표시한다.</p>
 
 <h2>4. 입력 에이전트</h2>
 <p>입력 에이전트는 두 그래프 앞에서 대화를 받는다. 맥락은 브라우저가 보낸 상태가 아니라 서버가 실행(run)과 개발 스터디(study)에서
@@ -383,7 +437,7 @@ ol.refs li {{ margin-bottom: 2pt; }}
 <figure>{fig_agent()}
 <figcaption><b>그림 2.</b> 입력 에이전트 처리 경로. 해석(LLM, 실패 시 규칙 해석기) 뒤의 네 가드레일은 모두 코드로 구현되어 있다.</figcaption></figure>
 <p>가드레일은 프롬프트가 아니라 코드다. (i) 제안에 들어가는 모든 숫자는 최근 사용자 발화에서 추출한 숫자 집합에 속해야 하며, 아니면 제거되고
-제거 사실이 사용자에게 표시된다. (ii) SMILES는 사용자 글에 그대로 있거나, 내장 구조 사전 또는 PubChem PUG-REST 조회에서만 얻고, 카드에 CID와 링크를
+제거 사실이 사용자에게 표시된다. (ii) SMILES는 사용자 글에 그대로 있거나, 내장 구조 사전 또는 PubChem[12] PUG-REST 조회에서만 얻고, 카드에 CID와 링크를
 붙인다. LLM이 쓴 SMILES는 사용하지 않는다. (iii) 측정 키는 실험 입력 허용목록과 측정 카탈로그 산출 필드 안에서만, 스튜디오 행동은 현재 상태가
 허용하는 것만 받고, 카드를 실행할 때 상태 버전이 바뀌었으면 실행하지 않는다. (iv) 설계 실행에는 구조식과 1회 용량이 필요하며, 없으면 카드는
 미완성으로 표시되고 에이전트가 되묻는다 — 용량이 없으면 용량/용해도 부피를 계산할 수 없어 DCS 분류가 성립하지 않기 때문이다.
@@ -481,11 +535,12 @@ AV ≤ 15, DE30 ≥ 75%이며, DE30 기준은 논문 기준이 아니라 프로�
 쓰지 않고 참고점으로만 비교하며, 합성·문헌 데이터로는 VERIFIED로 승격되지 않는다(VR015).</p>
 
 <h3>7.2 검증 계층의 동작</h3>
-<p>소아용 플루옥세틴 정제에 유당 수화물을 고정 성분으로 요구하면, 구조 패턴이 2차 아민을 검출하고 1대1 배합 금기 INC002(2차 아민 × 유당 → Maillard)가
+<p>소아용 플루옥세틴 정제에 유당 수화물을 고정 성분으로 요구하면, 구조 패턴이 2차 아민을 검출하고 1대1 배합 금기 INC002(2차 아민 × 유당 → Maillard 반응[13])가
 반려하며, 반려 사유가 고정 성분이므로 되돌림 없이 “제약 불가능”과 대체 성분(만니톨)을 낸다. 같은 금기가 “유당”, “Lactose, NF”, “유당수화물” 표기에서
 모두 발동하고 대체품인 만니톨·전분글리콜산나트륨에서는 발동하지 않음을 회귀 테스트가 고정한다.</p>
 
-<h3>7.3 소프트웨어 검증</h3>
+{exp_section(x)}
+<h3>7.4 소프트웨어 검증</h3>
 <p>단위·통합 테스트 {tests}개(pytest)가 구조 패턴 진리표, 검사 방향, 근거 정책, 페이즈 게이트, 되돌림·계획 불변식, 입력 에이전트 가드레일, 07_doe 규칙
 fixture 48건, 통계 골든 값, 스터디 흐름을 고정한다. 실제 브라우저 테스트({E(browser)})는 화면 상호작용, 다섯 렌더 경로의 스크립트 주입 차단, 9개 뷰포트
 폭의 반응형, 시연 시나리오의 실제 경로, 개발 스튜디오 9장면, 입력 에이전트의 대화→카드→실행 흐름을 검사한다.</p>
@@ -497,8 +552,9 @@ fixture 48건, 통계 골든 값, 스터디 흐름을 고정한다. 실제 브�
 <p><b>모르는 것의 표현.</b> “규칙이 발동하지 않음”과 “문제가 없음”을 구분하는 것이 핵심이었다. 성분명 불일치, 구조 해석 실패, 비어 있는 사전은 모두
 조용한 통과를 만들 수 있었고, 각각을 판정 불가·이관으로 바꾸었다. 결측 값은 NOT_CHECKED나 실측 요청으로 기록된다.</p>
 <p><b>한계.</b> (1) 개발 스튜디오 규칙 171개는 약학 담당 검토 전(DRAFT)이라 production 모드의 집행 규칙은 0개이며, 화면은 sandbox 모드로 동작한다.
-(2) 신경망 물성 예측기는 연결하지 않았다. (3) 스터디 저장소는 임시 SQLite로 재시작 시 사라진다. (4) 무료 티어 LLM의 분당 토큰 한도로 설계·심사가
-비는 경우가 있으며, 이때 결과를 채우지 않고 “응답 없음”으로 표시한다. (5) 다변량 공동확률(반응 간 상관), mixture·D-optimal 설계, 스케일업은 범위 밖이다.
+(2) 신경망 물성 예측기는 연결하지 않았다. (3) 스터디 저장소는 임시 SQLite로 재시작 시 사라진다. (4) LLM 출력은 반복마다 달라 권고 후보가 바뀔 수 있다(표 5) —
+결정론 계층은 같은 판정을 내지만 순위는 심사 LLM 점수에 기댄다. 대회 API 한도가 소진되어 무료 모델로 넘어가면 분당 토큰 한도로 설계·심사가 빌 수 있고,
+이때 결과를 채우지 않고 “응답 없음”으로 표시한다. (5) 다변량 공동확률(반응 간 상관), mixture·D-optimal 설계, 스케일업은 범위 밖이다.
 (6) 입력 에이전트의 구조식 조회는 영문 표준명에 기대며, 대화 기록은 브라우저 탭 안에만 있다.</p>
 
 <h2>9. 결론</h2>
@@ -509,19 +565,19 @@ fixture 48건, 통계 골든 값, 스터디 흐름을 고정한다. 실제 브�
 
 <h2>참고문헌</h2>
 <ol class="refs">
-<li>ICH Q8(R2) Pharmaceutical Development. International Council for Harmonisation, 2009.</li>
-<li>ICH Q9(R1) Quality Risk Management. ICH, 2023.</li>
-<li>ICH M9 Biopharmaceutics Classification System-based Biowaivers. ICH, 2019.</li>
-<li>Peterson J.J. A Bayesian approach to the ICH Q8 definition of design space. <i>J. Biopharm. Stat.</i> 18(5):959–975, 2008.</li>
-<li>Lebrun P. et al. Development of a new predictive modelling technique to find with confidence equivalence zone and design space of chromatographic analytical methods. <i>Chemometr. Intell. Lab. Syst.</i> 91:4–16, 2008.</li>
-<li>Butler J.M., Dressman J.B. The developability classification system: application of biopharmaceutics concepts to formulation development. <i>J. Pharm. Sci.</i> 99(12):4940–4954, 2010.</li>
-<li>Delaney J.S. ESOL: estimating aqueous solubility directly from molecular structure. <i>J. Chem. Inf. Comput. Sci.</i> 44(3):1000–1005, 2004.</li>
-<li>Jain N., Yalkowsky S.H. Estimation of the aqueous solubility I: application to organic nonelectrolytes. <i>J. Pharm. Sci.</i> 90(2):234–252, 2001.</li>
-<li>FutureHouse. Robin: a multi-agent system for automating scientific discovery. arXiv:2505.13400; <i>Nature</i>, 2026, doi:10.1038/s41586-026-10652-y. 지시문: github.com/Future-House/robin (robin/prompts.py).</li>
-<li>LangGraph. LangChain, github.com/langchain-ai/langgraph.</li>
-<li>Almotairi N. et al. Design and Optimization of Lornoxicam Dispersible Tablets Using QbD Approach. <i>Pharmaceuticals</i> 15, 1463, 2022. (CC BY, PMC9785951)</li>
-<li>Kim S. et al. PubChem 2023 update. <i>Nucleic Acids Res.</i> 51(D1):D1373–D1380, 2023.</li>
-<li>Wirth D.D. et al. Maillard reaction of lactose and fluoxetine hydrochloride, a secondary amine. <i>J. Pharm. Sci.</i> 87(1):31–39, 1998.</li>
+<li>ICH Q8(R2) Pharmaceutical Development. International Council for Harmonisation, Step 4, 2009.</li>
+<li>ICH Q9(R1) Quality Risk Management. International Council for Harmonisation, Step 4, 2023.</li>
+<li>ICH M9 Biopharmaceutics Classification System-Based Biowaivers. International Council for Harmonisation, Step 4, 2019.</li>
+<li>Peterson J.J. A Bayesian approach to the ICH Q8 definition of design space. <i>J. Biopharm. Stat.</i> 18(5):959–975, 2008. doi:10.1080/10543400802278197</li>
+<li>Lebrun P., Govaerts B., Debrus B., et al. Development of a new predictive modelling technique to find with confidence equivalence zone and design space of chromatographic analytical methods. <i>Chemometr. Intell. Lab. Syst.</i> 91(1):4–16, 2008. doi:10.1016/j.chemolab.2007.05.010</li>
+<li>Butler J.M., Dressman J.B. The developability classification system: application of biopharmaceutics concepts to formulation development. <i>J. Pharm. Sci.</i> 99(12):4940–4954, 2010. doi:10.1002/jps.22217</li>
+<li>Delaney J.S. ESOL: estimating aqueous solubility directly from molecular structure. <i>J. Chem. Inf. Comput. Sci.</i> 44(3):1000–1005, 2004. doi:10.1021/ci034243x</li>
+<li>Jain N., Yalkowsky S.H. Estimation of the aqueous solubility I: application to organic nonelectrolytes. <i>J. Pharm. Sci.</i> 90(2):234–252, 2001. doi:10.1002/1520-6017(200102)90:2&lt;234::AID-JPS14&gt;3.0.CO;2-V</li>
+<li>Ghareeb A.E., Chang B., et al. A multi-agent system for automating scientific discovery. <i>Nature</i> 655(8122):497–505, 2026. doi:10.1038/s41586-026-10652-y (preprint: “Robin: A multi-agent system for automating scientific discovery”, arXiv:2505.13400; 지시문 github.com/Future-House/robin).</li>
+<li>LangChain. LangGraph (소프트웨어). github.com/langchain-ai/langgraph.</li>
+<li>Almotairi N., Mahrous G.M., et al. Design and Optimization of Lornoxicam Dispersible Tablets Using Quality by Design (QbD) Approach. <i>Pharmaceuticals</i> 15(12):1463, 2022. doi:10.3390/ph15121463 (CC BY)</li>
+<li>Kim S., Chen J., Cheng T., et al. PubChem 2023 update. <i>Nucleic Acids Res.</i> 51(D1):D1373–D1380, 2023. doi:10.1093/nar/gkac956</li>
+<li>Wirth D.D., Baertschi S.W., Johnson R.A., et al. Maillard reaction of lactose and fluoxetine hydrochloride, a secondary amine. <i>J. Pharm. Sci.</i> 87(1):31–39, 1998. doi:10.1021/js9702067</li>
 </ol>
 </body></html>"""
 
@@ -532,7 +588,9 @@ def main():
     ap.add_argument("--browser", required=True, help="브라우저 테스트 요약(실제 실행 결과)")
     a = ap.parse_args()
     data = json.loads((OUT / "figdata.json").read_text(encoding="utf-8"))
-    (OUT / "report.html").write_text(build(data, a.tests, a.browser), encoding="utf-8")
+    xp = OUT / "experiments.json"
+    x = json.loads(xp.read_text(encoding="utf-8")) if xp.exists() else None
+    (OUT / "report.html").write_text(build(data, a.tests, a.browser, x), encoding="utf-8")
     print(OUT / "report.html")
 
 

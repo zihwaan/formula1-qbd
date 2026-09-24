@@ -1,55 +1,23 @@
-/* 입력 에이전트 dock — 그레이스케일 크롬. 색은 쓰지 않는다(판정 색은 룰북 전용).
-   데스크톱은 오른쪽 아래 패널, 휴대폰은 바닥 시트. */
+/* 입력 에이전트 — 그레이스케일 크롬. 색은 쓰지 않는다(판정 색은 룰북 전용). */
 
-.agent-launcher {
-  position: fixed; right: 20px; bottom: 20px; z-index: 60;
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 11px 16px; border-radius: var(--radius-pill); border: 1px solid transparent;
-  background: var(--accent-fixed); color: var(--on-accent-fixed);
-  font-weight: 700; font-size: 13px; box-shadow: var(--shadow-elevated);
+/* 주 입력 패널 — 탭 바로 아래, 두 탭 공용. 폼은 그 아래 "직접 입력"에 접힌 보조 경로다. */
+.agent-panel {
+  margin: 0 0 16px; background: var(--surface-1); color: var(--ink-1);
+  border: 1.5px solid var(--ink-1); border-radius: var(--radius-l); box-shadow: var(--shadow-card);
+  display: flex; flex-direction: column; overflow: hidden; word-break: keep-all;
 }
-.agent-launcher.on { opacity: 0; pointer-events: none; }
-.al-dot {
-  width: 8px; height: 8px; border-radius: 50%; background: currentColor;
-  animation: al-pulse 2.4s ease-in-out infinite;
-}
+.ap-head { padding: 14px 18px 10px; border-bottom: 1px solid var(--grid); }
+.ap-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ap-title b { font-size: 15px; }
+.ap-title small { font-size: 11px; color: var(--ink-muted); }
+.ap-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-1); align-self: center;
+  animation: al-pulse 2.4s ease-in-out infinite; }
 @keyframes al-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .al-dot { animation: none; } }
-.al-badge {
-  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; line-height: 18px;
-  text-align: center; background: var(--on-accent-fixed); color: var(--accent-fixed);
-}
+@media (prefers-reduced-motion: reduce) { .ap-dot { animation: none; } }
+.ap-intro { margin: 6px 0 0; font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+.ap-intro b { color: var(--ink-1); }
+.ad-log { min-height: 120px; max-height: 420px; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; overscroll-behavior: contain; }
 
-.agent-peek {
-  position: fixed; right: 20px; bottom: 72px; z-index: 60; max-width: min(340px, calc(100vw - 40px));
-  padding: 10px 14px; border-radius: var(--radius-m); border: 1px solid var(--border);
-  background: var(--surface-1); color: var(--ink-1); box-shadow: var(--shadow-elevated);
-  font-size: 12.5px; line-height: 1.5; word-break: keep-all; cursor: pointer;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
-}
-
-.agent-dock {
-  position: fixed; right: 20px; bottom: 20px; z-index: 61;
-  width: min(400px, calc(100vw - 40px)); height: min(680px, calc(100vh - 100px));
-  display: flex; flex-direction: column;
-  background: var(--surface-1); color: var(--ink-1); border: 1px solid var(--border);
-  border-radius: var(--radius-l); box-shadow: var(--shadow-elevated); overflow: hidden;
-  word-break: keep-all;
-}
-.ad-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 14px 16px 10px; border-bottom: 1px solid var(--grid);
-}
-.ad-head b { display: block; font-size: 14px; }
-.ad-head small { display: block; font-size: 11px; color: var(--ink-muted); margin-top: 2px; }
-.ad-close {
-  border: 1px solid var(--border); background: transparent; color: var(--ink-1);
-  width: 30px; height: 30px; border-radius: 50%; font-size: 13px;
-}
-.ad-intro { margin: 0; padding: 8px 16px; font-size: 11.5px; color: var(--ink-2); line-height: 1.5; border-bottom: 1px solid var(--grid); }
-
-.ad-log { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; overscroll-behavior: contain; }
-.ad-head, .ad-intro, .ad-chips, .ad-form { flex: 0 0 auto; }
 .ad-msg { display: flex; flex-direction: column; gap: 6px; max-width: 100%; }
 .ad-msg.user { align-items: flex-end; }
 .ad-msg .bubble {
@@ -99,25 +67,20 @@
 .ad-result { margin-top: 8px; font-size: 11.5px; color: var(--ink-2); }
 .ad-result.warn { font-weight: 650; }
 
-.ad-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px 0; }
+.ad-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 18px 14px; }
 .ad-chip {
   align-self: flex-start;
   border: 1px solid var(--border); background: transparent; color: var(--ink-2);
   border-radius: var(--radius-pill); padding: 4px 10px; font-size: 11.5px;
 }
-.ad-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px 14px 14px; align-items: end; }
+.ad-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px 18px; align-items: end; border-top: 1px solid var(--grid); }
 .ad-form textarea {
   resize: none; width: 100%; padding: 9px 11px; border-radius: var(--radius-m); border: 1px solid var(--border);
   background: var(--page); color: var(--ink-1); font: inherit; font-size: 13px; line-height: 1.45;
 }
 
 @media (max-width: 760px) {
-  .agent-launcher { right: 12px; bottom: 12px; padding: 10px 14px; }
-  .agent-peek { right: 12px; bottom: 62px; }
-  .agent-dock {
-    left: 0; right: 0; bottom: 0; width: 100%; height: min(82vh, 640px);
-    border-radius: var(--radius-l) var(--radius-l) 0 0; border-bottom: 0;
-  }
-  .ad-intro { display: none; }
+  .ap-intro { display: none; }
+  .ad-log { max-height: 55vh; }
   .ad-form textarea { font-size: 16px; } /* iOS 확대 방지 */
 }

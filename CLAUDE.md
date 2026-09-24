@@ -23,7 +23,7 @@ The README.md (Korean) is the authoritative design doc — update it in the same
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 191 tests — run this first when changing the core
+.venv/bin/pytest                                  # 192 tests — run this first when changing the core
 python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.json   # 07_doe static check (errors=0)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
@@ -672,3 +672,19 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
 - **Report** — `scripts/report/{figdata,build_report}.py` → `docs/report/`. Every number in the PDF comes from
   `figdata.json` (engine run on the Lornoxicam fixture, CSV row counts) or the CLI args (actual test counts). Served by the hub
   at `zihwan.com/pdf` from `hub/reports/formula1_report.pdf`.
+
+### Contest API + agent-first UI (2026-09-24, later)
+
+- **LLM chain = `providers()`**: `FORMULA1_LLM_PROVIDER=dacon` (pod) → contest API (`DACON_API_KEY`, OpenAI Responses at
+  `DACON_BASE_URL`, header `api-key`, model `DACON_MODEL`=gpt-5.6-sol) then Groq. `parse_structured`/`stream_text` walk the
+  chain; a contest **403 = team quota exhausted** sets `_DACON_EXHAUSTED` for the process → everything goes to Groq.
+  Responses JSON mode (`text.format=json_object`) **requires the word "json" in `input`** (400 otherwise) — `_dacon_parse`
+  appends it. Reasoning tokens count against `max_output_tokens`, so the Dacon payload gets ≥2000 (Groq-sized caps are too small).
+  A stream that already emitted text is not retried on another provider. Key lives in `~/zihwan/.env` (bare key, gitignored)
+  and in k8s `formula1-secrets.DACON_API_KEY` — never print or commit it.
+- **UI: the agent is the primary input.** `#agent-panel` sits right under the tabs (shared by both tabs); the form lives in
+  `<details id="manual">` ("직접 입력"), closed by default. Browser tests open `#manual` before touching `#request`/`#run`,
+  and check `#agent-send` for clickability. There is no floating dock anymore.
+- The PDF link is intentionally **not** shown in the app (user request); the report is only at `zihwan.com/pdf`.
+- Report experiments: `python3 scripts/report/experiments.py http://localhost:<port> 2` against a container with the
+  contest key → `docs/report/experiments.json` (table 5/6). One pass (8 runs + 6 agent turns) ≈ 575k contest tokens.

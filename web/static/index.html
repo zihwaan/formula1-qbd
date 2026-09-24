@@ -30,7 +30,6 @@
         <span class="pill" id="pill-rules">룰북 —</span>
         <span class="pill" id="pill-llm">LLM —</span>
         <button id="guide-open" class="btn btn-ghost" type="button">시스템 설명</button>
-        <a class="btn btn-ghost" id="report-pdf" href="/pdf" download title="기술 보고서(논문 형식) PDF 내려받기">보고서 PDF</a>
         <button class="btn-icon" id="btn-theme" type="button" title="라이트/다크 전환" aria-label="라이트/다크 전환">◐</button>
       </div>
     </div>
@@ -54,10 +53,17 @@
       </button>
     </nav>
 
+    <!-- 입력 에이전트 — 화면의 주 입력. 말로 요청하면 맥락을 읽고 제안 카드로 정리한다(agent.js).
+         폼 입력은 아래 "직접 입력"에 접혀 있는 보조 경로다. 두 탭이 같은 대화를 공유한다. -->
+    <section id="agent-panel" class="agent-panel" aria-label="입력 에이전트"></section>
+
     <!-- 상태·오류 단일 통로. aria-live라 스크린리더도 읽는다. -->
     <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 
     <div id="view-discovery" role="tabpanel" aria-labelledby="tab-discovery">
+    <!-- 보조 경로: 폼으로 직접 요청·구조식·실측값을 넣는다. 에이전트의 제안 카드도 이 폼 값으로 실행된다. -->
+    <details class="manual" id="manual">
+      <summary>직접 입력 <span class="manual-opt">폼으로 요청 · SMILES · 고정 부형제 · 실측값을 넣어 바로 실행</span></summary>
     <section class="composer">
       <label class="sr-only" for="request">설계 요구</label>
       <input id="request" type="text" autocomplete="off"
@@ -87,6 +93,7 @@
         <button id="inputs-clear" class="ghost" type="button">입력 비우기</button>
         <span id="inputs-count" class="inputs-count"></span>
       </div>
+    </details>
     </details>
 
     <!-- 시연 시나리오 — 누르면 바로 실행되고, 아키텍처 해설이 실행에 맞춰 흐른다.

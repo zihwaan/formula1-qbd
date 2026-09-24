@@ -597,7 +597,8 @@ async function startRun() {
   if (running) return;
   const request = $("request").value.trim();
   if (!request) {
-    notice("설계 요구를 입력해 주세요.", "warn");
+    notice("설계 요구를 입력해 주세요 — 입력 에이전트에게 말로 요청하거나 직접 입력 폼을 채우세요.", "warn");
+    $("manual").open = true;
     $("request").focus();
     return;
   }
