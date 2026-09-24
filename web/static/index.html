@@ -11,6 +11,7 @@
         href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="static/styles.css">
   <link rel="stylesheet" href="static/explainer.css">
+  <link rel="stylesheet" href="static/studio.css">
   <script>
     /* 테마를 그리기 전에 적용해 첫 프레임 깜빡임을 막는다.
        키는 머니메이트·브리핑과 공유('mm:theme') — 한 서비스에서 바꾸면 전체 반영. */
@@ -39,9 +40,22 @@
       <p>AI가 처방을 제안하고, 결정론적 규칙이 검증한다 — 실패를 미리 겪어보는 제형 설계 엔진</p>
     </header>
 
+    <!-- 두 개의 그래프 = 두 개의 작업 단계. 연구자가 ①에서 후보를 고르면 ②로 넘어간다.
+         두 그래프는 state를 공유하지 않고 불변 Handoff 하나로만 이어진다(명세 v6.1 §1.1). -->
+    <nav class="flow-tabs" role="tablist" aria-label="작업 단계">
+      <button class="flow-tab on" id="tab-discovery" role="tab" aria-selected="true" aria-controls="view-discovery" type="button">
+        <span class="flow-num">1</span><span class="flow-text"><b>후보 탐색</b><small>요청 → 후보 처방 목록</small></span>
+      </button>
+      <span class="flow-arrow" aria-hidden="true">→</span>
+      <button class="flow-tab" id="tab-studio" role="tab" aria-selected="false" aria-controls="view-studio" type="button">
+        <span class="flow-num">2</span><span class="flow-text"><b>개발 스튜디오</b><small>고른 후보 → CQA·FMEA·DoE → VERIFIED 영역</small></span>
+      </button>
+    </nav>
+
     <!-- 상태·오류 단일 통로. aria-live라 스크린리더도 읽는다. -->
     <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 
+    <div id="view-discovery" role="tabpanel" aria-labelledby="tab-discovery">
     <section class="composer">
       <label class="sr-only" for="request">설계 요구</label>
       <input id="request" type="text" autocomplete="off"
@@ -192,6 +206,53 @@
         </div>
       </section>
     </main>
+    </div>
+
+    <!-- ② 개발 스튜디오 — ExperimentalDevelopmentGraph (명세 v6.1).
+         화면의 주인공은 "지금 시스템이 연구자에게 묻는 것"이다(가운데 질문 카드).
+         결과(모델·영역·확인점)는 그 대화의 흐름을 따라 오른쪽에 쌓인다. studio.js가 채운다. -->
+    <section id="view-studio" role="tabpanel" aria-labelledby="tab-studio" hidden>
+      <div class="studio-bar">
+        <div class="studio-id" id="studio-id">
+          <b>아직 연 study가 없습니다</b>
+          <span>①에서 후보 카드의 <em>이 후보로 개발 착수</em>를 누르거나, 아래 데모로 시작하세요.</span>
+        </div>
+        <div class="studio-bar-actions">
+          <label class="sr-only" for="studio-list">최근 study</label>
+          <select id="studio-list"><option value="">최근 study…</option></select>
+          <button id="studio-demo" class="primary" type="button">데모 시작 — Lornoxicam 분산정</button>
+        </div>
+      </div>
+      <div id="studio-empty" class="studio-empty">
+        <h3>여기서는 시스템이 묻고, 연구자가 정합니다</h3>
+        <ol>
+          <li><b>후보 고정</b> — 고른 처방 하나(<code>candidate_id@version</code>)가 불변 Handoff가 됩니다.</li>
+          <li><b>연구자가 계약을 정한다</b> — CQA 규격, FMEA 처리 방향, 요인 범위는 시스템이 <em>제안</em>하고 연구자가 <em>승인</em>합니다.</li>
+          <li><b>숫자는 코드가</b> — 설계행렬·회귀·예측구간·영역은 결정론 엔진이 계산하고, 판정은 룰북 171개 규칙이 합니다.</li>
+          <li><b>확인배치로 끝난다</b> — 독립 배치 3개가 잠근 예측구간 안에 들어와야 <b>VERIFIED</b>입니다.</li>
+        </ol>
+      </div>
+      <div class="studio-grid" id="studio-grid" hidden>
+        <nav class="studio-rail" aria-label="개발 단계"><ol id="studio-phases"></ol>
+          <div class="studio-mode" id="studio-mode"></div>
+        </nav>
+        <main class="studio-main">
+          <section class="ask" id="studio-ask" aria-live="polite"></section>
+          <section class="dialogue">
+            <h3>지금까지의 대화 <small>시스템 판정과 연구자 결정 — 최신이 위</small></h3>
+            <ol id="studio-log"></ol>
+          </section>
+        </main>
+        <aside class="studio-side" aria-label="결과와 근거">
+          <div class="side-tabs" role="tablist">
+            <button class="side-tab on" data-tab="results" type="button">결과</button>
+            <button class="side-tab" data-tab="rules" type="button">규칙 판정</button>
+            <button class="side-tab" data-tab="trace" type="button">lineage</button>
+          </div>
+          <div id="studio-side-body"></div>
+        </aside>
+      </div>
+    </section>
   </div>
 
   <!-- 규칙 근거 드릴다운 -->
@@ -229,5 +290,6 @@
 
   <script src="static/explainer.js"></script>
   <script src="static/app.js"></script>
+  <script src="static/studio.js"></script>
 </body>
 </html>

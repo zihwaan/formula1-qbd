@@ -11,3 +11,4 @@ sse-starlette
 rank-bm25
 pytest
 pypdf
+scipy

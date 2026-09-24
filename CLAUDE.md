@@ -10,6 +10,10 @@ Formula 1 is a QbD (Quality-by-Design) validation engine for pharmaceutical **fo
 
 **As of 2026-09-18 the evidence gate and everything downstream of it (approval, batch, lifecycle) is commented out, not deleted** — see "v3 phase-gate pivot" below. The paragraph above still describes what that code does and the invariant it enforces; it's just not wired into the live graph right now. What *is* live in its place is `formula/biopharm/` (phase gates before generation) plus a non-blocking data-request pattern — read that section before touching anything in this area, since "evidence" and "phase gate" are easy to conflate and they answer different questions (evidence: can we execute this *specific candidate's protocol*; phase gate: what *strategies* should even be generated).
 
+**As of 2026-09-24 there is a second graph after the candidate list** — `ExperimentalDevelopmentGraph`
+(DoE agent, spec v6.1) in `formula/development/` + `formula/qbd/`, driven from the "② 개발 스튜디오" tab.
+It shares no state with discovery; read "ExperimentalDevelopmentGraph (v6.1)" below before touching it.
+
 The README.md (Korean) is the authoritative design doc — update it in the same commit when the design story changes. (An older revision of this file called the LangGraph/judge layer "roadmap, not built"; it has been built and is what the live pod runs.)
 
 ## Commands
@@ -19,7 +23,8 @@ The README.md (Korean) is the authoritative design doc — update it in the same
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 89 tests — run this first when changing the core
+.venv/bin/pytest                                  # 169 tests — run this first when changing the core
+python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.json   # 07_doe static check (errors=0)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
 .venv/bin/python scripts/feedback_demo.py         # lab-in-the-loop (결과 해석)
@@ -557,3 +562,51 @@ read about it. Keep them in sync with the graph — they are the demo.
   - `rulebook_config.csv` has 6 join_key/blocking discrepancies documented in the 개발자 가이드 §9.7. The engine uses `config/rulebook_manifest.yaml` instead, so they're documentation-only.
   - `packaging_compatibility_rules.csv` names prohibited packaging in Korean prose ("고투습 포장"); `config/packaging_categories.yaml` bridges identifiers to those categories. New packaging goes in that YAML, not the CSV.
   - **`incompatibility_1to1.csv` covers 2° amines for lactose monohydrate only.** INC002 is `secondary_amine`+EXC001, but INC003/INC004 (anhydrous / spray-dried lactose) are `primary_amine` only — so fluoxetine + **무수유당** passes the gate today while fluoxetine + 유당수화물 is rejected, and the mechanism doesn't care about the grade (the Wirth 1998 and Narang 2012 sources are about the amine class). Found while fixing the 2026-08-06 silent pass; **not** patched here because rule rows are the pharmacy team's call. Ask them whether INC003/INC004 should gain `secondary_amine` rows. Generic "유당" still rejects — it head-matches EXC001 — so the gap only shows when a user names the anhydrous grade explicitly.
+
+## ExperimentalDevelopmentGraph (v6.1, 2026-09-24) — the half after the candidate list
+
+Source of truth: `docs/doe_v6.1/formula1-doe-agent-architecture-v6.1.md` (spec) and `docs/doe_v6.1/HANDOFF.md`
+(handoff; the spec wins on conflict). Delivered as a package (`formula1_doe_v6.1_handoff/`), copied verbatim into
+`database/07_doe/`, `tests/fixtures/`, `tests/golden/`, `scripts/validate_07_doe.py`, `scripts/generators/`.
+Open decision §11-1 was resolved as **new package, not `formula/lifecycle/`** (lifecycle is the commented-out v2
+workflow and has different contracts).
+
+- **Judgement lives only in `database/07_doe/**.csv`.** `formula/development/rules.py` loads the manifest and
+  evaluates `when_expression` with an **AST whitelist evaluator — never Python `eval`** (the v1 `applies_when.py`
+  uses restricted eval; do not reuse it here). A disallowed node in any CSV makes the load *fail*. Rulebook edits go
+  through `scripts/generators/` → regenerate → `validate_07_doe.py` errors=0.
+- **Missing ≠ not fired.** A `None` in a comparison/arithmetic raises `Missing`, and the rule's
+  `missing_value_action` applies (`RECORD_NOT_CHECKED`, `REQUEST_DATA`, `BLOCK_STAGE`, or a reason code such as
+  `INCONCLUSIVE`, which is routed through the table). The service must put *unknown* values into the context as
+  `None`; **omitting a root skips the rule** (roots absent = rule not applicable to that subject). Don't "fix" a
+  blocking rule by leaving its root out of the context.
+- **Transitions:** strongest effect wins (INVALIDATE/BLOCK > REQUEST_DATA > AUGMENT > ROUTE > WARNING > PASS),
+  ties by `priority`; next state comes from `backtrack_routing_rules.csv` by `(reason_code, from_state)`, and
+  `states.py` re-checks the edge against §5.1. Anything outside → `WAITING_HUMAN_TRIAGE` with a return point.
+- **Modes:** all 171 rules are `DRAFT_PENDING_REVIEW`, so **production enforces 0 rules — that is correct**, not a
+  bug. The UI runs `demo` (sandbox). Verdicts from non-enforced rules are still recorded.
+- **Subjects sharing one object dedupe** (`rules.evaluate` keys on `id()` of the root objects) — pass the *same*
+  list object (e.g. `facs`) to every subject, or FE011-style collection rules report N times.
+- **Engine (`formula/qbd/`) is numpy+scipy only** — no statsmodels/pyDOE3/plotly at runtime (scipy is in the lock
+  file). Golden values from `tests/golden/compute_lornoxicam_golden.py` are pinned in `tests/test_doe_engine.py`:
+  domain 7,501/9,261, mean-ok 0.772, joint≥0.90 0.476, setpoint 2.7/12.5/6.8 P=0.991, DE30 PI 71.9–92.8.
+- **Spec deviations found while implementing (keep them, they are the rulebook being right):** MV006 also flags
+  the AV model (adj 0.885 − pred 0.481), so the demo needs `model_accept` for AV; the spec's "Cook's D run 12" is
+  an exact tie of runs 3 and 12; `SYNTHETIC_DEMO` verification results are refused by VR015 (no VERIFIED from
+  synthetic data — by design).
+- **Screening is two-pass:** effect rules (SA001/002/004/006) classify each factor first, then SA003/005/007/009
+  run with the *classified* factor list. Before this, SA007 read unclassified factors and routed a clearly-active
+  screen to STRATEGY_REVIEW. Only still-INCONCLUSIVE factors can trigger screening augmentation. With δ
+  (`practical_effect_threshold`) unset every effect is INCONCLUSIVE → augmentation — that's the spec (CR007 warns).
+- **Handoff is immutable; fingerprint is checked (PV001).** Required-data submission creates a new revision
+  (`-rN`). Mutating a handoff without recomputing `fingerprint()` sends the study to `WAITING_AUDIT_REVIEW` — pinned
+  by `test_tampered_handoff_goes_to_audit_review`.
+- **Store:** `FORMULA1_DEV_DB` (default `/tmp/formula1/development.db`) — lost on pod restart, same caveat as
+  lifecycle. Every mutation takes `Idempotency-Key` / `Expected-State-Version` / `Actor-ID` headers.
+- **UI (`web/static/studio.{js,css}`):** interaction-first — the centre "question card" is rendered per `status`
+  (`ASK[...]`), inputs are collected by `COLLECT[action]`, and the demo's "데모 입력 채우기" (`FILL[...]`) only fills
+  forms; the researcher always clicks submit. The two tabs (`#view-discovery` / `#view-studio`) wrap the old
+  layout; `app.js` candidate cards call `F1Studio.startFromCandidate(runId, id)` only for gate-passed candidates.
+  Browser regression: `tests/browser/studio.mjs` walks scenes 1–9 by clicking (30 checks, 390/820px overflow).
+  The explainer gained steps 11–13 (studio overview, authority/evidence, Lornoxicam region) and step 4/5 were
+  rewritten for the two-graph structure — keep them in sync with this section.

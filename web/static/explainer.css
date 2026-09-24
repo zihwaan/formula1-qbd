@@ -354,3 +354,8 @@ code.f1-mono {
   .f1-lvl { grid-template-columns: 28px 1fr; }
   .f1-lvl em { grid-column: 2; justify-self: start; margin-top: 4px; }
 }
+
+/* v6.1 개발 그래프 단계 — 한 줄로 흐르는 알약 */
+.f1-sub.f1-chain { display: flex; flex-wrap: wrap; gap: 6px; }
+.f1-sub.f1-chain .f1-pill-sm { width: auto; flex: 0 0 auto; }
+.f1-sub.f1-chain .f1-pill-sm + .f1-pill-sm::before { content: "→ "; color: var(--ink-muted); }

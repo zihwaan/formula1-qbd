@@ -1,0 +1,16 @@
+test_method_id,version,name_ko,measures_cqa_template_ids,quantity_kind,compendial_ref,sampling_rule,summary_function,summary_function_version,unit,variance_component_type,repeatability_sd,sd_df,experimental_unit,n_technical_repeats,estimation_method,sd_evidence_status,validation_ref,notes_ko,source_ids,governance_class,validation_status,effective_from
+TM_DISS_USP711_Q,1,용출 (시점 %),CQA_DISSOLUTION,percent_dissolved_at_time,USP <711>,"{""n_units"": 6}",mean,1,% dissolved,METHOD_REPEATABILITY,,,,,,UNKNOWN,,실험실 밸리데이션 값 입력 필요,SRC_USP_711,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_DISS_USP711_DE,1,용출효율 (DE),CQA_DISSOLUTION_DE,dissolution_efficiency,USP <711> 프로파일 + 사다리꼴 적분,"{""n_units"": 6}",DE_trapezoid,1,DE %,METHOD_REPEATABILITY,,,,,,UNKNOWN,,적분 구간 고정,SRC_USP_711,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_FRIAB_USP1216,1,마손도,CQA_FRIABILITY,percent_weight_loss,USP <1216>,"{""rule"": ""≈6.5 g (단위 ≤650 mg) 또는 10정""}",single,1,%,METHOD_REPEATABILITY,,,,,,UNKNOWN,,,SRC_USP_1216,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_BREAK_USP1217,1,파괴강도,CQA_BREAKING_FORCE;CQA_TENSILE_STRENGTH,force,USP <1217>,"{""n_units"": 10}",mean,1,N,METHOD_REPEATABILITY,,,,,,UNKNOWN,,kp 입력 시 N 변환,SRC_USP_1217,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_CU_USP905,1,함량균일성,CQA_CU_AV,acceptance_value,USP <905>,"{""n_units"": 10, ""stages"": ""L1/L2""}",AV,1,AV,METHOD_REPEATABILITY,,,,,,UNKNOWN,,,SRC_USP_905,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_TABLET_WEIGHT_RSD,1,정제 중량편차 (IPC),CQA_TABLET_WEIGHT_RSD,rsd,내부 IPC,"{""n_units"": 20}",rsd,1,% RSD,METHOD_REPEATABILITY,,,,,,UNKNOWN,,<905> 판정 절차 아님,SRC_USP_905,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_DISINT_USP701,1,붕해시험,CQA_DISINTEGRATION,time,USP <701>,"{""n_units"": 6}",max,1,min,METHOD_REPEATABILITY,,,,,,UNKNOWN,,,SRC_USP_701,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_DISPERS_PHEUR,1,분산시간,CQA_DISPERSIBILITY,time,Ph. Eur. Tablets (dispersible),"{""n_units"": 6}",mean,1,s,METHOD_REPEATABILITY,,,,,,UNKNOWN,,,SRC_PHEUR_TABLETS,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_FINENESS_PHEUR,1,분산 미세도,CQA_FINENESS_OF_DISPERSION,pass_fail,Ph. Eur. Tablets (dispersible),"{""n_units"": 2}",pass_fail,1,—,NOT_APPLICABLE,,,,,,NOT_APPLICABLE,,,SRC_PHEUR_TABLETS,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_ASSAY_HPLC,1,함량 (HPLC),CQA_ASSAY,percent_label_claim,제품별 밸리데이션,{},mean,1,%,METHOD_REPEATABILITY,,,,,,UNKNOWN,,,SRC_ICH_Q2,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_IMPURITY_HPLC,1,유연물질 (HPLC),CQA_IMPURITIES,percent_area,제품별 밸리데이션,{},max_individual;total,1,%,METHOD_REPEATABILITY,,,,,,UNKNOWN,,함량법과 검증 목적 분리,SRC_ICH_Q2;SRC_ICH_Q3B,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_WATER_KF,1,수분 (Karl Fischer),CQA_WATER,percent_w_w,USP <921>,{},mean,1,% w/w,METHOD_REPEATABILITY,,,,,,UNKNOWN,,,SRC_USP_921,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_FLOW_CARR,1,압축도 지수 (Carr),,ratio_percent,USP <1174>,{},single,1,%,METHOD_REPEATABILITY,,,,,,UNKNOWN,,안식각·Hausner는 별도 method로 분리,SRC_USP_1174,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_PSD_LASER,1,입도분포 (레이저 회절),,length,USP <429>,{},d10;d50;d90,1,µm,METHOD_REPEATABILITY,,,,,,UNKNOWN,,,SRC_USP_429,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23
+TM_DSC,1,DSC,,thermal,USP <891>,{},—,1,—,NOT_APPLICABLE,,,,,,NOT_APPLICABLE,,상호작용 스크리닝,SRC_USP_891,COMPENDIAL,DRAFT_PENDING_REVIEW,2026-09-23

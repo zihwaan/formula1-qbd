@@ -1,0 +1,32 @@
+constant_id,value,unit,kind,description_ko,change_requires,source_ids,governance_class,validation_status,version,effective_from
+alpha,0.05,probability,PROJECT_DEFAULT,유의수준 (단독 판정 기준 아님),study_lead 승인,SRC_MONTGOMERY_DAE,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+joint_pass_probability,0.90,probability,PROJECT_DEFAULT,design space 공동 통과확률 기준,AnalysisPlan 사전 고정,SRC_PETERSON_2004,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+joint_probability_independence_assumed,true,bool,PROJECT_DEFAULT,"반응 간 독립 가정 곱 (MVP 근사, DesignSpaceVersion에 기록)",study_lead 승인,SPEC:v6.1§6.D9,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+domain_policy,CONVEX_HULL_OF_DESIGN_POINTS,enum,PROJECT_POLICY,supported domain = 설계점 convex hull (BBD 정육면체 꼭짓점 영역 제외),study_lead 승인,SPEC:v6.1§6.D9,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+feasible_fraction_denominator,DOMAIN_GRID_POINTS,enum,PROJECT_POLICY,영역 비율 분모 = domain 안의 격자점,—,SPEC:v6.1§6.D9,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+region_grid_points_per_axis,21,points,PROJECT_DEFAULT,격자 해상도 (연속 영역 보장 아님),—,SPEC:v6.1§6.D9,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+region_mc_draws,10000,draws,PROJECT_DEFAULT,Monte Carlo 사용 시 draw 수 (seed·MC 오차 저장),—,SPEC:v6.1§6.D9,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+setpoint_min_edge_distance_coded,0.1,coded units,PROJECT_DEFAULT,권장 setpoint와 domain 경계 최소 거리,—,SPEC:v6.1§6.D9,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+verification_family_alpha,0.05,probability,PROJECT_POLICY,확인계획 전체(필수 확인점 × DOE_RESPONSE) family 오류율,study_lead 승인,SPEC:v6.1§6.D10,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+verification_multiplicity_method,BONFERRONI,enum,PROJECT_POLICY,동시 예측구간: 개별 수준 = 1 − family_alpha / 비교 수,study_lead 승인,SPEC:v6.1§6.D10,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+verification_pi_scope,DOE_RESPONSE_ONLY,enum,PROJECT_POLICY,예측구간 판정 대상,—,SPEC:v6.1§6.D10,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+verification_spec_scope,ALL_APPLICABLE_CQA,enum,PROJECT_POLICY,규격 판정 대상 (MONITOR_ONLY 포함),—,SPEC:v6.1§6.D10,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+verification_batches_per_point,1,batches,DEMO_POLICY,데모 최소 커버리지. 운영 값은 허용 예측오차·변동으로 결정,study_lead 승인,SPEC:v6.1§6.D10,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+pred_r2_gap_flag,0.20,R2 units,RULE_OF_THUMB,adj R² − pred R² > 값이면 MODEL_FLAGGED,study_lead 승인,SRC_STATEASE_PRED_R2,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+pred_r2_min_flag,0.50,R2 units,PROJECT_DEFAULT,pred R² < 값이면 넓은 예측구간 WARNING,study_lead 승인,SPEC:v6.1§6.D8,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+pure_error_df_warning,2,df,PROJECT_DEFAULT,pure error 자유도 ≤ 값이면 WARNING,—,SPEC:v6.1§6.D8,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+residual_df_min,1,df,STATISTICAL_LAW,잔차 자유도 < 값이면 분산·예측구간 계산 불가,—,SRC_MONTGOMERY_DAE,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+residual_df_warning,3,df,PROJECT_DEFAULT,잔차 자유도 < 값이면 WARNING,—,SPEC:v6.1§8.C.15,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+matrix_rank_rel_tolerance,1e-10,ratio,PROJECT_DEFAULT,행렬 rank 판정 상대 tolerance (특이값 기준),—,SPEC:v6.1§8.C.15,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+cooks_d_flag,1.0,—,RULE_OF_THUMB,Cook's D > 값이면 영향점 flag (삭제 아님),—,SRC_COOK_1977,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+leverage_flag_multiplier,2.0,× p/n,RULE_OF_THUMB,hat 값 > 배수×p/n이면 flag,—,SRC_MONTGOMERY_DAE,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+high_pure_error_ratio,3.0,× method repeatability SD,PROJECT_DEFAULT,배치 반복 SD > 배수 × 시험법 반복 SD면 HIGH_PURE_ERROR (METHOD_REPEATABILITY 값이 있을 때만),—,SPEC:v6.1§6.D7,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+screening_center_points,3,runs,PROJECT_DEFAULT,screening 중심점 기본 개수,—,SRC_NIST_HANDBOOK,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+screening_max_factors,4,factors,MVP_SCOPE,MVP screening 요인 최대 (초과 시 차단),—,SPEC:v6.1§1.2,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+rsm_max_factors,3,factors,MVP_SCOPE,MVP RSM 요인 최대,—,SPEC:v6.1§1.2,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+range_width_multiplier,2.0,× repeatability SD,PROJECT_DEFAULT,|예상 범위 효과| ≥ 배수 × 시험 반복 SD,—,SPEC:v6.1§3.4,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+non_binding_ratio,0.25,ratio,PROJECT_DEFAULT,최대 관측값 ≤ 비율×상한이면 NON_BINDING 표시,—,SPEC:v6.1§3.2,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+composition_sum_tolerance_pct,0.5,% w/w,PROJECT_DEFAULT,조성 합계 허용 오차,—,SPEC:v6.1§6.D1,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+fmea_high_severity,4,score,PROJECT_DEFAULT,고심각도 기준 S,—,SPEC:v6.1§6.D3,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+range_finding_runs_max,4,runs,PROJECT_DEFAULT,범위 확인 run 최대,—,SPEC:v6.1§3.4,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+challenge_min_fail_probability,0.5,probability,PROJECT_POLICY,CHALLENGE 점을 expected FAIL로 지정하려면 예측 실패확률 ≥ 값,—,SPEC:v6.1§6.D10,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23

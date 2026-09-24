@@ -1,0 +1,6 @@
+# Formula 1 DoE (07_doe) — 인계 패키지가 제안한 추가 의존성 중 실제로 쓰는 것만 남겼다.
+# 런타임: numpy·pandas·pyyaml(기존) + scipy(t 분포·F 검정·convex hull). requirements.lock.txt에 고정.
+# 테스트 전용: statsmodels — tests/golden/compute_lornoxicam_golden.py(참조 구현)를 직접 돌릴 때만 필요.
+# 쓰지 않음: pyDOE3(설계는 formula/qbd/doe.py가 교과서 표로 직접 생성), plotly(영역 단면은 SVG로 그린다).
+scipy>=1.13
+statsmodels>=0.14

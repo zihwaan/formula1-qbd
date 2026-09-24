@@ -1,0 +1,14 @@
+cqa_template_id,name_ko,category,applies_to,default_criticality,quantity_kind,default_acceptance_operator,default_lower,default_upper,unit,criterion_basis,criterion_note_ko,default_test_method_id,source_ids,governance_class,validation_status,version,effective_from
+CQA_ASSAY,함량,chemical,tablet,HIGH,percent_label_claim,BETWEEN,,,% label claim,MONOGRAPH,모노그래프 규격 사용 (연구자 입력),TM_ASSAY_HPLC,SRC_ICH_Q6A,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23
+CQA_CU_AV,함량균일성(AV),chemical,tablet,HIGH,acceptance_value,LE,,15,AV,COMPENDIAL_SUMMARY,"연구 요약 기준: L1 AV ≤ 15. 약전 판정 절차(단계, 개별값 조건)는 compendial_procedure_ref로 별도",TM_CU_USP905,SRC_USP_905,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23
+CQA_DISSOLUTION,용출 (시점 %),performance,tablet,HIGH,percent_dissolved_at_time,GE,,,% dissolved,MONOGRAPH_OR_PROJECT_TARGET,시점과 Q는 연구자 입력. 약전 단계 판정과 구분,TM_DISS_USP711_Q,SRC_USP_711,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23
+CQA_DISSOLUTION_DE,용출효율 (DE),performance,tablet,HIGH,dissolution_efficiency,GE,,,DE %,PROJECT_TARGET,약전 규격 없음. 적분 구간·방법 버전 고정,TM_DISS_USP711_DE,SRC_USP_711,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23
+CQA_DISINTEGRATION,붕해시간,performance,tablet,MEDIUM,time,LE,,,min,COMPENDIAL,약전·모노그래프 기준,TM_DISINT_USP701,SRC_USP_701,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23
+CQA_DISPERSIBILITY,분산시간,performance,dispersible_tablet,MEDIUM,time,LE,,180,s,COMPENDIAL,Ph. Eur. 분산정: 물(15–25 °C)에서 3분 이내,TM_DISPERS_PHEUR,SRC_PHEUR_TABLETS,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23
+CQA_FINENESS_OF_DISPERSION,분산 미세도,performance,dispersible_tablet,LOW,pass_fail,PASS_FAIL,,,—,COMPENDIAL,Ph. Eur.: 710 µm 체 통과,TM_FINENESS_PHEUR,SRC_PHEUR_TABLETS,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23
+CQA_FRIABILITY,마손도,physical_integrity,uncoated_tablet,MEDIUM,percent_weight_loss,LE,,1.0,%,COMPENDIAL,USP <1216>: 평균 중량감소 1.0% (대부분 제품),TM_FRIAB_USP1216,SRC_USP_1216,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23
+CQA_BREAKING_FORCE,파괴강도,physical_integrity,tablet,MEDIUM,force,BETWEEN,,,N,PROJECT_TARGET,약전 규격 없음,TM_BREAK_USP1217,SRC_USP_1217,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23
+CQA_TENSILE_STRENGTH,인장강도,physical_integrity,tablet,MEDIUM,stress,GE,,,MPa,PROJECT_TARGET,파괴강도·치수에서 계산. 계산식 버전 고정,TM_BREAK_USP1217,SRC_USP_1217,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23
+CQA_TABLET_WEIGHT_RSD,정제 중량편차 (IPC),physical_integrity,tablet,MEDIUM,rsd,LE,,,% RSD,PROJECT_TARGET,공정 중 관리 지표. <905> 판정과 별개,TM_TABLET_WEIGHT_RSD,SRC_USP_905,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23
+CQA_IMPURITIES,유연물질,chemical,tablet,HIGH,percent_area,LE,,,%,GUIDELINE,ICH Q3B 기준 (연구자 입력),TM_IMPURITY_HPLC,SRC_ICH_Q3B,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23
+CQA_WATER,수분,chemical,tablet,LOW,percent_w_w,LE,,,% w/w,PROJECT_TARGET,제품별,TM_WATER_KF,SRC_ICH_Q6A,COMPENDIAL,DRAFT_PENDING_REVIEW,1,2026-09-23

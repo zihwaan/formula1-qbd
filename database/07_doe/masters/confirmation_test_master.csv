@@ -1,0 +1,11 @@
+test_id,name_ko,purpose_ko,discriminates_between,experimental_unit,nested_structure,typical_design_ko,output_variable,related_reason_codes,source_ids,governance_class,validation_status,version,effective_from
+CT_BLEND_UNIF_TIME,혼합시간별 블렌드 균일성,혼합 부족과 과혼합 구별,under_mixing;over_mixing_demixing,blend_sample,시간 > 위치 > 채취,여러 혼합시간에서 blend 샘플링,blend RSD,HIGH_PURE_ERROR;VERIF_SPEC_FAIL,SRC_AULTON,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+CT_LUB_SENSITIVITY,활택 민감도,과활택에 의한 용출·강도 저하 확인,over_lubrication;other,batch,동일 블렌드 분할 (독립 배치 아님),활택시간 2수준,"TS, dissolution",VERIF_SPEC_FAIL,SRC_AULTON,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+CT_COMPACTION_PROFILE,압축 프로파일,압축력–강도–붕해 관계,compression_force_effect;formulation_effect,tablet,블렌드 1개 > 압축력 수준,3–5개 압축력,strength vs force,VERIF_SPEC_FAIL,SRC_USP_1217,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+CT_METHOD_REPEAT,시험법 반복성,시험 편차와 공정 편차 구별,method_variance;process_variance,test_execution,동일 로트 반복 시험,동일 정제 로트 반복,repeatability SD,HIGH_PURE_ERROR,SRC_ICH_Q2,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+CT_RETEST_RETAINED,보관 검체 재시험,측정 오류와 실제 배치 차이 구별,measurement_error;batch_difference,test_execution,원 배치의 재측정 (독립 배치 아님),보관 검체 재측정,CQA value,VERIF_SPEC_FAIL;HIGH_PURE_ERROR,SRC_ICH_Q2,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+CT_REMAKE_SAME_BLEND,동일 블렌드 재타정,블렌드 문제와 타정 문제 구별,blend_issue;compression_issue,compression_lot,parent_blend 공유 (독립 배치 아님),보관 블렌드로 재타정,CQA value,VERIF_SPEC_FAIL,SRC_AULTON,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+CT_API_PSD_LOT,API 로트 입도 확인,원료 로트 차이 확인,material_lot;process,material_lot,—,사용 로트 PSD,d10/d50/d90,VERIF_SPEC_FAIL,SRC_USP_429,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+CT_DISINTEGRANT_FUNC,붕해제 기능 확인,붕해제 양·기능 문제 확인,disintegrant_level;other,batch,—,붕해제 수준별 붕해·흡수,disintegration time,VERIF_SPEC_FAIL,SRC_USP_701,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+CT_MOISTURE,수분 확인,흡습에 의한 물성 변화 확인,moisture;other,tablet,—,KF 수분,% water,VERIF_SPEC_FAIL,SRC_USP_921,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+CT_DISS_DISCRIM,용출 판별력 확인,용출법이 처방 차이를 구별하는지 확인,method_discrimination;formulation,batch,—,의도적 변형 처방 비교,profile difference,VERIF_OUTSIDE_PI,SRC_USP_711,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23

@@ -1,0 +1,7 @@
+unit_op_code,process_route,order,name_ko,critical,typical_cma,typical_cpp,default_equipment_class,source_ids,governance_class,validation_status,version,effective_from
+UO_DC_01,direct_compression,1,칭량,false,,,balance,SRC_AULTON,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+UO_DC_02,direct_compression,2,체질,false,api_psd,sieve_mesh,sieve,SRC_AULTON,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+UO_DC_03,direct_compression,3,주혼합,true,filler_ratio;disintegrant_pct;api_psd,blend_time;blender_speed;fill_level,blender,SRC_AULTON,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+UO_DC_04,direct_compression,4,활택 혼합,true,lubricant_pct,lubrication_time,blender,SRC_AULTON,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+UO_DC_05,direct_compression,5,타정,true,,compression_force;press_speed;punch_geometry,tablet_press,SRC_AULTON,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+UO_DC_06,direct_compression,6,공정 중 검사,false,,,ipc,SRC_AULTON,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23

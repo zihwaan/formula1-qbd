@@ -16,6 +16,15 @@
   POST /api/runs/{id}/wetlab      자연어 배치 결과 → 판독·판정·다음 실험 지시 (실험 후 루프)
   GET  /api/meta                  룰북·심사관·LLM 가용성 등 시스템 상태
 
+ExperimentalDevelopmentGraph (명세 v6.1 — 후보 선택 이후의 뒷부분)
+  POST /api/candidates/{id}/development-studies   연구자가 고른 candidate_id@version → 불변 Handoff + study
+  POST /api/development-studies/demo/lornoxicam   §19 데모 study (결과는 사전 적재하지 않는다)
+  GET  /api/development-studies                   최근 study 목록
+  GET  /api/development-studies/{id}              state + 지금 연구자에게 묻는 것(prompt)
+  POST /api/development-studies/{id}/actions/{a}  연구자 행동 (Idempotency-Key·Expected-State-Version·Actor-ID 헤더)
+  GET  /api/development-studies/{id}/trace        §18 lineage 식별자 + 이벤트·결정 원장
+  GET  /api/development-studies/{id}/region-slice 공동확률 영역 단면 (시각화)
+
 **루프가 둘이라 입력도 둘이다.** `/confirmation`은 실행 *전* 확인시험 결과라서 입력·근거
 계층으로 돌아가고, `/wetlab`은 배치를 만든 *뒤*의 결과라서 설계·프로토콜 개정으로 간다.
 한 입력창에 섞으면 결과가 어디로 되먹임되는지가 사라진다.
@@ -33,7 +42,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -51,6 +60,9 @@ from formula.contracts import (
 )
 from formula.feedback.interpreter import WetLabInterpreter
 from formula.feedback.labloop import direct_next, read_notes
+from formula.development import handoff as dev_handoff
+from formula.development.service import DevelopmentService, StudyError
+from formula.development.store import VersionConflict
 from formula.lifecycle import LifecycleService, WorkflowStatus
 from formula.orchestrator.events import event_to_sse
 from formula.orchestrator.runner import Run
@@ -80,6 +92,14 @@ _registry: Optional[RulebookRegistry] = None
 _evidence_gate: Optional[EvidenceGate] = None
 _experimental_inputs: Optional[ExperimentalInputs] = None
 _lifecycle: Optional[LifecycleService] = None
+_development: Optional[DevelopmentService] = None
+
+
+def development() -> DevelopmentService:
+    global _development
+    if _development is None:
+        _development = DevelopmentService(ROOT)
+    return _development
 
 
 def registry() -> RulebookRegistry:
@@ -382,6 +402,117 @@ async def submit_measurements(run_id: str, payload: MeasurementsRequest) -> Dict
     except KeyError as exc:
         raise HTTPException(409, f"아직 설계가 끝나지 않았습니다: {exc}")
 
+
+# ---------------------------------------------------------------------------
+# ExperimentalDevelopmentGraph — 후보 선택 이후 (명세 v6.1)
+#
+# 후보 탐색 그래프와 state를 공유하지 않는다. 연결은 불변 Handoff 하나뿐이다(§1.1).
+# 후보 1위가 자동으로 넘어오지 않는다 — 연구자가 카드에서 `이 후보로 개발 착수`를 눌러야 한다.
+# ---------------------------------------------------------------------------
+class StudyCreateRequest(BaseModel):
+    run_id: str
+    candidate_version: int = 1
+    mode: str = "demo"
+
+
+class StudyActionRequest(BaseModel):
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+def _study_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, VersionConflict):
+        return HTTPException(409, {"message": "다른 곳에서 먼저 바뀌었습니다 — 새로 고친 뒤 다시 시도하세요.",
+                                   "expected": exc.expected, "actual": exc.actual})
+    if isinstance(exc, StudyError):
+        return HTTPException(exc.status, {"message": str(exc), "verdicts": exc.verdicts})
+    raise exc
+
+
+@app.post("/api/candidates/{candidate_id}/development-studies")
+async def create_study(candidate_id: str, payload: StudyCreateRequest,
+                       idempotency_key: Optional[str] = Header(None),
+                       actor_id: str = Header("researcher")) -> Dict[str, Any]:
+    execution = RUNS.get(payload.run_id)
+    if execution is None or not execution.final:
+        raise HTTPException(404, "설계 실행이 없거나 아직 끝나지 않았습니다.")
+    result = next((r for r in execution.final.get("results", []) if r["candidate_id"] == candidate_id), None)
+    if result is None:
+        raise HTTPException(404, f"후보 {candidate_id} 없음")
+    spec = execution.final.get("spec")
+    spec_d = spec.model_dump(mode="json") if hasattr(spec, "model_dump") else (spec or {})
+    recipe = result["recipe"].model_dump(mode="json")
+    recipe["version"] = payload.candidate_version
+    verdicts = [v.model_dump(mode="json") for v in result["verdicts"] if v.rule_id]
+    svc = development()
+    h = dev_handoff.from_recipe(svc.rb, recipe, run_id=payload.run_id, spec=spec_d,
+                                verdicts=[v for v in verdicts if v.get("status") != "pass"], actor=actor_id)
+    try:
+        return await asyncio.to_thread(svc.create, h, mode=payload.mode, actor=actor_id,
+                                       idempotency_key=idempotency_key)
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
+@app.post("/api/development-studies/demo/lornoxicam")
+async def create_demo_study(mode: str = "demo", idempotency_key: Optional[str] = Header(None),
+                            actor_id: str = Header("researcher")) -> Dict[str, Any]:
+    svc = development()
+    h = dev_handoff.lornoxicam_demo(svc.rb, actor_id)
+    try:
+        return await asyncio.to_thread(svc.create, h, mode=mode, actor=actor_id,
+                                       idempotency_key=idempotency_key, demo_script="lornoxicam")
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
+@app.get("/api/development-studies")
+async def list_studies() -> Dict[str, Any]:
+    return {"studies": development().store.list()}
+
+
+@app.get("/api/development-studies/{study_id}")
+async def get_study(study_id: str) -> Dict[str, Any]:
+    try:
+        return development().view(study_id)
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
+@app.post("/api/development-studies/{study_id}/actions/{action}")
+async def study_action(study_id: str, action: str, body: StudyActionRequest,
+                       idempotency_key: Optional[str] = Header(None),
+                       expected_state_version: Optional[int] = Header(None),
+                       actor_id: str = Header("researcher")) -> Dict[str, Any]:
+    try:
+        return await asyncio.to_thread(development().act, study_id, action, body.payload, actor=actor_id,
+                                       idempotency_key=idempotency_key, expected_version=expected_state_version)
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
+@app.get("/api/development-studies/{study_id}/trace")
+async def study_trace(study_id: str) -> Dict[str, Any]:
+    try:
+        return development().trace(study_id)
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
+@app.get("/api/development-studies/{study_id}/region-slice")
+async def study_region_slice(study_id: str, fixed: str = "c", index: int = 10) -> Dict[str, Any]:
+    try:
+        return development().region_slice(study_id, fixed, index)
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
+@app.get("/api/development-studies/demo/lornoxicam/csv")
+async def demo_csv() -> Dict[str, Any]:
+    """데모 업로드 파일 — §15 fixture와 같은 파일. 연구자가 이 내용을 결과 제출로 올린다."""
+    path = ROOT / "tests" / "fixtures" / "lornoxicam_table3.csv"
+    return {"filename": path.name, "csv": path.read_text(encoding="utf-8"),
+            "source": "Almotairi et al., Pharmaceuticals 2022, 15, 1463 — Table 3 (CC BY)"}
+
 # 
 # # ---------------------------------------------------------------------------
 # # 장기 실행 프로젝트 API — 파드 재시작 뒤에도 승인·실험·진단을 이어 간다.
@@ -675,6 +806,12 @@ async def get_rule(rule_id: str) -> Dict[str, Any]:
                     "row": match.iloc[0].to_dict(),
                     "sources_doc": _sources_for(entry.file),
                 }
+    # 07_doe (ExperimentalDevelopmentGraph) 규칙
+    rule = development().rb.by_id.get(rule_id)
+    if rule:
+        return {"rule_id": rule_id, "rulebook_id": rule.rulebook_id, "file": f"database/07_doe/{rule.file}",
+                "layer": "07_doe", "strategy": "ast_whitelist_v1",
+                "polarity": "fail_when", "row": rule.row, "sources_doc": "database/07_doe/masters/statistical_sources.csv"}
     raise HTTPException(404, f"규칙 {rule_id} 없음")
 
 

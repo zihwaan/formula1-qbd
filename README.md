@@ -14,6 +14,8 @@
 
 그다음이 이 시스템의 두 번째 축입니다. **값을 모른다고 멈추지 않습니다.** 계산값 → 예측식(ESOL·GSE 등) → 실측값 3단계 중 있는 것까지만 쓰고, 실측이 없으면 후보에 "잠정(provisional)" 표시를 단 채로 그대로 진행합니다. 판정이 실제로 갈리는 지점에서만 구체적인 실측을 요청하고(**절대 그래프를 막지 않습니다**), 값이 들어오면 처음부터 다시 돌리는 대신 필요한 만큼만 다시 계산합니다 — 전략 집합이 그대로면 신뢰도만, 바뀌면 그때만 새로 생성합니다.
 
+**후보 목록 다음도 있습니다(2026-09-24, v6.1).** 연구자가 후보 하나를 고르면 그 처방이 불변 Handoff로 고정되고, 별도의 **개발 스튜디오**가 CQA 계약 → FMEA → 요인·수준 → DoE 설계 → 결과 입력 → 모델 진단 → 불확실성을 반영한 잠정 design space → 독립 확인배치까지 이어 가서 **VERIFIED 운전 영역과 그 성립 조건**을 냅니다. 숫자는 결정론 통계 엔진이, 판정은 새 룰북(171개 규칙)이, 승인은 연구자가 합니다 — [15장](#15-후보-이후--개발-스튜디오-v61).
+
 이 전 과정이 웹 화면에서 실시간으로 보이고, **API 키 없이도 전부 동작합니다.** (이전 버전에 있었던 근거 게이트 승인·배치 등록·AI 진단으로 이어지는 장기 실행 워크플로는 이번 v3 개편으로 범위 밖으로 빠졌습니다 — 코드는 지우지 않고 보존했습니다. 자세한 내용은 [4장](#4-전체-흐름--게이트-둘-루프-둘) 끝에 있습니다.)
 
 ## 목차
@@ -32,6 +34,7 @@
 12. [기술 구조](#12-기술-구조-개발자용)
 13. [직접 실행해 보기](#13-직접-실행해-보기)
 14. [현재 상태와 남은 일](#14-현재-상태와-남은-일)
+15. [후보 이후 — 개발 스튜디오 (v6.1)](#15-후보-이후--개발-스튜디오-v61)
 
 ---
 
@@ -678,6 +681,8 @@ Formula1/
 
 ## 14. 현재 상태와 남은 일
 
+**가장 최근에 바뀐 것 (2026-09-24)** — 후보 목록 이후의 절반을 **별도 그래프(`ExperimentalDevelopmentGraph`)**로 새로 만들었습니다. v2의 장기 실행 워크플로를 되살린 것이 아니라, DoE 에이전트 아키텍처 명세 v6.1과 인계 패키지(룰북 30종·규칙 171개·골든 테스트)를 그대로 이행한 것입니다. 화면도 두 단계 탭(① 후보 탐색 → ② 개발 스튜디오)으로 나눴고, 스튜디오는 "시스템이 묻고 연구자가 답하는" 질문 카드가 중심입니다. 자세한 내용은 [15장](#15-후보-이후--개발-스튜디오-v61).
+
 **가장 최근에 바뀐 것 (2026-09-18)** — v3 설계 문서를 그대로 이행하면서 이 시스템이 답하는 질문 자체를 좁혔습니다. 아래 "첫째~넷째"가 서술하는 근거 게이트 승인·배치·진단 워크플로는 대회 이후 v2에서 실제로 완성한 기능이지만, v3는 출력 경계를 "권고 후보 처방 목록"에서 끊고 그 워크플로를 범위 밖으로 뺐습니다. 대신 설계 계층 앞에 BCS/DCS·고체상·가용화·ASD 페이즈 게이트가 새로 들어갔고, lab-in-the-loop은 "배치 결과를 읽고 다음 실험을 지시하는" 사후 루프에서 "값을 몰라도 후보부터 내고 갈리는 지점만 비차단으로 되묻는" 설계 이전 루프로 바뀌었습니다. v2 코드는 지우지 않고 주석 처리로 남겨 뒀습니다 — 자세한 내용과 이유는 [4장](#4-전체-흐름--게이트-둘-루프-둘) 끝의 "v3 업데이트" 항목에 있습니다.
 
 **그 이전에 바뀐 것** — 아래 네 가지입니다.
@@ -695,3 +700,97 @@ Formula1/
 장기 실행 작업함 쪽에서 남은 일도 셋 있습니다. 후보별 CQA 규격은 지금 설계 시점에 후보마다 따로 스냅숏을 떠서(다른 제품 기준과 섞이지 않도록) 저장하지만, 그 원천 값 자체는 아직 제품별로 세분화되지 않은 공통 개발 규격표에서 옵니다 — 실제 제품별 목표치는 약학 팀 검토가 필요합니다. 설비 검증도 "등록된 설비를 쓰는가"만 확인할 뿐, 등록 설비의 운전 범위(예: RPM·용량 상한)까지 대조하는 단계는 아직 없습니다. 그리고 원인이 확정된 뒤의 재설계는 지금 하나의 경로(재설계 에이전트 재호출)로 단순화돼 있어서, 설계서 §5.2가 그리는 것처럼 "이 원인이면 Gate 3A로, 저 원인이면 Phase 6 공정으로"처럼 원인 종류별로 정확히 다른 지점까지 되돌아가는 것은 다음 단계입니다.
 
 Robin 쪽에서 검토했지만 채택하지 않은 것도 하나 있습니다 — 쌍대비교(A vs B) + 통계적 순위 집계(`choix.ilsr_pairwise`)로 심사를 바꾸는 안입니다. 후보 수가 늘수록 LLM 호출이 제곱으로 늘어 이미 빠듯한 무료 티어 분당 토큰 한도를 넘길 위험이 커서 보류했습니다(자세한 이유는 9장 표 아래). 확인시험 마스터에 물리적 QC 시험(정제 경도·마손도)이 비어 있는 것도 이번에 확인한 자료 공백입니다 — 억지로 채우지 않고 근거 게이트와 같은 원칙대로 "대응 시험 없음"을 정직하게 반영해 두었습니다.
+
+## 15. 후보 이후 — 개발 스튜디오 (v6.1)
+
+> 명세: [`docs/doe_v6.1/formula1-doe-agent-architecture-v6.1.md`](docs/doe_v6.1/formula1-doe-agent-architecture-v6.1.md) · 인계 문서: [`docs/doe_v6.1/HANDOFF.md`](docs/doe_v6.1/HANDOFF.md) · 룰북: [`database/07_doe/`](database/07_doe/README.md)
+
+### 무엇을 하나
+
+후보 처방은 "이렇게 만들면 될 것 같다"까지입니다. 실제 개발은 어떤 품질 특성(CQA)을 어떤 **절대 규격**으로 볼지 정하고, 실패 원인을 짚고(FMEA), 바꿀 변수와 범위를 정해 실험계획을 세우고, 결과로 모델을 만들어 **규격을 동시에 만족하는 영역**을 찾은 뒤, **새로 만든 독립 배치**가 그 예측대로 나오는지 확인해야 끝납니다. 개발 스튜디오는 이 과정을 상태기계로 옮긴 것입니다.
+
+```
+① 후보 탐색 (CandidateDiscoveryGraph) ──► 연구자가 후보 하나 선택 ──► 불변 Handoff (candidate_id@version, fingerprint)
+                                                                        │
+② 개발 스튜디오 (ExperimentalDevelopmentGraph)                           ▼
+   진입 Readiness → CQA 계약 → FMEA → 요인·수준 → 설계 선택 ─┬─ Screening → 효과구간 판정 ─┐
+                                                              └─ RSM 직행 (3요인 이하 + 사전근거) ◄┘
+   → 결과 제출·확인·품질 게이트 → 모델 진단(연구자 판단) → 잠정 영역(PROVISIONAL)
+   → 확인계획 잠금 → 독립 확인배치 3점 → 2×2 판정 → VERIFIED 영역 + 성립 조건(scope)
+       실패 시: 영역 INVALIDATED → 진단(경쟁 가설) → 보강·범위 재설정·후보 개정(child candidate)
+```
+
+두 그래프는 내부 상태를 공유하지 않습니다. 후보 1위가 자동으로 넘어오지도 않습니다 — 후보 카드의 **이 후보로 개발 착수**를 눌러야 시작합니다.
+
+### 세 가지 원칙
+
+1. **숫자는 코드가, 설명은 LLM이.** 설계행렬·alias·회귀계수·진단·예측구간·영역·판정·상태 승격은 결정론 엔진(`formula/qbd/`)이 합니다. LLM은 FMEA 누락 가설과 확인 실패 시 경쟁 원인가설만 내고, 그 출력은 근거 등급 `LLM_HYPOTHESIS`로 고정됩니다.
+2. **모든 판정은 룰북이.** `database/07_doe/`의 22개 규칙 CSV(171개 규칙) + 마스터 7종 + manifest가 판정 권한 전부입니다. 조건식은 Python `eval`이 아니라 **AST 화이트리스트 평가기**로 돌고(허용되지 않은 문법이 CSV에 들어오면 로드 자체가 실패), 값이 없으면 "미발화"가 아니라 규칙마다 정한 결측 처리(`RECORD_NOT_CHECKED`, `REQUEST_DATA` …)를 적용합니다. 여러 규칙이 동시에 발화하면 전부 기록하고 가장 강한 효과 하나로 전이하며, 다음 상태는 전이표(`backtrack_routing_rules.csv`)에서만 찾습니다 — 표에 없으면 사람 판단(human triage)으로 갑니다.
+3. **연구자가 승인한다.** 모든 `WAITING_*_APPROVAL` 상태에 승인과 반려가 있습니다. 경고는 사유를 남기면 넘길 수 있고, 차단·무효화는 누구도 override할 수 없습니다. 연구자는 판단을 바꿀 수 있지만 **근거 등급은 바꿀 수 없습니다** — 데이터로만 올라갑니다.
+
+### 영역은 평균이 아니라 미래 배치로
+
+잠정 영역은 모델 평균의 신뢰구간이 아니라 **미래 배치의 예측분포**(반응별 t 분포, 척도 √(평균 SE² + 잔차분산))로 계산합니다. 반응별 통과확률을 곱한 공동확률이 0.90 이상인 격자점이 영역이고(반응 간 독립 가정 — MVP 근사로 정책에 기록), 분모는 **설계점 convex hull 안의 격자점**입니다. 권장 setpoint는 domain 경계에서 0.1 coded 이상 떨어진 점 중 공동확률이 가장 높은 곳입니다. 확인점 예측구간은 필수 확인점 × DoE 반응 전체를 한 family로 묶은 Bonferroni 동시구간이고, **첫 결과가 들어오기 전에 잠깁니다.**
+
+### 데모 — Lornoxicam 분산정 (Almotairi 2022, 실측 15 run)
+
+스튜디오의 **데모 시작**은 논문 Table 3 실측값을 사전 적재하지 않고, 연구자가 결과 제출 화면으로 CSV를 올리는 방식으로 진행합니다(논문의 회귀식·ANOVA·최적점은 쓰지 않음). 엔진이 낸 값은 인계 패키지의 골든 값과 일치합니다(`tests/test_doe_engine.py`, `tests/test_development_study.py`).
+
+| 항목 | 값 |
+|---|---|
+| 설계 | 3요인 + 사전근거 승인 → RSM 직행, Box–Behnken 15 run |
+| 마손도 | 전체 이차 예측 R² 0.251 → `MODEL_FLAGGED` → 연구자 선형 축소 → 0.824 |
+| DE30 · 분산시간 | R² 0.970 / 예측 R² 0.765 · R² 0.990 / 0.865 (분산시간은 `NON_BINDING`) |
+| supported domain | 격자 9,261점 중 7,501점 |
+| 평균 기준 통과 → 공동확률 ≥ 0.90 | **77.2% → 47.6%** (경계 주도 CQA: DE30) |
+| 권장 setpoint | MCC:만니톨 2.7 · 혼합 12.5분 · 크로스포비돈 6.8 %, 공동확률 0.991 |
+| 확인 PI | 3점 × 4반응 = 12개 비교, 개별 99.58% · setpoint DE30 82.3 (71.9–92.8) |
+
+DE30 ≥ 75 %, 조성 비율(API 4 %·SLS 1 %·MgSt 1 %)과 정제 중량 200 mg은 **연구자 입력 가정**이며 화면에 가정으로 표시됩니다.
+
+### 구현하면서 명세와 다르게 나온 것
+
+- **함량균일성(AV) 모델에도 과적합 flag가 섭니다.** 명세 §19는 "예측력 낮음 경고"만 적었지만, 룰북 MV006(조정 R² − 예측 R² > 0.20)대로면 0.885 − 0.481로 flag 대상입니다. 데모에서는 연구자가 사유를 달고 수용(`ACCEPTED_WITH_FLAGS`)합니다 — 골든 영역이 AV 전체 이차모형을 그대로 쓰므로 이 판단과 일치합니다.
+- **"영향점 run 12"는 run 3과 run 12의 정확한 동률입니다**(Cook's D 1.066). 참조 구현의 argmax가 부동소수점 끝자리로 12를 골랐을 뿐이라, 둘 다 flag하고 어느 것도 지우지 않습니다.
+- **시연용 합성값으로는 VERIFIED가 나오지 않습니다.** 확인배치에 `SYNTHETIC_DEMO`나 문헌값을 넣으면 VR015가 확인 판정 자체를 거부합니다. VERIFIED는 실제 독립 배치의 실측으로만 나옵니다.
+- **production 모드는 아무것도 막지 않습니다.** 171개 규칙이 전부 `DRAFT_PENDING_REVIEW`라 APPROVED 규칙만 집행하는 production에서는 집행 규칙이 0개입니다(명세상 정상). 화면은 demo(sandbox) 모드로 돌고, 집행 중인 규칙 수가 항상 보입니다.
+
+### 화면
+
+맨 위 **① 후보 탐색 → ② 개발 스튜디오** 탭이 곧 두 그래프입니다. 스튜디오의 주인공은 가운데 **질문 카드**입니다 — 지금 상태에서 시스템이 연구자에게 묻는 것과 입력 폼, 승인·반려 버튼이 있고, 규칙이 막으면 어느 규칙이 왜 막았는지가 카드 안에 바로 뜹니다(그게 곧 다음에 넣을 값입니다). 그 아래에 시스템 판정과 연구자 결정이 번갈아 쌓이는 대화 기록, 왼쪽에 단계 레일, 오른쪽에 결과(모델 표·영역 단면 지도·확인점)·규칙 판정 전체·lineage가 대화를 따라 채워집니다. 데모의 **데모 입력 채우기**는 폼을 채우기만 하고, 제출은 항상 연구자가 누릅니다.
+
+### API
+
+| Method | Endpoint | 책임 |
+|---|---|---|
+| POST | `/api/candidates/{id}/development-studies` | `{run_id, candidate_version}` → 불변 Handoff + study |
+| POST | `/api/development-studies/demo/lornoxicam` | §19 데모 study |
+| GET | `/api/development-studies/{id}` | state + 지금 연구자에게 묻는 것(`prompt`) |
+| POST | `/api/development-studies/{id}/actions/{action}` | 연구자 행동 — `required_data`, `cqa_edit`/`cqa_approve`, `fmea_edit`/`fmea_approve`, `factor_data`/`factor_approve`, `plan_approve`, `results_submit`/`results_confirm`, `model_reduce`/`model_accept`/`model_approve`, `region_approve`, `vplan_lock`, `verification_submit`/`verification_confirm`, `finalize`, `directive_approve`, `override`, 각 `*_reject` 등 |
+| GET | `/api/development-studies/{id}/trace` | §18 역추적 식별자 + 이벤트·결정 원장 |
+| GET | `/api/development-studies/{id}/region-slice` | 공동확률 영역 단면 |
+
+모든 mutation은 `Idempotency-Key`(같은 키는 한 번만 반영), `Expected-State-Version`(오래된 버전이면 409), `Actor-ID` 헤더를 받습니다. 명세 §13의 자원별 경로(`/api/doe-plans/{id}/approve` 등)는 study 단위 행동 하나로 모았습니다.
+
+### 모듈
+
+```
+formula/development/  rules.py (manifest 로더·AST 평가기·집행기) · states.py (§5.1 전이 표)
+                      service.py (오케스트레이터·artifact→RuleContext 매핑) · store.py (SQLite 이벤트·결정 원장)
+                      handoff.py (Handoff·fingerprint·데모) · contracts.py (§10 Pydantic 계약)
+formula/qbd/          doe.py (BBD·CCD·FCCD·2^(4-1)·PB12 생성·alias·검증 context)
+                      analysis.py (OLS·PRESS·Cook's D·pure error·LOF·screening 효과)
+                      design_space.py (convex hull domain·공동확률·setpoint·확인점·family PI)
+                      cqa.py · fmea.py · factors.py (CQA mapper · FMEA engine · RangeProposer)
+formula/agents/development.py   FMEA 가설 · 진단 에이전트 (LLM + 결정론 대체)
+```
+
+통계 엔진은 numpy + scipy만 씁니다. 인계 패키지가 제안한 pyDOE3·statsmodels·plotly는 런타임에 쓰지 않았습니다 — MVP 설계는 교과서 표 그대로라 직접 생성하는 편이 "특정 패키지가 설계 타당성을 보장한다고 가정하지 않는다"(§12.2)를 지키기 쉽고, 골든 값은 statsmodels 참조 구현(`tests/golden/compute_lornoxicam_golden.py`)과 대조해 확인했습니다. 영역 단면은 SVG로 그립니다.
+
+### 아직 하지 않은 것
+
+- 명세 §12의 범위 밖 항목(Control strategy, NOR, 스케일업, mixture·split-plot·D-optimal·DSD 설계, 다변량 공동확률)은 만들지 않았고, 해당 설계는 DV013이 실행을 막습니다.
+- **study 저장소는 파드의 `/tmp` SQLite**라 파드가 재시작되면 진행 중인 study가 사라집니다. 운영에는 PVC 또는 PostgreSQL(§12.1)이 필요합니다.
+- screening core 재사용 증강(DS011)은 아직 없습니다 — screening 뒤 RSM은 새 설계(face-centered CCD)로 계획합니다. 증강은 블록 중심점 2개 + 실패 확인점 표적 run의 단순 형태입니다.
+- 설명(explanation) 에이전트는 LLM을 부르지 않고 엔진 수치로 쓴 결정론 문장만 냅니다. 판별시험 결과 입력(`WAITING_DISCRIMINATING_TESTS`)은 상태만 있고 화면 흐름은 없습니다.
+- 룰·마스터의 수치(부형제 범위, 약전 기준, 서지)는 전부 원문 대조 전(`TO_VERIFY`)이고, 시험법 반복정밀도·설비 능력은 비어 있습니다 — 그래서 HIGH_PURE_ERROR(SA008)와 범위 폭 검사(FR008)는 `NOT_CHECKED`, run sheet 설비 용량(RS003)은 발행 보류로 동작합니다. 과학 수치 행의 `validation_status` 상향은 약학 담당 검토 몫입니다.

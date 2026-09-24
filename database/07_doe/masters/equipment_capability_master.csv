@@ -1,0 +1,5 @@
+equipment_id,equipment_class,model,capability_parameter,min,max,unit,resolution,calibration_ref,evidence_status,notes_ko,source_ids,governance_class,validation_status,version,effective_from
+EQ_LX_MIXER,blender,Turbula S27 (Erweka),batch_volume,,,L,,,UNKNOWN,Lornoxicam 논문 사용 장비. 능력 입력 필요,SRC_ALMOTAIRI_2022,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+EQ_LX_MIXER,blender,Turbula S27 (Erweka),blend_time,,,min,,,UNKNOWN,설계 범위 5–15분은 study 설정이며 설비 한계 아님,SRC_ALMOTAIRI_2022,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+EQ_LX_PRESS,tablet_press,Erweka EKO 단발,compression_force,,,kN,,,UNKNOWN,논문 미보고,SRC_ALMOTAIRI_2022,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+EQ_LX_PRESS,tablet_press,Erweka EKO 단발,punch_diameter_supported,,,mm,,,UNKNOWN,study는 10 mm 사용 (scope에 기록),SRC_ALMOTAIRI_2022,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23

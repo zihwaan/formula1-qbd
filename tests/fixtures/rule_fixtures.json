@@ -1,0 +1,750 @@
+[
+ {
+  "id": "A6-1",
+  "rule_id": "SA004",
+  "mode": "demo",
+  "context": {
+   "effect": {
+    "actual": -0.5,
+    "ci_lower": -1.5,
+    "ci_upper": 0.4,
+    "aliased": false,
+    "alias_resolved": false
+   },
+   "cqa": {
+    "practical_effect_threshold": 1.0
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "음의 효과 가능성 있으면 FIXED 금지"
+ },
+ {
+  "id": "A6-2",
+  "rule_id": "SA006",
+  "mode": "demo",
+  "context": {
+   "effect": {
+    "actual": -0.5,
+    "ci_lower": -1.5,
+    "ci_upper": 0.4,
+    "aliased": false,
+    "alias_resolved": false
+   },
+   "cqa": {
+    "practical_effect_threshold": 1.0
+   }
+  },
+  "expect": "FIRES",
+  "note": "CI가 -delta에 걸치면 INCONCLUSIVE"
+ },
+ {
+  "id": "A6-3",
+  "rule_id": "SA001",
+  "mode": "demo",
+  "context": {
+   "effect": {
+    "actual": -0.5,
+    "ci_lower": -1.5,
+    "ci_upper": 0.4,
+    "aliased": false,
+    "alias_resolved": false
+   },
+   "cqa": {
+    "practical_effect_threshold": 1.0
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "점추정만으로 ACTIVE 금지"
+ },
+ {
+  "id": "A6-4",
+  "rule_id": "SA004",
+  "mode": "demo",
+  "context": {
+   "effect": {
+    "actual": 0.1,
+    "ci_lower": -0.4,
+    "ci_upper": 0.6,
+    "aliased": false,
+    "alias_resolved": false
+   },
+   "cqa": {
+    "practical_effect_threshold": 1.0
+   }
+  },
+  "expect": "FIRES",
+  "note": "CI 전체가 ±delta 안이면 FIXED"
+ },
+ {
+  "id": "A6-5",
+  "rule_id": "SA001",
+  "mode": "demo",
+  "context": {
+   "effect": {
+    "actual": -2.0,
+    "ci_lower": -2.8,
+    "ci_upper": -1.2,
+    "aliased": false,
+    "alias_resolved": false
+   },
+   "cqa": {
+    "practical_effect_threshold": 1.0
+   }
+  },
+  "expect": "FIRES",
+  "note": "음의 방향 ACTIVE"
+ },
+ {
+  "id": "A7-1",
+  "rule_id": "FR008",
+  "mode": "demo",
+  "context": {
+   "factor": {
+    "expected_range_contrast": -20
+   },
+   "method": {
+    "repeatability_sd": 1
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "폭10×기울기-2 = 효과 20"
+ },
+ {
+  "id": "A7-2",
+  "rule_id": "FR008",
+  "mode": "demo",
+  "context": {
+   "factor": {
+    "expected_range_contrast": 1
+   },
+   "method": {
+    "repeatability_sd": 1
+   }
+  },
+  "expect": "FIRES",
+  "note": "효과 1 < 2×SD"
+ },
+ {
+  "id": "A7-3",
+  "rule_id": "FR008",
+  "mode": "demo",
+  "context": {
+   "factor": {
+    "expected_range_contrast": null
+   },
+   "method": {
+    "repeatability_sd": 1
+   }
+  },
+  "expect": "MISSING",
+  "note": "값 없으면 NOT_CHECKED"
+ },
+ {
+  "id": "A5-1",
+  "rule_id": "FE008",
+  "mode": "demo",
+  "context": {
+   "item": {
+    "severity": 5,
+    "occurrence": 1,
+    "occurrence_evidence": "DSC",
+    "controllable": true,
+    "range_definable": true,
+    "disposition": "EXCLUDED",
+    "alternative_control": null,
+    "approval_ref": null
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "고심각도는 낮은 O로 제외 권고 금지"
+ },
+ {
+  "id": "A5-2",
+  "rule_id": "FE012",
+  "mode": "demo",
+  "context": {
+   "item": {
+    "severity": 5,
+    "occurrence": 1,
+    "occurrence_evidence": "DSC",
+    "controllable": true,
+    "range_definable": true,
+    "disposition": "EXCLUDED",
+    "alternative_control": null,
+    "approval_ref": null
+   }
+  },
+  "expect": "FIRES",
+  "note": "고심각도 제외는 대체관리·승인 없이 차단"
+ },
+ {
+  "id": "A5-3",
+  "rule_id": "FE012",
+  "mode": "demo",
+  "context": {
+   "item": {
+    "severity": 5,
+    "occurrence": 1,
+    "occurrence_evidence": "DSC",
+    "controllable": true,
+    "range_definable": true,
+    "disposition": "EXCLUDED",
+    "alternative_control": "SOP-12",
+    "approval_ref": "APR-1"
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "대체관리+승인 있으면 허용"
+ },
+ {
+  "id": "A8-1",
+  "rule_id": "CR001",
+  "mode": "demo",
+  "context": {
+   "cqa": {
+    "analysis_role": "DOE_RESPONSE",
+    "acceptance_operator": null,
+    "target": 95
+   }
+  },
+  "expect": "FIRES",
+  "note": "target만으로 판정 불가"
+ },
+ {
+  "id": "A8-2",
+  "rule_id": "CR002",
+  "mode": "demo",
+  "context": {
+   "cqa": {
+    "acceptance_operator": "TARGET_TOL",
+    "target": 95,
+    "target_tolerance": null,
+    "lower": null,
+    "upper": null
+   }
+  },
+  "expect": "FIRES",
+  "note": "TARGET_TOL인데 tolerance 없음"
+ },
+ {
+  "id": "A8-3",
+  "rule_id": "CR003",
+  "mode": "demo",
+  "context": {
+   "cqa": {
+    "lower": 100,
+    "upper": 90
+   }
+  },
+  "expect": "FIRES",
+  "note": "하한>상한"
+ },
+ {
+  "id": "A8-4",
+  "rule_id": "CR001",
+  "mode": "demo",
+  "context": {
+   "cqa": {
+    "analysis_role": "MONITOR_ONLY",
+    "acceptance_operator": null
+   }
+  },
+  "expect": "FIRES",
+  "note": "MONITOR_ONLY도 판정 기준 필요"
+ },
+ {
+  "id": "A3-1",
+  "rule_id": "VR006",
+  "mode": "demo",
+  "context": {
+   "point": {
+    "role": "REFERENCE_EXISTING",
+    "spec_pass_all_applicable": false,
+    "within_family_pi_all_doe": false
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "참고 배치 규격 실패로 무효화 금지"
+ },
+ {
+  "id": "A3-2",
+  "rule_id": "VR005",
+  "mode": "demo",
+  "context": {
+   "point": {
+    "role": "REFERENCE_EXISTING",
+    "spec_pass_all_applicable": true,
+    "within_family_pi_all_doe": false
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "참고 배치 PI 이탈로 무효화 금지"
+ },
+ {
+  "id": "A3-3",
+  "rule_id": "VR016",
+  "mode": "demo",
+  "context": {
+   "point": {
+    "role": "REFERENCE_EXISTING",
+    "spec_pass_all_applicable": false,
+    "within_family_pi_all_doe": false
+   }
+  },
+  "expect": "FIRES",
+  "note": "참고 결과는 검토 요청만"
+ },
+ {
+  "id": "A3-4",
+  "rule_id": "VR009",
+  "mode": "demo",
+  "context": {
+   "promotion_basis_points": [
+    {
+     "role": "SETPOINT"
+    },
+    {
+     "role": "REFERENCE_EXISTING"
+    }
+   ]
+  },
+  "expect": "FIRES",
+  "note": "참고점이 섞인 승격 근거 차단"
+ },
+ {
+  "id": "A3-5",
+  "rule_id": "VR006",
+  "mode": "demo",
+  "context": {
+   "point": {
+    "role": "BOUNDARY",
+    "spec_pass_all_applicable": false,
+    "within_family_pi_all_doe": true
+   }
+  },
+  "expect": "FIRES",
+  "note": "필수점 규격 실패는 무효화 (MONITOR_ONLY 실패 포함)"
+ },
+ {
+  "id": "A4-1",
+  "rule_id": "VR011",
+  "mode": "demo",
+  "context": {
+   "required_points": []
+  },
+  "expect": "NOT_FIRES",
+  "note": "빈 확인점으로 통과 금지"
+ },
+ {
+  "id": "A4-2",
+  "rule_id": "VR014",
+  "mode": "demo",
+  "context": {
+   "required_points": []
+  },
+  "expect": "FIRES",
+  "note": "빈 확인점 차단"
+ },
+ {
+  "id": "A4-3",
+  "rule_id": "VR002",
+  "mode": "demo",
+  "context": {
+   "plan": {
+    "locked_at": "2026-10-02T10:00"
+   },
+   "verification": {
+    "first_result_submitted_at": "2026-10-01T09:00"
+   }
+  },
+  "expect": "FIRES",
+  "note": "결과 제출 후 잠금"
+ },
+ {
+  "id": "A4-4",
+  "rule_id": "VR002",
+  "mode": "demo",
+  "context": {
+   "plan": {
+    "locked_at": "2026-09-30T10:00"
+   },
+   "verification": {
+    "first_result_submitted_at": "2026-10-01T09:00"
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "사전 잠금"
+ },
+ {
+  "id": "A4-5",
+  "rule_id": "VR003",
+  "mode": "demo",
+  "context": {
+   "required_points": [
+    {
+     "batch_id": "B7",
+     "parent_blend_id": "BL9"
+    }
+   ],
+   "model": {
+    "input_batch_ids": [
+     "B7"
+    ]
+   },
+   "fit_blend_ids": []
+  },
+  "expect": "FIRES",
+  "note": "result_id가 달라도 같은 배치"
+ },
+ {
+  "id": "A4-6",
+  "rule_id": "VR003",
+  "mode": "demo",
+  "context": {
+   "required_points": [
+    {
+     "batch_id": "B21",
+     "parent_blend_id": "BL3"
+    }
+   ],
+   "model": {
+    "input_batch_ids": [
+     "B1"
+    ]
+   },
+   "fit_blend_ids": [
+    "BL3"
+   ]
+  },
+  "expect": "FIRES",
+  "note": "같은 블렌드 재타정"
+ },
+ {
+  "id": "A4-7",
+  "rule_id": "VR013",
+  "mode": "demo",
+  "context": {
+   "required_points": [
+    {
+     "batch_id": "B21"
+    },
+    {
+     "batch_id": "B21"
+    },
+    {
+     "batch_id": "B22"
+    }
+   ]
+  },
+  "expect": "FIRES",
+  "note": "같은 배치를 여러 역할에 사용"
+ },
+ {
+  "id": "A4-8",
+  "rule_id": "VR012",
+  "mode": "demo",
+  "context": {
+   "verification": {
+    "results_public_before_lock": true
+   }
+  },
+  "expect": "FIRES",
+  "note": "문헌 배치는 사전 확인배치 불가"
+ },
+ {
+  "id": "A9-1",
+  "rule_id": "VR015",
+  "mode": "demo",
+  "context": {
+   "required_points": [
+    {
+     "evidence_status": "LITERATURE_DIRECT"
+    }
+   ]
+  },
+  "expect": "FIRES",
+  "note": "문헌 결과로 확인 판정 금지"
+ },
+ {
+  "id": "A9-2",
+  "rule_id": "VR015",
+  "mode": "demo",
+  "context": {
+   "required_points": [
+    {
+     "evidence_status": "SYNTHETIC_DEMO"
+    }
+   ]
+  },
+  "expect": "FIRES",
+  "note": "합성값으로 확인 판정 금지 (demo에서도)"
+ },
+ {
+  "id": "A9-3",
+  "rule_id": "MV011",
+  "mode": "production",
+  "context": {
+   "model": {
+    "inputs": [
+     {
+      "human_verification_status": "CONFIRMED",
+      "evidence_status": "SYNTHETIC_DEMO"
+     }
+    ]
+   }
+  },
+  "expect": "FIRES",
+  "note": "production에서 합성값 적합 금지"
+ },
+ {
+  "id": "A9-4",
+  "rule_id": "MV011",
+  "mode": "demo",
+  "context": {
+   "model": {
+    "inputs": [
+     {
+      "human_verification_status": "CONFIRMED",
+      "evidence_status": "SYNTHETIC_DEMO"
+     }
+    ]
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "demo sandbox에서는 허용"
+ },
+ {
+  "id": "A9-5",
+  "rule_id": "MV011",
+  "mode": "demo",
+  "context": {
+   "model": {
+    "inputs": [
+     {
+      "human_verification_status": "CONFIRMED",
+      "evidence_status": "LITERATURE_DIRECT"
+     }
+    ]
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "문헌 표 값은 적합 허용 (Lornoxicam)"
+ },
+ {
+  "id": "A9-6",
+  "rule_id": "DR001",
+  "mode": "production",
+  "context": {
+   "models": [
+    {
+     "validation_status": "DRAFT_PENDING_REVIEW"
+    }
+   ]
+  },
+  "expect": "NOT_ENFORCED",
+  "note": "DRAFT 규칙은 production에서 집행 안 됨"
+ },
+ {
+  "id": "A9-7",
+  "rule_id": "DR001",
+  "mode": "demo",
+  "context": {},
+  "expect": "ENFORCED",
+  "note": "demo에서는 DRAFT 집행"
+ },
+ {
+  "id": "A2-1",
+  "rule_id": "DR001",
+  "mode": "demo",
+  "context": {
+   "models": [
+    {
+     "validation_status": "ACCEPTED_WITH_FLAGS"
+    },
+    {
+     "validation_status": "VALID"
+    }
+   ]
+  },
+  "expect": "NOT_FIRES",
+  "note": "연구자 수용 flag 모델 허용"
+ },
+ {
+  "id": "A2-2",
+  "rule_id": "DR001",
+  "mode": "demo",
+  "context": {
+   "models": [
+    {
+     "validation_status": "FLAGGED"
+    }
+   ]
+  },
+  "expect": "FIRES",
+  "note": "판단 전 flag 모델 차단"
+ },
+ {
+  "id": "A1-1",
+  "rule_id": "DV001",
+  "mode": "demo",
+  "context": {
+   "plan": {
+    "_matrix_rank": 9,
+    "n_terms": 10
+   }
+  },
+  "expect": "FIRES",
+  "note": "matrix_rank는 행렬 rank"
+ },
+ {
+  "id": "A10-1",
+  "rule_id": "DV014",
+  "mode": "demo",
+  "context": {
+   "plan": {
+    "design_type": "BOX_BEHNKEN",
+    "n_continuous": 2,
+    "n_categorical": 0
+   }
+  },
+  "expect": "FIRES",
+  "note": "2요인 BBD 차단"
+ },
+ {
+  "id": "A10-2",
+  "rule_id": "DV013",
+  "mode": "demo",
+  "context": {
+   "plan": {
+    "design_type": "MIXTURE",
+    "n_factors": 3
+   }
+  },
+  "expect": "FIRES",
+  "note": "mixture 미지원"
+ },
+ {
+  "id": "A10-3",
+  "rule_id": "DV013",
+  "mode": "demo",
+  "context": {
+   "plan": {
+    "design_type": "BOX_BEHNKEN",
+    "n_factors": 3,
+    "n_categorical": 0
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "3요인 BBD 지원"
+ },
+ {
+  "id": "A10-4",
+  "rule_id": "DV013",
+  "mode": "demo",
+  "context": {
+   "plan": {
+    "design_type": "FACE_CENTERED_CCD",
+    "n_factors": 3,
+    "n_categorical": 1
+   }
+  },
+  "expect": "FIRES",
+  "note": "CCD에 범주형 미지원"
+ },
+ {
+  "id": "A10-5",
+  "rule_id": "FE011",
+  "mode": "demo",
+  "context": {
+   "factors": [
+    {
+     "disposition": "DOE_CANDIDATE"
+    },
+    {
+     "disposition": "DOE_CANDIDATE"
+    },
+    {
+     "disposition": "DOE_CANDIDATE"
+    },
+    {
+     "disposition": "DOE_CANDIDATE"
+    },
+    {
+     "disposition": "DOE_CANDIDATE"
+    }
+   ]
+  },
+  "expect": "FIRES",
+  "note": "5요인 screening 차단"
+ },
+ {
+  "id": "B1-1",
+  "rule_id": "SA008",
+  "mode": "demo",
+  "context": {
+   "method": {
+    "variance_component_type": "BATCH_TO_BATCH",
+    "repeatability_sd": 2.25
+   },
+   "center_points": {
+    "pure_error_sd": 9
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "배치 간 SD로 HIGH_PURE_ERROR 판정 금지"
+ },
+ {
+  "id": "B1-2",
+  "rule_id": "SA008",
+  "mode": "demo",
+  "context": {
+   "method": {
+    "variance_component_type": "METHOD_REPEATABILITY",
+    "repeatability_sd": 0.5
+   },
+   "center_points": {
+    "pure_error_sd": 2.25
+   }
+  },
+  "expect": "FIRES",
+  "note": "시험법 SD 대비 과다"
+ },
+ {
+  "id": "B2-1",
+  "rule_id": "DR003",
+  "mode": "demo",
+  "context": {
+   "region": {
+    "all_points_in_domain": false
+   }
+  },
+  "expect": "FIRES",
+  "note": "BBD 꼭짓점(convex hull 밖) 포함 금지"
+ },
+ {
+  "id": "B6-1",
+  "rule_id": "VR017",
+  "mode": "demo",
+  "context": {
+   "point": {
+    "role": "CHALLENGE",
+    "expected_outcome": "FAIL",
+    "expected_fail_probability": 0.3
+   }
+  },
+  "expect": "FIRES",
+  "note": "실패확률 근거 부족"
+ },
+ {
+  "id": "B9-1",
+  "rule_id": "RQ002",
+  "mode": "demo",
+  "context": {
+   "result": {
+    "settings_within_tolerance": true
+   }
+  },
+  "expect": "NOT_FIRES",
+  "note": "허용오차 이내 편차는 분석 허용"
+ }
+]

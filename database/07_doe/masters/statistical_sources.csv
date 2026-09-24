@@ -1,0 +1,32 @@
+source_id,citation,type,url,used_for,check_status,source_ids,governance_class,validation_status,version,effective_from
+SRC_ICH_Q8,ICH Q8(R2) Pharmaceutical Development (2009),guideline,https://database.ich.org/sites/default/files/Q8_R2_Guideline.pdf,design space 개념,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_ICH_Q9,ICH Q9(R1) Quality Risk Management (2023),guideline,https://database.ich.org/sites/default/files/ICH_Q9%28R1%29_Guideline_Step4_2025_0115_0.pdf,FMEA,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_ICH_Q6A,ICH Q6A Specifications (1999),guideline,,CQA 규격,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_ICH_Q3B,ICH Q3B(R2) Impurities in New Drug Products,guideline,,유연물질,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_ICH_Q2,ICH Q2(R2) Validation of Analytical Procedures,guideline,https://www.ema.europa.eu/en/ich-q2r2-validation-analytical-procedures-scientific-guideline,시험법 정밀도,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_ICH_Q1A,ICH Q1A(R2) Stability Testing,guideline,,안정성,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_ICH_M9,ICH M9 BCS-based Biowaivers,guideline,,BCS,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_USP_711,USP <711> Dissolution,compendial,,용출,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_USP_701,USP <701> Disintegration,compendial,,붕해,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_USP_905,USP <905> Uniformity of Dosage Units,compendial,https://www.usp.org/sites/default/files/usp/document/harmonization/gen-method/q0304_stage_6_monograph_25_feb_2011.pdf,"AV, 판정 절차",TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_USP_1216,USP <1216> Tablet Friability,compendial,,마손도,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_USP_1217,USP <1217> Tablet Breaking Force,compendial,,파괴강도,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_USP_1174,USP <1174> Powder Flow,compendial,,흐름성,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_USP_429,USP <429> Light Diffraction Measurement of Particle Size,compendial,,입도,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_USP_891,USP <891> Thermal Analysis,compendial,,DSC,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_USP_921,USP <921> Water Determination,compendial,,수분,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_PHEUR_TABLETS,"Ph. Eur. monograph Tablets (0478), dispersible tablets",compendial,,분산시간·미세도,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_HPE,"Rowe RC, Sheskey PJ, Quinn ME. Handbook of Pharmaceutical Excipients, 6th ed. 2009",handbook,,부형제 통상 사용범위 (라이선스 확인),TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_AULTON,"Aulton ME, Taylor KMG. Aulton's Pharmaceutics, 6th ed. 2021",textbook,,공정 실패모드,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_FDA_IID,FDA Inactive Ingredient Database (+FAQ: maximum potency vs maximum daily exposure),database,https://www.fda.gov/drugs/drug-approvals-and-databases/inactive-ingredients-approved-drug-products-search-frequently-asked-questions,사용량 이력 참고,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_MONTGOMERY_DAE,Montgomery DC. Design and Analysis of Experiments. Wiley,textbook,,설계·분석,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_NIST_HANDBOOK,"NIST/SEMATECH e-Handbook of Statistical Methods, Process Improvement",handbook,https://www.itl.nist.gov/div898/handbook/pri/pri.htm,"screening, 중심점, 확인 run",TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_NIST_STRD,NIST Statistical Reference Datasets,dataset,https://www.itl.nist.gov/div898/strd/,회귀 정확도 테스트,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_BOX_WILSON_1951,"Box GEP, Wilson KB. J R Stat Soc B. 1951;13:1–45",paper,,CCD,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_BOX_BEHNKEN_1960,"Box GEP, Behnken DW. Technometrics. 1960;2:455–475",paper,https://www.itl.nist.gov/div898/handbook/pri/section3/pri3362.htm,BBD geometry,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_PLACKETT_BURMAN_1946,"Plackett RL, Burman JP. Biometrika. 1946;33:305–325",paper,,PB,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_JONES_NACHTSHEIM_2011,"Jones B, Nachtsheim CJ. J Qual Technol. 2011;43:1–15",paper,,DSD (MVP 미지원),TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_COOK_1977,Cook RD. Technometrics. 1977;19:15–18,paper,,Cook's distance,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_PETERSON_2004,Peterson JJ. J Qual Technol. 2004;36:139–153,paper,,확률 기반 다중반응 영역,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_STATEASE_PRED_R2,Stat-Ease Design-Expert 문서: adj R²와 pred R² 차이 0.2 경험칙,vendor_doc,,과적합 flag,TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23
+SRC_ALMOTAIRI_2022,Almotairi N et al. Pharmaceuticals. 2022;15:1463,paper,https://doi.org/10.3390/ph15121463,데모 데이터 (tests/fixtures),TO_VERIFY,,STATISTICAL_METHOD,DRAFT_PENDING_REVIEW,1,2026-09-23

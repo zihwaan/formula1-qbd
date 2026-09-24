@@ -1,0 +1,768 @@
+# Formula 1 · 07_doe 룰북 매니페스트 (#1), v6.1
+# load_enabled: 파일 로드 여부 / enforcement_enabled: 판정 권한. 실제 집행은 modes의 최소 validation_status를 함께 만족해야 함.
+# 현재 모든 행이 DRAFT_PENDING_REVIEW이므로 production 모드에서는 어떤 규칙도 집행되지 않는다.
+id: 07_doe
+version: '6.1'
+effective_from: '2026-09-23'
+evaluator:
+  name: ast_whitelist_v1
+  python_eval: false
+  allowed_ast_nodes:
+  - Add
+  - And
+  - Attribute
+  - BinOp
+  - BoolOp
+  - Call
+  - Compare
+  - Constant
+  - Div
+  - Eq
+  - Expression
+  - GeneratorExp
+  - Gt
+  - GtE
+  - In
+  - Is
+  - IsNot
+  - ListComp
+  - Load
+  - Lt
+  - LtE
+  - Mult
+  - Name
+  - Not
+  - NotEq
+  - NotIn
+  - Or
+  - Store
+  - Sub
+  - Tuple
+  - USub
+  - UnaryOp
+  - comprehension
+  generator_rule: 'any/all/nonempty_all/sum/count/distinct_count은 generator expression 1개를 받는다. 변수 바인딩은 for 절에만. 빈 컬렉션: any→False,
+    all→True, nonempty_all→False'
+  null_policy: None과의 비교 외 연산에 None이 들어가면 missing_value_action 적용 (규칙 미발화 아님)
+  const_namespace: const.X = statistical_policy_constants.constant_id
+modes:
+  production:
+    enforce_min_validation_status: APPROVED
+    evidence_DEMO_ONLY: DENY
+    namespace: prod
+  demo:
+    enforce_min_validation_status: DRAFT_PENDING_REVIEW
+    evidence_DEMO_ONLY: ALLOW
+    namespace: sandbox
+    note: demo 결과는 sandbox에 격리, production artifact로 승격 불가
+validation_status_order:
+- DRAFT_PENDING_REVIEW
+- UNDER_REVIEW
+- APPROVED
+- RETIRED
+backend_capabilities:
+  FRACTIONAL_FACTORIAL:
+    supported: true
+    factor_types: continuous or 2-level categorical
+    min_factors: 3
+    max_factors: 4
+  PLACKETT_BURMAN:
+    supported: true
+    factor_types: continuous or 2-level categorical
+    min_factors: 3
+    max_factors: 4
+    note: Res III 경고
+  BOX_BEHNKEN:
+    supported: true
+    factor_types: continuous only
+    min_factors: 3
+    max_factors: 3
+  CCD:
+    supported: true
+    factor_types: continuous only
+    min_factors: 2
+    max_factors: 3
+  FACE_CENTERED_CCD:
+    supported: true
+    factor_types: continuous only
+    min_factors: 2
+    max_factors: 3
+  DSD:
+    supported: false
+    note: MVP 백엔드 미지원
+  D_OPTIMAL:
+    supported: false
+    note: MVP 백엔드 미지원
+  MIXTURE:
+    supported: false
+    note: MVP 백엔드 미지원
+  MIXTURE_PROCESS:
+    supported: false
+    note: MVP 백엔드 미지원
+  SPLIT_PLOT:
+    supported: false
+    note: MVP 백엔드 미지원
+external_dependencies:
+- id: fda_iid_snapshot
+  used_by:
+  - FR004
+  status: NOT_BUNDLED
+  lookup_keys:
+  - UNII
+  - route
+  - dosage_form
+  - unit
+  note: 없으면 iid_reference_exists → False (규칙 미발화 + NOT_CHECKED 기록)
+context_schema:
+  roots:
+    handoff: handoff
+    upstream: upstream
+    study: study
+    cqa: cqa
+    cqas: list[cqa]
+    cqa_candidates: list[cqa]
+    change: change
+    row: fmea_row
+    item: fmea_row
+    factor: factor
+    factors: list[factor]
+    master: excipient_range
+    iid: iid_reference
+    composition_group: composition_group
+    method: method
+    plan: plan
+    selector: selector
+    validator: validator
+    run: run
+    equipment: equipment
+    result: result
+    results: list[result]
+    effect: effect
+    curvature_test: curvature_test
+    center_points: center_points
+    decision: decision
+    model: model
+    models: list[model]
+    region: region
+    point: point
+    points: list[point]
+    required_points: list[point]
+    promotion_basis_points: list[point]
+    verification: verification
+    rule: rule
+    event: result_event
+    fit_batch_ids: list[str]
+    fit_blend_ids: list[str]
+    range_finding_result_ids: list[str]
+    fit_result_ids: list[str]
+  entities:
+    bound:
+      value: num
+      source_ref: str
+      evidence_status: str
+      amount_per_unit_mg: num
+    range:
+      low: num
+      high: num
+    ingredient:
+      name: str
+      pct_w_w: num
+      unit: str
+      grade: str
+      is_critical: bool
+    fixed_parameter:
+      name: str
+      value: num
+      unit: str
+      status: str
+    verdict:
+      status: str
+      resolved: bool
+    handoff:
+      fingerprint: str
+      candidate_version: num
+      qtpp_snapshot_id: str
+      ingredients: list[ingredient]
+      process_steps: list[str]
+      equipment_id: str
+      batch_scale: str
+      fixed_parameters: list[fixed_parameter]
+      rule_verdicts: list[verdict]
+      api_amount_fixed: bool
+      total_weight_fixed: bool
+    upstream:
+      candidate_version: num
+    cqa:
+      id: str
+      template_id: str
+      category: str
+      analysis_role: str
+      requirement: str
+      acceptance_operator: str
+      lower: num
+      upper: num
+      target: num
+      target_tolerance: num
+      lower_inclusive: bool
+      upper_inclusive: bool
+      unit: str
+      test_method_id: str
+      test_method_version: str
+      criterion_source: str
+      criterion_type: str
+      summary_definition: str
+      practical_effect_threshold: num
+      replicate_policy: str
+      rationale_refs: str
+      has_registered_method: bool
+      max_observed: num
+    change:
+      op: str
+      field: str
+      from_value: str
+      to_value: str
+      from_role: str
+      to_role: str
+      target: str
+      source_status: str
+      evidence_ref: str
+      data_ref: str
+      preserves_hierarchy: bool
+      alternative_control: str
+    fmea_row:
+      severity: num
+      occurrence: num
+      occurrence_evidence: str
+      evidence_status: str
+      alternative_control: str
+      approval_ref: str
+      disposition: str
+      controllable: bool
+      measurable: bool
+      range_definable: bool
+      prohibited: bool
+      function_locked: bool
+      kind: str
+      unit: str
+      fixed_value_status: str
+      low: num
+      high: num
+    factor:
+      id: str
+      kind: str
+      unit: str
+      low: bound
+      center: bound
+      high: bound
+      expected_range_contrast: num
+      manufacturability_evidence: str
+      at_extreme_of_master_range: bool
+      levels: list[str]
+      redefinition_requested: bool
+      disposition: str
+    excipient_range:
+      typical_min_pct: num
+      typical_max_pct: num
+    iid_reference:
+      max_potency_mg: num
+    composition_group:
+      balance_component: str
+    method:
+      repeatability_sd: num
+      variance_component_type: str
+    design_point:
+      in_bounds: bool
+      in_forbidden_combination: bool
+      balance_component_value: num
+      in_domain: bool
+    plan:
+      design_type: str
+      stage: str
+      source: str
+      n_runs: num
+      n_center_points: num
+      n_unique_runs: num
+      n_terms: num
+      resolution: num
+      random_seed: num
+      generator: str
+      block_definition: str
+      has_mixture: bool
+      mixture_sum_ok: bool
+      expected_days: num
+      material_lots: num
+      equipment_count: num
+      randomization: str
+      randomization_reason: str
+      augments_previous_stage: bool
+      new_block_center_points: num
+      locked_at: time
+      locked_hash: str
+      point_roles: list[str]
+      n_factors: num
+      n_continuous: num
+      n_categorical: num
+      has_hard_to_change: bool
+      has_forbidden_combinations: bool
+      design_points: list[design_point]
+      interactions_plausible: bool
+      prior_evidence_approved: bool
+      extreme_corner_risk: bool
+      axial_must_stay_in_range: bool
+      axial_points_safe: bool
+      screening_core_reusable: bool
+    selector:
+      recommended_design_type: str
+    validator:
+      status: str
+    run:
+      batch_id: str
+      batch_mass_g: num
+      ingredient_mg_total: num
+      target_unit_mg: num
+      balance_component_mg: num
+      settings_complete: bool
+      settings_on_resolution: bool
+      fixed_conditions_match: bool
+      influence_flag: bool
+      cooks_d: num
+      leverage: num
+    equipment:
+      working_capacity_min_g: num
+      working_capacity_max_g: num
+    result:
+      id: str
+      batch_id: str
+      parent_blend_id: str
+      test_method_version: str
+      response_id: str
+      unit: str
+      target_unit: str
+      n_individual_values: num
+      evidence_status: str
+      replicate_independence: str
+      deviation: str
+      deviation_resolved: bool
+      human_verification_status: str
+      settings_within_tolerance: bool
+      counted_as_independent_run: bool
+      submitted_at: time
+    effect:
+      actual: num
+      ci_lower: num
+      ci_upper: num
+      aliased: bool
+      alias_resolved: bool
+    curvature_test:
+      significant: bool
+    center_points:
+      pure_error_sd: num
+    decision:
+      classification: str
+      severity: num
+    model:
+      validation_status: str
+      df_resid: num
+      hierarchical: bool
+      all_terms_estimable: bool
+      lof_computable: bool
+      lof_p: num
+      pure_error_df: num
+      adj_r2: num
+      pred_r2: num
+      n: num
+      p: num
+      fit_method: str
+      scope_hash: str
+      inputs: list[result]
+      input_batch_ids: list[str]
+      residual_pattern: bool
+      heteroscedastic: bool
+      runs: list[run]
+      local_prediction_se_high: bool
+      invalid_cause: str
+    region_scope:
+      fixed_conditions_recorded: bool
+      critical_unmanaged_count: num
+      limitations_recorded: bool
+    region:
+      status: str
+      method: str
+      feasible_fraction: num
+      scope: region_scope
+      joint_independence_assumed: bool
+      setpoint_edge_distance: num
+      has_operating_range: bool
+      operating_range_is_subset: bool
+      criteria_changed_after_results: bool
+      all_points_in_domain: bool
+      domain_policy: str
+      scope_hash: str
+    point:
+      role: str
+      spec_pass_all_applicable: bool
+      within_family_pi_all_doe: bool
+      expected_outcome: str
+      batch_id: str
+      parent_blend_id: str
+      results_confirmed: bool
+      coverage_complete: bool
+      evidence_status: str
+      expected_fail_cqa: str
+      expected_fail_probability: num
+    verification:
+      first_result_submitted_at: time
+      scope_hash: str
+      results_public_before_lock: bool
+      pi_policy: str
+    rule:
+      gate_effect: str
+    result_event:
+      reason_code: str
+    study:
+      scope_hash: str
+functions:
+  len:
+    arity: 1
+    returns: num
+    description_ko: 컬렉션 길이
+  abs:
+    arity: 1
+    returns: num
+    description_ko: 절댓값
+  min:
+    arity: -1
+    returns: num
+    description_ko: 최솟값
+  max:
+    arity: -1
+    returns: num
+    description_ko: 최댓값
+  sum:
+    arity: gen
+    returns: num
+    description_ko: 합계 (generator)
+  any:
+    arity: gen
+    returns: bool
+    description_ko: 하나라도 참 (generator). 빈 컬렉션 → False
+  all:
+    arity: gen
+    returns: bool
+    description_ko: 모두 참 (generator). 빈 컬렉션 → True — 승격 판정에는 nonempty_all 사용
+  nonempty_all:
+    arity: gen
+    returns: bool
+    description_ko: 비어 있지 않고 모두 참. 빈 컬렉션 → False
+  count:
+    arity: gen
+    returns: num
+    description_ko: 참인 원소 수 (generator)
+  distinct_count:
+    arity: gen
+    returns: num
+    description_ko: 서로 다른 값 수 (generator)
+  set_intersects:
+    arity: 2
+    returns: bool
+    description_ko: 두 목록의 교집합 존재
+  matrix_rank:
+    arity: 1
+    returns: num
+    description_ko: 설계 모형행렬 rank (plan). 수치 tolerance는 엔진 설정
+  evidence_permits:
+    arity: 2
+    returns: bool
+    description_ko: 'evidence_governance_rules 표 조회: (evidence_status, use) 허용 여부'
+  recompute_fingerprint:
+    arity: 1
+    returns: str
+    description_ko: Handoff fingerprint 재계산
+  equipment_supports:
+    arity: 1
+    returns: bool
+    description_ko: 설비가 요인을 실행 가능한가
+  redundant_with_any:
+    arity: 2
+    returns: bool
+    description_ko: 요인이 다른 요인과 중복인가
+  protocol_available:
+    arity: 1
+    returns: bool
+    description_ko: 범주 수준 실행 방법 존재
+  excipient_range_exists:
+    arity: 1
+    returns: bool
+    description_ko: 부형제 통상 사용범위 master 행 존재
+  iid_reference_exists:
+    arity: 1
+    returns: bool
+    description_ko: 외부 FDA IID snapshot 조회 가능 (의존성)
+  intersection_empty:
+    arity: 1
+    returns: bool
+    description_ko: 요인 실행 가능 범위 교집합이 비었는가
+  block_confounded:
+    arity: 1
+    returns: bool
+    description_ko: 블록이 의도 모형 항과 교락되는가
+  backend_supports:
+    arity: 1
+    returns: bool
+    description_ko: manifest backend_capabilities에 설계가 지원되는가
+  convertible:
+    arity: 2
+    returns: bool
+    description_ko: 단위 변환 가능
+stages:
+- HANDOFF_CREATED
+- ENTRY_READINESS
+- WAITING_REQUIRED_DATA
+- INELIGIBLE
+- CQA_DRAFTING
+- WAITING_CQA_APPROVAL
+- FMEA_DRAFTING
+- WAITING_FMEA_APPROVAL
+- FACTOR_READINESS
+- WAITING_FACTOR_DATA
+- RANGE_FINDING_RUNS
+- STRATEGY_REVIEW
+- WAITING_FACTOR_APPROVAL
+- DESIGN_SELECTION
+- SCREENING_PLANNING
+- RSM_PLANNING
+- DESIGN_REPLAN
+- WAITING_SCREENING_APPROVAL
+- SCREENING_EXECUTION
+- SCREENING_ANALYSIS
+- SCREENING_AUGMENTATION
+- DIAGNOSING
+- WAITING_RSM_APPROVAL
+- RSM_EXECUTION
+- MODEL_VALIDATION
+- WAITING_MODEL_APPROVAL
+- RSM_AUGMENTATION
+- REGION_COMPUTATION
+- WAITING_REGION_APPROVAL
+- VERIFICATION_PLANNING
+- WAITING_VERIFICATION_PLAN_APPROVAL
+- VERIFICATION_EXECUTION
+- VERIFICATION_GATE
+- WAITING_FINAL_APPROVAL
+- COMPLETED
+- WAITING_DISCRIMINATING_TESTS
+- WAITING_HUMAN_TRIAGE
+- REFLECTING
+- WAITING_DIRECTIVE_APPROVAL
+- CLOSED_SUPERSEDED
+- WAITING_AUDIT_REVIEW
+- RUN_SHEET_COMPILE
+- WAITING_RUN_DATA
+- WAITING_BATCH_RESULTS
+- WAITING_RESULT_CONFIRMATION
+- RESULT_QUALITY_GATE
+- ANY
+entries:
+- id: evidence_governance_rules
+  file: database/07_doe/governance/evidence_governance_rules.csv
+  kind: table
+  load_order: 20
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: approval_authority_rules
+  file: database/07_doe/governance/approval_authority_rules.csv
+  kind: rule
+  load_order: 21
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: provenance_versioning_rules
+  file: database/07_doe/governance/provenance_versioning_rules.csv
+  kind: rule
+  load_order: 22
+  demo_required: false
+  load_enabled: true
+  enforcement_enabled: true
+- id: development_readiness_rules
+  file: database/07_doe/readiness/development_readiness_rules.csv
+  kind: rule
+  load_order: 30
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: qtpp_cqa_mapping_rules
+  file: database/07_doe/qbd_risk/qtpp_cqa_mapping_rules.csv
+  kind: table
+  load_order: 40
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: cqa_response_definition_rules
+  file: database/07_doe/qbd_risk/cqa_response_definition_rules.csv
+  kind: rule
+  load_order: 41
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: fmea_failure_mode_rules
+  file: database/07_doe/qbd_risk/fmea_failure_mode_rules.csv
+  kind: table
+  load_order: 42
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: fmea_scoring_scale
+  file: database/07_doe/qbd_risk/fmea_scoring_scale.csv
+  kind: table
+  load_order: 43
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: factor_eligibility_rules
+  file: database/07_doe/qbd_risk/factor_eligibility_rules.csv
+  kind: rule
+  load_order: 44
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: factor_range_constraint_rules
+  file: database/07_doe/qbd_risk/factor_range_constraint_rules.csv
+  kind: rule
+  load_order: 45
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: statistical_policy_constants
+  file: database/07_doe/planning/statistical_policy_constants.csv
+  kind: table
+  load_order: 10
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: doe_design_selection_rules
+  file: database/07_doe/planning/doe_design_selection_rules.csv
+  kind: rule
+  load_order: 50
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: doe_randomization_blocking_rules
+  file: database/07_doe/planning/doe_randomization_blocking_rules.csv
+  kind: rule
+  load_order: 51
+  demo_required: false
+  load_enabled: true
+  enforcement_enabled: true
+- id: doe_design_validation_rules
+  file: database/07_doe/planning/doe_design_validation_rules.csv
+  kind: rule
+  load_order: 52
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: doe_augmentation_rules
+  file: database/07_doe/planning/doe_augmentation_rules.csv
+  kind: rule
+  load_order: 53
+  demo_required: false
+  load_enabled: true
+  enforcement_enabled: true
+- id: run_sheet_compilation_rules
+  file: database/07_doe/execution/run_sheet_compilation_rules.csv
+  kind: rule
+  load_order: 60
+  demo_required: false
+  load_enabled: true
+  enforcement_enabled: true
+- id: result_data_quality_rules
+  file: database/07_doe/execution/result_data_quality_rules.csv
+  kind: rule
+  load_order: 61
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: screening_analysis_rules
+  file: database/07_doe/analysis/screening_analysis_rules.csv
+  kind: rule
+  load_order: 70
+  demo_required: false
+  load_enabled: true
+  enforcement_enabled: true
+- id: model_validation_rules
+  file: database/07_doe/analysis/model_validation_rules.csv
+  kind: rule
+  load_order: 71
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: design_space_rules
+  file: database/07_doe/analysis/design_space_rules.csv
+  kind: rule
+  load_order: 72
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: verification_rules
+  file: database/07_doe/verification/verification_rules.csv
+  kind: rule
+  load_order: 80
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: backtrack_routing_rules
+  file: database/07_doe/verification/backtrack_routing_rules.csv
+  kind: table
+  load_order: 81
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: cqa_templates
+  file: database/07_doe/masters/cqa_templates.csv
+  kind: master
+  load_order: 0
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: process_unit_operation_master
+  file: database/07_doe/masters/process_unit_operation_master.csv
+  kind: master
+  load_order: 1
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: test_method_registry
+  file: database/07_doe/masters/test_method_registry.csv
+  kind: master
+  load_order: 2
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: excipient_use_range_master
+  file: database/07_doe/masters/excipient_use_range_master.csv
+  kind: master
+  load_order: 3
+  demo_required: true
+  load_enabled: true
+  enforcement_enabled: true
+- id: equipment_capability_master
+  file: database/07_doe/masters/equipment_capability_master.csv
+  kind: master
+  load_order: 4
+  demo_required: false
+  load_enabled: true
+  enforcement_enabled: true
+- id: confirmation_test_master
+  file: database/07_doe/masters/confirmation_test_master.csv
+  kind: master
+  load_order: 5
+  demo_required: false
+  load_enabled: true
+  enforcement_enabled: true
+- id: statistical_sources
+  file: database/07_doe/masters/statistical_sources.csv
+  kind: master
+  load_order: 6
+  demo_required: false
+  load_enabled: true
+  enforcement_enabled: true

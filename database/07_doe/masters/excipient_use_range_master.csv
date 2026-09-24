@@ -1,0 +1,11 @@
+excipient_id,name_en,name_ko,grade,function,route,dosage_form,process_applicability,range_type,min_pct,max_pct,basis,evidence_claim,citation_locator,source_ids,governance_class,validation_status,version,effective_from
+EXU_MCC,Microcrystalline cellulose,미결정셀룰로오스,any,diluent/binder,oral,tablet,DC;WG,TYPICAL_USE,20,90,% w/w of tablet,HPE 모노그래프 사용 범위,"HPE 6th ed., MCC monograph (페이지 확인 필요)",SRC_HPE,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+EXU_MANNITOL,Mannitol,만니톨,any,diluent,oral,tablet,DC;WG,TYPICAL_USE,10,90,% w/w,HPE 모노그래프 사용 범위,"HPE 6th ed., Mannitol (확인 필요)",SRC_HPE,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+EXU_CROSPOVIDONE,Crospovidone,크로스포비돈,any,disintegrant,oral,tablet,DC;WG,TYPICAL_USE,2,5,% w/w,HPE 모노그래프 사용 범위,"HPE 6th ed., Crospovidone (확인 필요)",SRC_HPE,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+EXU_CROSCARMELLOSE,Croscarmellose sodium,크로스카멜로스나트륨,any,disintegrant,oral,tablet,DC;WG,TYPICAL_USE,0.5,5,% w/w,HPE 모노그래프 사용 범위,확인 필요,SRC_HPE,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+EXU_SSG,Sodium starch glycolate,전분글리콜산나트륨,any,disintegrant,oral,tablet,DC;WG,TYPICAL_USE,2,8,% w/w,HPE 모노그래프 사용 범위,확인 필요,SRC_HPE,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+EXU_MGST,Magnesium stearate,스테아르산마그네슘,any,lubricant,oral,tablet,DC;WG,TYPICAL_USE,0.25,5.0,% w/w,HPE 모노그래프 사용 범위,확인 필요,SRC_HPE,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+EXU_SSF,Sodium stearyl fumarate,푸마르산스테아릴나트륨,any,lubricant,oral,tablet,DC;WG,TYPICAL_USE,0.5,2.0,% w/w,HPE 모노그래프 사용 범위,확인 필요,SRC_HPE,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+EXU_SLS,Sodium lauryl sulfate,라우릴황산나트륨,any,lubricant/wetting,oral,tablet,DC,TYPICAL_USE,1.0,2.0,% w/w,HPE 모노그래프 사용 범위 (활택제 용도),확인 필요,SRC_HPE,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+EXU_TALC,Talc,탈크,any,glidant/lubricant,oral,tablet,DC;WG,TYPICAL_USE,1.0,10.0,% w/w,HPE 모노그래프 사용 범위,확인 필요,SRC_HPE,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23
+EXU_CSD,Colloidal silicon dioxide,콜로이드성이산화규소,any,glidant,oral,tablet,DC;WG,TYPICAL_USE,0.1,1.0,% w/w,HPE 모노그래프 사용 범위,확인 필요,SRC_HPE,SCIENTIFIC,DRAFT_PENDING_REVIEW,1,2026-09-23

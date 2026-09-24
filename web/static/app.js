@@ -367,10 +367,15 @@ function renderCandidates() {
       <div class="ing">${ings}</div>
       <div class="ing">포장: ${esc(entry.recipe.packaging || "-")}</div>
       ${readiness}${refinements}
-      <div class="chips">${chips}</div>${judges}`;
+      <div class="chips">${chips}</div>${judges}
+      ${gate && gate.passed ? `<button type="button" class="dev-start" data-cand="${esc(id)}"
+         title="이 후보 버전을 불변 Handoff로 고정하고 CQA·FMEA·DoE 개발을 시작합니다">이 후보로 개발 착수 →</button>` : ""}`;
     card.querySelectorAll(".chip").forEach((chip) => {
       chip.onclick = () => showRule(chip.dataset.rule);
     });
+    // 후보 1위가 자동으로 개발에 들어가지 않는다(명세 v6.1 §0 경계 1) — 연구자가 고른 후보만 넘어간다.
+    const dev = card.querySelector(".dev-start");
+    if (dev) dev.onclick = () => window.F1Studio && window.F1Studio.startFromCandidate(runId, dev.dataset.cand);
     box.appendChild(card);
   }
 }
