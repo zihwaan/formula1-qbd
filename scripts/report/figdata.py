@@ -88,7 +88,14 @@ reviewers = [{k: r[k] for k in ("reviewer_id", "persona_name")} if "persona_name
              {"reviewer_id": r["reviewer_id"], "persona_name": list(r.values())[1]}
              for r in rows("database/06_config/reviewer_registry.csv")]
 
-out = {"region": {k: s[k] for k in ("grid_points_total", "grid_points_in_domain", "mean_ok_fraction",
+import yaml
+manifest = [{"id": e["id"], "priority": e.get("trigger_priority"), "eval_type": e.get("eval_type"),
+             "strategy": e.get("strategy"), "provides": e.get("provides"), "polarity": e.get("polarity") or "fail_when"}
+            for e in yaml.safe_load((ROOT / "config" / "rulebook_manifest.yaml").read_text(encoding="utf-8"))]
+jury = [{"reviewer_id": r["reviewer_id"], "name": r["reviewer_name_kr"], "condition": r["summon_condition"],
+         "weight": r["base_weight"]} for r in rows("database/06_config/reviewer_registry.csv")]
+
+out = {"manifest": manifest, "jury": jury, "region": {k: s[k] for k in ("grid_points_total", "grid_points_in_domain", "mean_ok_fraction",
                                     "feasible_fraction", "feasible_points", "binding_cqa_counts")},
        "setpoint": sp, "slice": sl, "fits": fits, "counts": counts, "backtrack": bt,
        "strategies": strategies, "reviewers": reviewers,

@@ -65,7 +65,7 @@ def fig_architecture():
     xs = [22, 130, 238, 346, 454, 562]
     names = [("분자 프로파일", "RDKit · 82 패턴", "det"), ("페이즈 게이트", "BCS/DCS·고체상·가용화", "det"),
              ("계획", "상위 3 전략 · 서명", "det"), ("병렬 설계", "전략별 후보", "llm"),
-             ("규칙 게이트", "오차 0% · 반려 권한", "det"), ("심사·합의", "동적 소집 · 순위만", "jud")]
+             ("규칙 게이트", "29표 · 8함수 · 단계순", "det"), ("동적 심사단", "7명 중 조건 맞는 이만", "jud")]
     for x, (t, s, k) in zip(xs, names):
         b += box(x, 162, 100, 46, t, s, k)
     for i in range(5):
@@ -73,7 +73,8 @@ def fig_architecture():
     b += box(346, 228, 200, 40, "되돌림 · 반성", "사유별 복귀 지점 (14행 전이표)", "det")
     b += path("M 504 208 L 504 228", dash=False)
     b += path("M 346 248 L 290 248 L 290 208", "성분만/공정·전략부터", 190, 262)
-    b += box(566, 228, 132, 40, "후보 처방 목록", "신뢰도 · 남은 요청", "io")
+    b += box(566, 228, 132, 40, "후보 처방 목록", "가중평균 순위 · 신뢰도", "io")
+    b += '<text x="612" y="159" class="al" text-anchor="middle">순위만 · 반려 권한 없음</text>'
     b += arrow(612, 208, 612, 228)
     b += arrow(360, 110, 360, 132, "확인한 카드만", lx=366, ly=126)
     # handoff
@@ -112,6 +113,11 @@ def fig_discovery():
     b += box(610, 100, 90, 34, "summon", "", "det", r=6)
     b += box(610, 160, 90, 34, "judge ×M", "", "jud", r=6)
     b += box(610, 220, 90, 34, "consensus", "", "det", r=6)
+    b += '<text x="704" y="113" class="al">조건식으로</text><text x="704" y="124" class="al">명단 선택</text>'
+    b += '<text x="704" y="173" class="al">후보×심사관</text><text x="704" y="184" class="al">병렬 · 점수만</text>'
+    b += '<text x="704" y="233" class="al">가중평균</text><text x="704" y="244" class="al">(결정론)</text>'
+    b += '<text x="520" y="24" class="al">29표 · 8함수</text>'
+    b += '<text x="120" y="24" class="al">BCS/DCS·고체상·가용화·ASD</text><text x="318" y="24" class="al">상위 3 전략</text>'
     b += arrow(655, 64, 655, 100) + arrow(655, 134, 655, 160) + arrow(655, 194, 655, 220)
     b += box(410, 130, 90, 34, "backtrack", "", "det", r=6)
     b += box(260, 130, 90, 34, "reflect", "", "llm", r=6)
@@ -127,7 +133,7 @@ def fig_discovery():
     b += path("M 530 64 L 530 200 L 208 200 L 208 220", "", 0, 0)
     b += path("M 540 64 L 540 205 L 338 205 L 338 220", "", 0, 0)
     b += path("M 545 64 L 545 210 L 468 210 L 468 220", "", 0, 0)
-    return svg(720, 262, b)
+    return svg(770, 262, b)
 
 
 def fig_agent():
@@ -316,6 +322,112 @@ def exp_section(x) -> str:
 """
 
 
+
+STAGES = [  # (우선순위 범위, 제목) — manifest의 trigger_priority 십의 자리 = 파이프라인 단계
+    ((0, 4), "참조 마스터"), ((5, 9), "API 물성"), ((10, 19), "흐름 → 경로"), ((20, 29), "배합금기 · 소아"),
+    ((30, 39), "다성분"), ((40, 49), "공정 세부"), ((50, 59), "코팅 · 용매"), ((60, 69), "BCS · 용출"),
+    ((70, 79), "포장 · 안정성"),
+]
+SHORT = {"pairwise_membership": "쌍 금기", "subset_forbidden": "조합 금지", "threshold": "임계값", "range": "범위",
+         "categorical_requirement": "필수 성분", "conditional_prohibition": "조건부 금지", "band_lookup": "구간 조회",
+         "decision_tree": "결정 트리"}
+
+
+def fig_rulegate(data):
+    m = data["manifest"]
+    b = ""
+    w, x0 = 76, 10
+    b += '<text x="10" y="12" class="gt">규칙표 29개 → manifest 한 줄씩 → 여덟 검사 함수 → 우선순위 단계 (앞 단계의 파생값이 뒤 단계의 발동 조건)</text>'
+    for i, ((lo, hi), title) in enumerate(STAGES):
+        es = [e for e in m if e["priority"] is not None and lo <= e["priority"] <= hi]
+        x = x0 + i * (w + 3)
+        q = sum(e["eval_type"] == "quantitative" for e in es)
+        ql = sum(e["eval_type"] == "qualitative" for e in es)
+        rf = sum(e["eval_type"] == "reference" for e in es)
+        fns = sorted({SHORT.get(e["strategy"], "") for e in es if e["strategy"]})
+        passw = any(e["polarity"] == "pass_when" for e in es)
+        b += f'<rect x="{x}" y="22" width="{w}" height="130" rx="6" fill="#fff" stroke="#222" stroke-width="1.2"/>'
+        b += f'<text x="{x + w / 2}" y="36" class="lg" text-anchor="middle">{lo}{"–" + str(hi) if es and max(e["priority"] for e in es) > lo else ""}</text>'
+        b += f'<text x="{x + w / 2}" y="52" class="bt" style="font-size:9.5px">{E(title)}</text>'
+        yy = 68
+        for f in fns[:3]:
+            b += f'<text x="{x + w / 2}" y="{yy}" class="bs">{E(f)}</text>'
+            yy += 11
+        yy = 112
+        for t in (f"판정 {q}" if q else "", f"LLM 판단 {ql}" if ql else "", f"참조 {rf}" if rf else ""):
+            if t:
+                b += f'<text x="{x + w / 2}" y="{yy}" class="bs">{E(t)}</text>'
+                yy += 11
+        if passw:
+            b += f'<text x="{x + w / 2}" y="{yy}" class="bs">pass_when</text>'
+        if i < len(STAGES) - 1:
+            b += arrow(x + w, 81, x + w + 3, 81)
+    # 파생값 흐름
+    def cx(i): return x0 + i * (w + 3) + w / 2
+    b += path(f"M {cx(2)} 152 C {cx(2)} 172, {cx(5)} 172, {cx(5)} 154", "", 0, 0)
+    b += f'<text x="{(cx(2) + cx(5)) / 2 - 90}" y="178" class="al">flow_character → selected_route (공정 규칙이 참조)</text>'
+    b += f'<text x="{cx(7) - 40}" y="166" class="al">→ bcs_class (실측으로만 확정)</text>'
+    # 근거 정책
+    yb = 200
+    b += '<text x="10" y="196" class="gt">행마다 verification_status → 엔진이 스스로 권한을 정한다</text>'
+    pol = [("검증됨 (VERIFIED*)", "반려(HARD_FAIL) 가능", "det"), ("잠정 (PROVISIONAL 등)", "실행 + ‘잠정’ 표기", "det"),
+           ("미검증 · 부분", "반려 금지 → 심사관 표시로 강등", "jud"), ("출처 없음 · 규칙 아님 · LEGACY", "로드 단계에서 제외", "io")]
+    for i, (t, sub, k) in enumerate(pol):
+        b += box(10 + i * 178, yb + 4, 166, 40, t, sub, k, r=6)
+    yv = yb + 62
+    b += '<text x="10" y="' + str(yv - 4) + '" class="gt">판정 → 다음 경로</text>'
+    out = [("PASS", "명시적 위반 없음 → 신뢰도 요청·심사"), ("SOFT_FLAG", "심사관에게 넘김(반려 아님)"),
+           ("HARD_FAIL", "되돌림 전이표 → 복귀 지점"), ("ESCALATE", "구조 미해석 등 → 사람 이관")]
+    for i, (t, sub) in enumerate(out):
+        b += box(10 + i * 178, yv + 2, 166, 40, t, sub, "hi" if t == "HARD_FAIL" else "det", r=6)
+    return svg(720, yv + 50, b)
+
+
+def _short_cond(c: str) -> str:
+    c = c.replace("==True", "").replace("True", "")
+    return (c[:58] + "…") if len(c) > 60 else c
+
+
+def fig_jury(data, x):
+    jury = data["jury"]
+    scen = []
+    if x:
+        for r in x["runs"]:
+            if r["scenario"] not in [s_[0] for s_ in scen]:
+                scen.append((r["scenario"], r["label"]))
+    col0, colc, colw = 10, 128, 44
+    b = '<text x="10" y="12" class="gt">명단 7명 · 소집 조건은 CSV 한 줄 · 신호는 게이트 결과와 스펙에서 결정론으로 계산 · 반려 권한 없음</text>'
+    y0 = 26
+    b += f'<text x="{col0}" y="{y0 + 12}" class="lg">심사관</text><text x="{colc}" y="{y0 + 12}" class="lg">소집 조건 (reviewer_registry.csv)</text>'
+    b += f'<text x="{colc + 358}" y="{y0 + 12}" class="lg">가중치</text>'
+    sx = colc + 400
+    for j, (sid, lab) in enumerate(scen):
+        b += f'<text x="{sx + j * colw + colw / 2}" y="{y0 + 4}" class="lg" text-anchor="middle">{E(lab.split(" ")[0])}</text>'
+        b += f'<text x="{sx + j * colw + colw / 2}" y="{y0 + 14}" class="lg" text-anchor="middle">{E(lab.split(" ")[1][:6])}</text>'
+    for i, r in enumerate(jury):
+        y = y0 + 24 + i * 26
+        b += f'<rect x="{col0 - 4}" y="{y - 2}" width="700" height="24" fill="{"#f6f7f9" if i % 2 == 0 else "#fff"}"/>'
+        b += f'<text x="{col0}" y="{y + 14}" class="bt" style="text-anchor:start;font-size:9.5px">{E(r["reviewer_id"])} {E(r["name"].replace(" 심사관", ""))}</text>'
+        b += f'<text x="{colc}" y="{y + 14}" class="lg" style="font-family:ui-monospace,Menlo,monospace;font-size:7.6px">{E(_short_cond(r["condition"]))}</text>'
+        b += f'<text x="{colc + 366}" y="{y + 14}" class="lg">{E(r["weight"])}</text>'
+        for j, (sid, _) in enumerate(scen):
+            reps = [rr for rr in x["runs"] if rr["scenario"] == sid]
+            hit = sum(r["reviewer_id"] in rr["summoned"] for rr in reps)
+            cxp, cyp = sx + j * colw + colw / 2, y + 10
+            if hit == len(reps) and hit:
+                b += f'<circle cx="{cxp}" cy="{cyp}" r="6" fill="#1d4ed8"/>'
+            elif hit:
+                b += f'<circle cx="{cxp}" cy="{cyp}" r="6" fill="none" stroke="#1d4ed8" stroke-width="1.6"/><path d="M {cxp} {cyp - 6} A 6 6 0 0 1 {cxp} {cyp + 6} z" fill="#1d4ed8"/>'
+            else:
+                b += f'<circle cx="{cxp}" cy="{cyp}" r="5.5" fill="none" stroke="#bbb"/>'
+    yl = y0 + 24 + len(jury) * 26 + 16
+    b += f'<circle cx="16" cy="{yl - 3}" r="5" fill="#1d4ed8"/><text x="26" y="{yl}" class="lg">2회 모두 소집</text>'
+    b += f'<circle cx="116" cy="{yl - 3}" r="5" fill="none" stroke="#1d4ed8" stroke-width="1.5"/><path d="M 116 {yl - 8} A 5 5 0 0 1 116 {yl + 2} z" fill="#1d4ed8"/><text x="126" y="{yl}" class="lg">1회만(설계 성분에 따라 달라지는 신호)</text>'
+    b += f'<circle cx="336" cy="{yl - 3}" r="5" fill="none" stroke="#bbb"/><text x="346" y="{yl}" class="lg">생성되지 않음</text>'
+    b += f'<text x="10" y="{yl + 18}" class="al">소집된 심사관만 후보별로 병렬 실행(LangGraph Send) → 점수 0–1 → 가중치 재정규화 가중평균(결정론) → 통과 후보 사이의 순위. 무응답은 점수 없음.</text>'
+    return svg(720, yl + 26, b)
+
+
 # ── 본문 ──────────────────────────────────────────────────────────────────
 def build(data, tests: int, browser: str, x=None) -> str:
     r = data["region"]
@@ -471,10 +583,14 @@ BCS 등급은 실측으로만 확정된다. 파생값 {c['derived_quantities']}�
 다음 단계의 발동 조건으로 흘러간다. 행마다 <code>verification_status</code>가 있어 검증된 행만 반려를 만들 수 있고, 미검증 행은 심사관 표시로 강등되며,
 출처를 찾지 못한 행은 로드 단계에서 제외된다. 성분명은 문자열 동등 비교가 아니라 두 부형제 마스터(영문·국문·이명)를 사전으로 한 정규화로
 대조하며, 구조를 해석하지 못한 실행은 통과가 아니라 이관(STRUCT000)으로 끝난다.</p>
+<figure>{fig_rulegate(data)}
+<figcaption><b>그림 4.</b> 규칙 기반 게이트. manifest 항목 29개를 우선순위 단계로 묶은 것이다(각 칸: 쓰이는 검사 함수, 판정·LLM·참조 항목 수).
+유동성 등급 → 공정 경로, 실측 BCS 등급 같은 파생값이 뒤 단계의 발동 조건으로 흐르고, 공정 세부 규칙표는 통과 조건(pass_when)으로 읽는다.
+아래 두 줄은 행의 근거 상태가 반려 권한을 정하는 방식과, 판정별 다음 경로다. 규칙을 더하는 일은 CSV 행과 manifest 한 줄이다.</figcaption></figure>
 
 <h3>5.4 되돌림 — 반려 사유별 복귀 지점</h3>
 <figure>{fig_discovery()}
-<figcaption><b>그림 4.</b> 후보 탐색 그래프. <code>backtrack</code>은 반려 판정을 전이표에 대조해 복귀 지점(GATE: 같은 전략으로 성분만 교체,
+<figcaption><b>그림 5.</b> 후보 탐색 그래프. <code>backtrack</code>은 반려 판정을 전이표에 대조해 복귀 지점(GATE: 같은 전략으로 성분만 교체,
 G6R: 공정 경로부터, G4: 전략 선택부터)과 제약을 정한다. 하단은 종결 노드.</figcaption></figure>
 <p>한 라운드의 여러 반려는 가장 깊은 복귀 지점으로 합치되 제약은 모두 누적한다. 같은 지점에 3회 복귀해도 해소되지 않으면 한 단계 위로 올리며
 반려된 전략을 제외하고, 전체 5회를 넘으면 사람에게 이관한다. 반려 사유가 사용자가 고정한 성분이면 되돌리지 않고 즉시 “제약 불가능”과 규칙표의
@@ -492,7 +608,13 @@ G6R: 공정 경로부터, G4: 전략 선택부터)과 제약을 정한다. 하�
 <h3>5.6 동적 심사위원단과 합의</h3>
 <p>심사관 {c['reviewers']}명(소아 안전, 가용화 전략, 공정 실현성, 규제 취지, 문헌 조사, 고령자 안전, 고체상 안정성)은 소집 조건식이 참일 때만 생성된다.
 심사관은 근거 강도 → 잔여 위험 → 실현 가능성 → 참신성 순의 기준으로 통과 후보에 점수를 매기되 반려 권한이 없고, 합의는 결정론 가중평균이다.
-LLM이 응답하지 않으면 점수를 대신 채우지 않고 “점수 없음”으로 표시하며, 순위는 실제 점수만으로 정한다.</p>
+LLM이 응답하지 않으면 점수를 대신 채우지 않고 “점수 없음”으로 표시하며, 순위는 실제 점수만으로 정한다.
+소집 신호(대상 인구군, 가용화·미분화·ASD 후보 존재, 룰북 밖 성분 조합, 규제 서술 필요, 고체상 경계 구간)는 스펙과 게이트 결과에서 결정론으로 계산되므로,
+같은 요청이라도 설계된 성분이 달라지면 소집 명단이 달라질 수 있다(그림 6의 반쪽 원).</p>
+<figure>{fig_jury(data, x)}
+<figcaption><b>그림 6.</b> 동적 심사위원단. 왼쪽은 명단과 소집 조건(CSV 원문), 오른쪽은 7.3절 재실험(시나리오 4종 × 2회)에서 실제로 소집된 결과다.
+공정 실현성(REV003)만 항상 소집되고, 소아·고령자 심사관은 대상 인구군에 따라 서로 배타적으로 나타나며, 문헌 조사(REV005)는 룰북 밖 조합이 설계됐을
+때만 들어온다. 규제 취지(REV004)·고체상 안정성(REV007)은 이 네 요청에서 조건이 맞지 않아 한 번도 생성되지 않았다.</figcaption></figure>
 
 <h2>6. 개발 스튜디오 그래프</h2>
 <p>연구자가 후보를 고르면 조성·공정·고정 변수·QTPP를 담은 불변 Handoff가 fingerprint와 함께 생성된다. 이후 판정은 <code>database/07_doe</code>의
@@ -501,7 +623,7 @@ CSV에 들어오면 로드 자체가 실패한다. 값이 없으면 “미발화
 여러 규칙이 동시에 발화하면 모두 기록하고 가장 강한 효과(INVALIDATE/BLOCK &gt; REQUEST_DATA &gt; AUGMENT &gt; ROUTE &gt; WARNING) 하나로 전이하며,
 다음 상태는 전이표의 (reason_code, from_state)에서만 찾는다.</p>
 <figure>{fig_states()}
-<figcaption><b>그림 5.</b> 개발 스튜디오 상태기계의 주 경로. 모든 WAITING 상태에서 연구자의 입력·승인을 기다린다.</figcaption></figure>
+<figcaption><b>그림 7.</b> 개발 스튜디오 상태기계의 주 경로. 모든 WAITING 상태에서 연구자의 입력·승인을 기다린다.</figcaption></figure>
 <p>통계 엔진은 numpy·scipy만으로 설계 생성(BBD·CCD·FCCD·2<sup>4−1</sup>·PB12), OLS 적합, PRESS 기반 예측 R², Cook's D, 순수오차·적합결여 검정을
 구현한다. 잠정 영역은 반응별 미래 배치 예측분포(자유도 = 잔차 자유도인 t 분포, 척도 √(SE²<sub>평균</sub> + σ̂²))로 통과확률을 구해 곱한 공동확률이
 0.90 이상인 격자점이며, 분모는 설계점 convex hull 안의 격자점이다.</p>
@@ -515,11 +637,11 @@ CSV에 들어오면 로드 자체가 실패한다. 값이 없으면 “미발화
 함량균일성 AV)을 결과 제출 화면으로 입력하고, 논문의 회귀식은 쓰지 않고 엔진이 처음부터 계산했다. 규격은 분산 시간 ≤ 180 s, 마손도 ≤ 1.0%,
 AV ≤ 15, DE30 ≥ 75%이며, DE30 기준은 논문 기준이 아니라 프로젝트 목표로서 화면에 가정으로 표시된다.</p>
 <figure>{fig_fits(data)}
-<figcaption><b>그림 6.</b> 반응별 적합도. 마손도의 전체 이차모형은 R² {fits['Y2']['full_r2']:.2f}이나 예측 R²가 {fits['Y2']['full_pred_r2']:.2f}로 과적합 flag(MV006)가
+<figcaption><b>그림 8.</b> 반응별 적합도. 마손도의 전체 이차모형은 R² {fits['Y2']['full_r2']:.2f}이나 예측 R²가 {fits['Y2']['full_pred_r2']:.2f}로 과적합 flag(MV006)가
 서고, 계층성을 지킨 선형 축소 후 예측 R² {fits['Y2']['used_pred_r2']:.2f}로 회복했다. 함량균일성(예측 R² {fits['Y4']['full_pred_r2']:.2f})도 flag가 서며, 데모에서는 사유를
 기록하고 수용했다. 잔차 자유도는 이차모형 {fits['Y1']['df_resid']}, 선형 {fits['Y2']['df_resid']}.</figcaption></figure>
 <figure>{fig_region(data)}
-<figcaption><b>그림 7.</b> 혼합 시간 {data['slice']['fixed_actual']:.1f}분 단면(설정점을 지나는 면, 엔진 계산 격자 21×21). (a) 평균 예측만 보면 이 면의
+<figcaption><b>그림 9.</b> 혼합 시간 {data['slice']['fixed_actual']:.1f}분 단면(설정점을 지나는 면, 엔진 계산 격자 21×21). (a) 평균 예측만 보면 이 면의
 지지 영역 중 {data['slice']['mean_ok_fraction'] * 100:.0f}%가 규격 안이지만, (b) 미래 배치의 공동 통과확률 ≥ 0.90(흰 점)을 요구하면 {data['slice']['feasible_fraction'] * 100:.0f}%만 남는다.
 전체 격자에서 미달 점의 대부분은 DE30이 결정한다(표 4). 회색은 설계점 convex hull 밖(외삽), 빨간 원은 권장 설정점.</figcaption></figure>
 <table><thead><tr><th>지표</th><th>값</th></tr></thead><tbody>

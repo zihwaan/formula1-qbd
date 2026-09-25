@@ -1,4 +1,289 @@
 {
+ "manifest": [
+  {
+   "id": "excipient_master",
+   "priority": 0,
+   "eval_type": "reference",
+   "strategy": null,
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "rdkit_descriptors",
+   "priority": 0,
+   "eval_type": "reference",
+   "strategy": null,
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "structural_flags",
+   "priority": 0,
+   "eval_type": "reference",
+   "strategy": null,
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "physchem_estimation",
+   "priority": 0,
+   "eval_type": "reference",
+   "strategy": null,
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "api_physchem_descriptors",
+   "priority": 5,
+   "eval_type": "quantitative",
+   "strategy": "threshold",
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "powder_flow_scale",
+   "priority": 10,
+   "eval_type": "quantitative",
+   "strategy": "band_lookup",
+   "provides": [
+    "flow_character_normalized",
+    "flow_character"
+   ],
+   "polarity": "fail_when"
+  },
+  {
+   "id": "route_decision_tree",
+   "priority": 11,
+   "eval_type": "quantitative",
+   "strategy": "decision_tree",
+   "provides": [
+    "selected_route"
+   ],
+   "polarity": "fail_when"
+  },
+  {
+   "id": "incompatibility_1to1",
+   "priority": 20,
+   "eval_type": "quantitative",
+   "strategy": "pairwise_membership",
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "pediatric_safety_mg",
+   "priority": 21,
+   "eval_type": "quantitative",
+   "strategy": "threshold",
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "pediatric_safety_g",
+   "priority": 21,
+   "eval_type": "quantitative",
+   "strategy": "threshold",
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "coloring_flavoring_pediatric",
+   "priority": 22,
+   "eval_type": "quantitative",
+   "strategy": "subset_forbidden",
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "incompatibility_multi",
+   "priority": 30,
+   "eval_type": "quantitative",
+   "strategy": "subset_forbidden",
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "direct_compression",
+   "priority": 40,
+   "eval_type": "quantitative",
+   "strategy": "threshold",
+   "provides": null,
+   "polarity": "pass_when"
+  },
+  {
+   "id": "dry_granulation",
+   "priority": 41,
+   "eval_type": "quantitative",
+   "strategy": "threshold",
+   "provides": null,
+   "polarity": "pass_when"
+  },
+  {
+   "id": "wet_granulation_aqueous",
+   "priority": 42,
+   "eval_type": "quantitative",
+   "strategy": "threshold",
+   "provides": null,
+   "polarity": "pass_when"
+  },
+  {
+   "id": "wet_granulation_nonaqueous",
+   "priority": 43,
+   "eval_type": "quantitative",
+   "strategy": "threshold",
+   "provides": null,
+   "polarity": "pass_when"
+  },
+  {
+   "id": "capsule_filling",
+   "priority": 44,
+   "eval_type": "quantitative",
+   "strategy": "threshold",
+   "provides": null,
+   "polarity": "pass_when"
+  },
+  {
+   "id": "excipient_functional_ratio",
+   "priority": 45,
+   "eval_type": "quantitative",
+   "strategy": "range",
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "coating_strategy",
+   "priority": 50,
+   "eval_type": "qualitative",
+   "strategy": null,
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "residual_solvent",
+   "priority": 51,
+   "eval_type": "quantitative",
+   "strategy": "threshold",
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "bcs_classification",
+   "priority": 60,
+   "eval_type": "quantitative",
+   "strategy": "band_lookup",
+   "provides": [
+    "bcs_class"
+   ],
+   "polarity": "fail_when"
+  },
+  {
+   "id": "bcs_strategy",
+   "priority": 61,
+   "eval_type": "quantitative",
+   "strategy": "categorical_requirement",
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "dissolution_biowaiver",
+   "priority": 62,
+   "eval_type": "qualitative",
+   "strategy": null,
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "dissolution_acceptance",
+   "priority": 63,
+   "eval_type": "reference",
+   "strategy": null,
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "dissolution_apparatus",
+   "priority": 64,
+   "eval_type": "reference",
+   "strategy": null,
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "packaging_compatibility",
+   "priority": 70,
+   "eval_type": "quantitative",
+   "strategy": "conditional_prohibition",
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "analytical_method",
+   "priority": 71,
+   "eval_type": "reference",
+   "strategy": null,
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "stability_significant_change",
+   "priority": 72,
+   "eval_type": "reference",
+   "strategy": null,
+   "provides": null,
+   "polarity": "fail_when"
+  },
+  {
+   "id": "stability_storage_conditions",
+   "priority": 73,
+   "eval_type": "reference",
+   "strategy": null,
+   "provides": null,
+   "polarity": "fail_when"
+  }
+ ],
+ "jury": [
+  {
+   "reviewer_id": "REV001",
+   "name": "소아 안전 심사관",
+   "condition": "target_population=='pediatric'",
+   "weight": "0.30"
+  },
+  {
+   "reviewer_id": "REV002",
+   "name": "가용화 전략 심사관",
+   "condition": "enabling_candidates_present==True or particle_size_candidates_present==True or bcs_class in ['II','IV']",
+   "weight": "0.25"
+  },
+  {
+   "reviewer_id": "REV003",
+   "name": "공정 실현성 심사관",
+   "condition": "always",
+   "weight": "0.25"
+  },
+  {
+   "reviewer_id": "REV004",
+   "name": "규제 취지 심사관",
+   "condition": "regulatory_narrative_needed==True",
+   "weight": "0.20"
+  },
+  {
+   "reviewer_id": "REV005",
+   "name": "문헌 조사 심사관",
+   "condition": "novel_combination_not_in_rulebook==True or coverage_gap_present==True",
+   "weight": "0.20"
+  },
+  {
+   "reviewer_id": "REV006",
+   "name": "고령자 안전 심사관",
+   "condition": "target_population=='geriatric'",
+   "weight": "0.30"
+  },
+  {
+   "reviewer_id": "REV007",
+   "name": "고체상 안정성 심사관",
+   "condition": "asd_candidates_present==True or solid_form_zone in ['continuum','cocrystal_likely'] or salt_stability_watch==True",
+   "weight": "0.25"
+  }
+ ],
  "region": {
   "grid_points_total": 9261,
   "grid_points_in_domain": 7501,
