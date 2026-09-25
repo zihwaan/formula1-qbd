@@ -54,51 +54,101 @@ def svg(w, h, body):
     return f'<svg viewBox="0 0 {w} {h}" width="100%" xmlns="http://www.w3.org/2000/svg" role="img">{DEFS}{body}</svg>'
 
 
-def fig_architecture():
+def fig_architecture(data=None):
+    """전체 구조 — 규칙 게이트와 동적 심사단의 내부를 확대해 한 장에 보인다(수치는 figdata에서)."""
+    data = data or {}
     b = ""
     b += box(250, 8, 220, 36, "연구자", "말 · 폼 · 측정값 · 승인", "io")
     b += box(200, 66, 320, 44, "입력 에이전트", "맥락 스냅숏 · 말 → 제안 카드 · 코드 가드레일", "llm")
     b += arrow(360, 44, 360, 66) + arrow(340, 66, 340, 44)
-    # discovery
-    b += '<rect x="10" y="132" width="700" height="150" rx="10" fill="#fafafa" stroke="#999"/>'
+    # ① 후보 탐색
+    b += '<rect x="10" y="132" width="700" height="348" rx="10" fill="#fafafa" stroke="#999"/>'
     b += '<text x="22" y="150" class="gt">① 후보 탐색 — CandidateDiscoveryGraph (LangGraph · 분 단위)</text>'
     xs = [22, 130, 238, 346, 454, 562]
     names = [("분자 프로파일", "RDKit · 82 패턴", "det"), ("페이즈 게이트", "BCS/DCS·고체상·가용화", "det"),
              ("계획", "상위 3 전략 · 서명", "det"), ("병렬 설계", "전략별 후보", "llm"),
-             ("규칙 게이트", "29표 · 8함수 · 단계순", "det"), ("동적 심사단", "7명 중 조건 맞는 이만", "jud")]
-    for x, (t, s, k) in zip(xs, names):
-        b += box(x, 162, 100, 46, t, s, k)
-    for i in range(5):
-        b += arrow(xs[i] + 100, 185, xs[i + 1], 185)
-    b += box(346, 228, 200, 40, "되돌림 · 반성", "사유별 복귀 지점 (14행 전이표)", "det")
-    b += path("M 504 208 L 504 228", dash=False)
-    b += path("M 346 248 L 290 248 L 290 208", "성분만/공정·전략부터", 190, 262)
-    b += box(566, 228, 132, 40, "후보 처방 목록", "가중평균 순위 · 신뢰도", "io")
-    b += '<text x="612" y="159" class="al" text-anchor="middle">순위만 · 반려 권한 없음</text>'
-    b += arrow(612, 208, 612, 228)
+             ("규칙 게이트", "오차 0% · 반려 권한", "det"), ("동적 심사단", "조건 맞는 이만 · 순위만", "jud")]
+    for x, (t, s_, k) in zip(xs, names):
+        b += box(x, 162, 100, 46, t, s_, k)
+    for i_ in range(5):
+        b += arrow(xs[i_] + 100, 185, xs[i_ + 1], 185)
     b += arrow(360, 110, 360, 132, "확인한 카드만", lx=366, ly=126)
-    # handoff
-    b += box(210, 300, 300, 36, "불변 Handoff", "candidate_id@version · fingerprint", "hi")
-    b += arrow(632, 268, 510, 318, "연구자가 선택", lx=560, ly=298)
-    # studio
-    b += '<rect x="10" y="354" width="700" height="120" rx="10" fill="#fafafa" stroke="#999"/>'
-    b += '<text x="22" y="372" class="gt">② 개발 스튜디오 — ExperimentalDevelopmentGraph (상태기계 · 주·월 단위)</text>'
+
+    # ── 확대: 규칙 게이트 내부 (결정론) ──
+    gx, gy, gw, gh = 22, 226, 430, 180
+    b += f'<rect x="{gx}" y="{gy}" width="{gw}" height="{gh}" rx="8" fill="#fff" stroke="#222" stroke-width="1.2"/>'
+    b += f'<path d="M 454 208 L {gx + gw - 40} {gy}" stroke="#888" stroke-dasharray="3 3" fill="none"/>'
+    b += f'<path d="M 554 208 L {gx + gw} {gy + 14}" stroke="#888" stroke-dasharray="3 3" fill="none"/>'
+    m = data.get("manifest") or []
+    judged = sum(e["eval_type"] == "quantitative" for e in m)
+    b += (f'<text x="{gx + 10}" y="{gy + 16}" class="gt">규칙 게이트 안 — 규칙표 {len(m) or 29}개(판정 {judged or 18}) · '
+          f'검사 함수 8개 · 우선순위 단계</text>')
+    stages = ["0 참조", "5 물성", "10 흐름→경로", "20 금기·소아", "30 다성분", "40 공정", "50 코팅", "60 BCS", "70 포장"]
+    cw = (gw - 20 - 8 * 3) / 9
+    for k, st in enumerate(stages):
+        x = gx + 10 + k * (cw + 3)
+        num, name = st.split(" ", 1)
+        b += f'<rect x="{x}" y="{gy + 24}" width="{cw}" height="34" rx="4" fill="#f1f3f5" stroke="#555"/>'
+        b += f'<text x="{x + cw / 2}" y="{gy + 37}" class="bs">{E(num)}</text>'
+        b += f'<text x="{x + cw / 2}" y="{gy + 50}" class="bs" style="font-size:7.6px">{E(name)}</text>'
+        if k < 8:
+            b += arrow(x + cw, gy + 41, x + cw + 3, gy + 41)
+    b += f'<text x="{gx + 10}" y="{gy + 72}" class="al">앞 단계 파생값이 뒤 단계 조건으로: flow_character → selected_route → 공정 규칙 · bcs_class(실측만)</text>'
+    pol = [("검증됨", "반려 가능"), ("잠정", "표기"), ("미검증", "심사로 강등"), ("출처 없음", "로드 제외")]
+    pw = (gw - 20 - 3 * 6) / 4
+    for k, (t, s_) in enumerate(pol):
+        x = gx + 10 + k * (pw + 6)
+        b += box(x, gy + 84, pw, 36, t, s_, "det" if k < 2 else ("jud" if k == 2 else "io"), r=4)
+    outs = [("PASS", "심사로"), ("SOFT_FLAG", "심사관 표시"), ("HARD_FAIL", "되돌림"), ("ESCALATE", "사람 이관")]
+    for k, (t, s_) in enumerate(outs):
+        x = gx + 10 + k * (pw + 6)
+        b += box(x, gy + 132, pw, 36, t, s_, "hi" if t == "HARD_FAIL" else "det", r=4)
+
+    # ── 확대: 동적 심사단 내부 ──
+    jx, jy, jw, jh = 462, 226, 236, 180
+    b += f'<rect x="{jx}" y="{jy}" width="{jw}" height="{jh}" rx="8" fill="#fff" stroke="#222" stroke-width="1.2" stroke-dasharray="2 3"/>'
+    b += f'<path d="M 612 208 L {jx + jw / 2} {jy}" stroke="#888" stroke-dasharray="3 3" fill="none"/>'
+    b += f'<text x="{jx + 10}" y="{jy + 16}" class="gt">심사단 안 — 명단 7명, 조건이 참일 때만 생성</text>'
+    jury = [("소아 안전", "소아 대상"), ("가용화 전략", "가용화·미분화 후보"), ("공정 실현성", "항상"),
+            ("규제 취지", "규제 서술 필요"), ("문헌 조사", "룰북 밖 조합"), ("고령자 안전", "고령 대상"),
+            ("고체상 안정성", "ASD·염 경계")]
+    for k, (t, cond) in enumerate(jury):
+        x = jx + 10
+        y = jy + 24 + k * 18
+        dash = "" if cond == "항상" else ' stroke-dasharray="3 2"'
+        b += f'<rect x="{x}" y="{y}" width="216" height="16" rx="4" fill="#fff" stroke="#333"{dash}/>'
+        b += f'<text x="{x + 6}" y="{y + 11.5}" class="lg" style="font-size:8.4px"><tspan font-weight="700">{E(t)}</tspan> · {E(cond)}</text>'
+    b += f'<text x="{jx + 10}" y="{jy + 158}" class="al">후보 × 소집 심사관 병렬 → 점수 0–1</text>'
+    b += f'<text x="{jx + 10}" y="{jy + 172}" class="al">→ 가중평균(결정론) 순위 · 반려 권한 없음</text>'
+
+    # 되돌림 · 결과
+    b += box(22, 420, 300, 44, "되돌림 · 반성", "HARD_FAIL 사유별 복귀 지점 (14행 전이표) → 설계·계획", "det")
+    b += path(f"M {gx + 10 + 2 * (pw + 6) + pw / 2} {gy + 168} L {gx + 10 + 2 * (pw + 6) + pw / 2} 414", dash=False)
+    b += path("M 22 442 L 16 442 L 16 185 L 22 185", "", 0, 0)
+    b += box(462, 420, 236, 44, "후보 처방 목록", "성분 · 공정 단계 · 근거 · 신뢰도 · 순위", "io")
+    b += arrow(jx + jw / 2, jy + jh, jx + jw / 2, 420)
+
+    # Handoff · ② 개발 스튜디오
+    b += box(210, 492, 300, 36, "불변 Handoff", "candidate_id@version · fingerprint", "hi")
+    b += arrow(580, 464, 470, 492, "연구자가 선택", lx=540, ly=484)
+    b += '<rect x="10" y="546" width="700" height="120" rx="10" fill="#fafafa" stroke="#999"/>'
+    b += '<text x="22" y="564" class="gt">② 개발 스튜디오 — ExperimentalDevelopmentGraph (상태기계 · 주·월 단위)</text>'
     st = [("Readiness", "det"), ("CQA 계약", "det"), ("FMEA", "llm"), ("요인·수준", "det"), ("DoE 설계", "det"),
           ("결과·모델", "det"), ("잠정 영역", "det"), ("확인배치", "det")]
-    for i, (t, k) in enumerate(st):
-        b += box(20 + i * 86, 384, 78, 34, t, "", k, r=6)
-        if i < len(st) - 1:
-            b += arrow(98 + i * 86, 401, 106 + i * 86, 401)
-    b += box(250, 432, 220, 32, "VERIFIED 영역 + 성립 조건", "", "io")
-    b += arrow(360, 336, 360, 354)
-    b += arrow(622, 418, 470, 440)
-    b += '<text x="480" y="450" class="al">판정 07_doe 171규칙 · 숫자 엔진 · 승인 연구자</text>'
+    for k, (t, kk) in enumerate(st):
+        b += box(20 + k * 86, 576, 78, 34, t, "", kk, r=6)
+        if k < len(st) - 1:
+            b += arrow(98 + k * 86, 593, 106 + k * 86, 593)
+    b += box(250, 624, 220, 32, "VERIFIED 영역 + 성립 조건", "", "io")
+    b += arrow(360, 528, 360, 546)
+    b += arrow(622, 610, 470, 632)
+    b += '<text x="480" y="654" class="al">판정 07_doe 171규칙 · 숫자 엔진 · 승인 연구자</text>'
     # legend
     b += '<g transform="translate(560,12)"><rect width="150" height="58" fill="#fff" stroke="#ccc"/>'
     b += '<line x1="8" y1="14" x2="34" y2="14" stroke="#222"/><text x="40" y="18" class="lg">결정론(규칙·엔진)</text>'
     b += '<line x1="8" y1="30" x2="34" y2="30" stroke="#222" stroke-dasharray="6 4"/><text x="40" y="34" class="lg">LLM</text>'
     b += '<line x1="8" y1="46" x2="34" y2="46" stroke="#222" stroke-dasharray="2 3"/><text x="40" y="50" class="lg">심사관(순위만)</text></g>'
-    return svg(720, 480, b)
+    return svg(720, 672, b)
 
 
 def fig_discovery():
@@ -526,9 +576,10 @@ ol.refs li {{ margin-bottom: 2pt; }}
 시험 제안은 자유 텍스트가 아닌 실제 확인시험 목록({c['confirmation_tests']}행) 안으로 제한했다. 오케스트레이션은 LangGraph[10]를 사용한다.</p>
 
 <h2>3. 시스템 개요</h2>
-<figure>{fig_architecture()}
+<figure>{fig_architecture(data)}
 <figcaption><b>그림 1.</b> 전체 구조. 연구자와 두 그래프 사이에 입력 에이전트가 있고, 두 그래프는 내부 상태를 공유하지 않은 채 불변 Handoff
-하나로만 연결된다. 선 모양은 담당 주체를 나타낸다(실선: 결정론 규칙·엔진, 파선: LLM, 점선: 순위만 매기는 심사관).</figcaption></figure>
+하나로만 연결된다. ① 안의 두 확대 상자는 규칙 게이트(우선순위 단계, 근거 상태별 권한, 판정별 경로 — 그림 4)와 동적 심사단(명단 7명과 소집 조건,
+순위만 매기는 합의 — 그림 6)의 내부다. 선 모양은 담당 주체를 나타낸다(실선: 결정론 규칙·엔진, 파선: LLM, 점선: 순위만 매기는 심사관).</figcaption></figure>
 <p>역할 분리는 표 1과 같다. 판정·계산 권한은 결정론 계층에만 있고, LLM은 제안과 서술만 한다. 연구자는 어떤 후보를 개발할지,
 경고를 사유와 함께 넘길지, 모델을 축소할지 같은 수용 결정을 내린다.</p>
 <table><thead><tr><th>성격</th><th>예</th><th>담당</th></tr></thead><tbody>
