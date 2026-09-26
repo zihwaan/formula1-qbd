@@ -62,6 +62,7 @@ class FormulationState(TypedDict, total=False):
     # 사용자가 처음부터 넣은 실측값·플래그(선택). 추정보다 우선한다.
     measured_params: Dict[str, float]
     property_flags: Dict[str, bool]
+    dose_basis: str   # 요청 용량의 기준: free_base | salt
 
     # P0 — 입력 번역 & 물성
     spec: Optional[FormulationSpec]
@@ -113,7 +114,8 @@ class FormulationState(TypedDict, total=False):
 def new_state(request: str, smiles: Optional[str] = None, run_id: Optional[str] = None,
               required_excipients: Optional[List[str]] = None,
               measured_params: Optional[Dict[str, float]] = None,
-              property_flags: Optional[Dict[str, bool]] = None) -> FormulationState:
+              property_flags: Optional[Dict[str, bool]] = None,
+              dose_basis: str = "free_base") -> FormulationState:
     return FormulationState(
         run_id=run_id or uuid.uuid4().hex[:12],
         request=request,
@@ -121,6 +123,7 @@ def new_state(request: str, smiles: Optional[str] = None, run_id: Optional[str] 
         required_excipients=list(required_excipients or []),
         measured_params=dict(measured_params or {}),
         property_flags=dict(property_flags or {}),
+        dose_basis=dose_basis,
         spec=None,
         api_profile=None,
         phase_derived={},

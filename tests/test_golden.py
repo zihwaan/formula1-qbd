@@ -25,11 +25,16 @@ def registry() -> RulebookRegistry:
     return RulebookRegistry(ROOT / "config" / "rulebook_manifest.yaml", base_dir=ROOT)
 
 
+# 1회 함량 — 라벨 1일 최대 용량 규칙(max_daily_dose.csv)에 걸리지 않는 실제 강도로 둔다.
+# Fluoxetine HCl 22.4 mg = 유리염기 20 mg(PROZAC 20 mg 캡슐 강도).
+API_MG = {"Fluoxetine HCl": 22.4, "Fluoxetine": 20}
+
+
 def _lactose_recipe(api: str) -> Recipe:
     return Recipe(
         api_name=api, candidate_id="draft",
         ingredients=[
-            Ingredient(name=api, role="api", amount_mg=160, percent=53),
+            Ingredient(name=api, role="api", amount_mg=API_MG.get(api, 160), percent=53),
             Ingredient(name="Lactose monohydrate", role="diluent", amount_mg=95, percent=32),
             Ingredient(name="Croscarmellose sodium", role="superdisintegrant", amount_mg=9, percent=3),
             Ingredient(name="Magnesium stearate", role="lubricant", amount_mg=3, percent=1),
@@ -107,7 +112,8 @@ def _test_llm(output_format, *args, **kwargs):
     from formula.agents.client import LLMUnavailable
     from formula.agents.judge import JudgeOutput
     if output_format is JudgeOutput:
-        return JudgeOutput(score=0.7, rationale="테스트 대역 점수")
+        # 인용은 룰북 인용 등록부(citation_registry.csv)의 실재 식별자 — Narang 2012 (PMC3225520)
+        return JudgeOutput(score=0.7, rationale="테스트 대역 점수", citations=["PMC3225520"])
     raise LLMUnavailable("test double")
 
 

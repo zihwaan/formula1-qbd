@@ -51,6 +51,7 @@ def translate(
     required_excipients: Optional[List[str]] = None,
     measured_params: Optional[Dict[str, float]] = None,
     property_flags: Optional[Dict[str, bool]] = None,
+    dose_basis: str = "free_base",
 ) -> FormulationSpec:
     """자연어 요구를 스펙으로 옮기고 RDKit 프로파일을 붙인다.
 
@@ -86,6 +87,8 @@ def translate(
     emit(node, EventKind.CHEM_PROFILE,
          api_name=profile.api_name, smiles=profile.smiles, parent_smiles=profile.parent_smiles,
          is_salt=profile.is_salt, descriptors=profile.descriptors,
+         salt_factor=profile.salt_factor, salt_molecular_weight=profile.salt_molecular_weight,
+         salt_form=profile.salt_form, inchikey=profile.inchikey,
          flags=[f.model_dump() for f in profile.flags],
          estimates=[e.model_dump() for e in profile.estimates],
          svg=profile.svg, rdkit_version=profile.rdkit_version, warnings=profile.warnings)
@@ -112,6 +115,18 @@ def translate(
 
     literature = search_api(spec.api_name, profile.parent_smiles or profile.smiles)
     emit(node, EventKind.LITERATURE, **literature)
+    # 표준명 — 구조로 찾은 PubChem 표제명(예: 'Lornoxicam')을 쓴다. LLM 해석의 철자가 Handoff·study
+    # 이름에 영구히 박히지 않게(개발자 수정 과제 P2-3). 구조를 못 얻었으면 이름을 그대로 둔다.
+    canonical = literature.get("canonical_name") or ""
+    if canonical and profile.structure_resolved:
+        name = canonical[:1].upper() + canonical[1:]
+        if name != spec.api_name:
+            spec.properties["api_name_as_parsed"] = spec.api_name
+            spec.api_name = name
+            profile.api_name = name
+    spec.literature = [h for h in ((literature.get("literature") or {}).get("hits") or [])][:8]
+    if dose_basis in ("free_base", "salt"):
+        spec.properties["dose_basis"] = dose_basis
 
     emit(node, EventKind.SPEC_READY, source=source,
          spec=spec.model_dump(exclude={"api_profile"}),

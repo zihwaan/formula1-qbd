@@ -81,17 +81,17 @@ def fig_architecture(data=None):
     b += f'<path d="M 554 208 L {gx + gw} {gy + 14}" stroke="#888" stroke-dasharray="3 3" fill="none"/>'
     m = data.get("manifest") or []
     judged = sum(e["eval_type"] == "quantitative" for e in m)
-    b += (f'<text x="{gx + 10}" y="{gy + 16}" class="gt">규칙 게이트 안 — 규칙표 {len(m) or 29}개(판정 {judged or 18}) · '
+    b += (f'<text x="{gx + 10}" y="{gy + 16}" class="gt">규칙 게이트 안 — 입력 계약 → 규칙표 {len(m) or 29}개(판정 {judged or 18}) · '
           f'검사 함수 8개 · 우선순위 단계</text>')
-    stages = ["0 참조", "5 물성", "10 흐름→경로", "20 금기·소아", "30 다성분", "40 공정", "50 코팅", "60 BCS", "70 포장"]
-    cw = (gw - 20 - 8 * 3) / 9
+    stages = ["0 입력계약", "0 참조", "5 물성", "10 흐름→경로", "20 금기·소아", "30 다성분", "40 공정", "50 코팅", "60 BCS", "70 포장"]
+    cw = (gw - 20 - 9 * 3) / 10
     for k, st in enumerate(stages):
         x = gx + 10 + k * (cw + 3)
         num, name = st.split(" ", 1)
         b += f'<rect x="{x}" y="{gy + 24}" width="{cw}" height="34" rx="4" fill="#f1f3f5" stroke="#555"/>'
         b += f'<text x="{x + cw / 2}" y="{gy + 37}" class="bs">{E(num)}</text>'
         b += f'<text x="{x + cw / 2}" y="{gy + 50}" class="bs" style="font-size:7.6px">{E(name)}</text>'
-        if k < 8:
+        if k < len(stages) - 1:
             b += arrow(x + cw, gy + 41, x + cw + 3, gy + 41)
     b += f'<text x="{gx + 10}" y="{gy + 72}" class="al">앞 단계 파생값이 뒤 단계 조건으로: flow_character → selected_route → 공정 규칙 · bcs_class(실측만)</text>'
     pol = [("검증됨", "반려 가능"), ("잠정", "표기"), ("미검증", "심사로 강등"), ("출처 없음", "로드 제외")]
@@ -122,7 +122,8 @@ def fig_architecture(data=None):
     b += f'<text x="{jx + 10}" y="{jy + 172}" class="al">→ 가중평균(결정론) 순위 · 반려 권한 없음</text>'
 
     # 되돌림 · 결과
-    b += box(22, 420, 300, 44, "되돌림 · 반성", "HARD_FAIL 사유별 복귀 지점 (14행 전이표) → 설계·계획", "det")
+    nbt = (data.get("counts") or {}).get("backtrack_transitions", 0)
+    b += box(22, 420, 300, 44, "되돌림 · 반성", f"HARD_FAIL 사유별 복귀 지점 ({nbt}행 전이표) → 설계·계획", "det")
     b += path(f"M {gx + 10 + 2 * (pw + 6) + pw / 2} {gy + 168} L {gx + 10 + 2 * (pw + 6) + pw / 2} 414", dash=False)
     b += path("M 22 442 L 16 442 L 16 185 L 22 185", "", 0, 0)
     b += box(462, 420, 236, 44, "후보 처방 목록", "성분 · 공정 단계 · 근거 · 신뢰도 · 순위", "io")
@@ -319,6 +320,74 @@ def fig_states():
     return svg(720, 262, b)
 
 
+def exp_narrative(x, same, tot) -> str:
+    """실험 결과 서술 — 문장은 전부 experiments.json에서 계산한다(재실험하면 문장도 따라 바뀐다)."""
+    runs = x["runs"]
+    by = {}
+    for r in runs:
+        by.setdefault(r["scenario"], []).append(r)
+    parts = [f"결정론 계층의 결과(계획 서명·종결 상태·반려 규칙)는 반복 간 {'시나리오마다 모두 같았다' if same else '일부 달랐다'}."]
+    for sid, rs in by.items():
+        r0 = rs[0]
+        if r0["status"] == "infeasible":
+            parts.append(f"{r0['label']}은 세 전략의 후보가 모두 {', '.join(r0['hard_fails'])}로 반려되어 되돌림 없이 “제약 불가능”으로 끝났다.")
+    changed = [by[sid][0]["label"] for sid in by if len({r["winner"] for r in by[sid]}) > 1]
+    if changed:
+        parts.append("반면 LLM이 만드는 부분은 달라졌다 — 권고 후보가 반복마다 바뀐 시나리오: " + ", ".join(changed) + ".")
+    varying = []
+    for sid, rs in by.items():
+        sets = [set(r["summoned"]) for r in rs]
+        diff = set.union(*sets) - set.intersection(*sets) if sets else set()
+        if diff:
+            varying.append(f"{rs[0]['label']}의 {', '.join(sorted(diff))}")
+    if varying:
+        parts.append("설계된 성분에 따라 소집이 달라진 심사관: " + "; ".join(varying) + ".")
+    calls = sum(len(r["judge_scores"]) for r in runs)
+    scored = calls - sum(r["judge_unscored"] for r in runs)
+    uncited = sum(r.get("judge_uncited", 0) for r in runs)
+    cites = sum(r.get("judge_citations", 0) for r in runs)
+    parts.append(f"심사 호출 {calls}건 중 {scored}건이 점수를 받았고, 모든 점수는 검증된 DOI·PMID 인용(총 {cites}건)을 달았다"
+                 f"(인용이 없어 무효가 된 점수 {uncited}건).")
+    if tot:
+        parts.append(f"8회 실행과 입력 에이전트 6개 발화에 쓰인 대회 API 토큰은 약 {tot:,}개였다(응답 헤더의 잔여 토큰 추정치 차이).")
+    return "<p>" + " ".join(parts) + "</p>"
+
+
+def devfix_section(fx) -> str:
+    """개발자 수정 과제 §6 검증 계획 결과 표 — devfix_results.json(실제 서버 실행)."""
+    if not fx:
+        return ""
+    rows = ""
+    for r in fx["results"]:
+        ok = [k for k, v in r["checks"].items() if v]
+        bad = [k for k, v in r["checks"].items() if not v]
+        rows += (f"<tr><td>{E(r['case'])}</td><td>{r['repeat']}</td><td>{E(r['status'])}</td><td>{r['seconds']:.0f}</td>"
+                 f"<td>{E(' · '.join(ok))}</td><td>{E(' · '.join(bad) or '—')}</td></tr>")
+    t1 = next((r for r in fx["results"] if r["case"] == "T1"), None)
+    t4 = next((r for r in fx["results"] if r["case"] == "T4"), None)
+    t2 = next((r for r in fx["results"] if r["case"] == "T2"), None)
+    extra = []
+    if t1:
+        extra.append("T1(로르녹시캄 8 mg)에서 마지막 라운드 후보의 API 함량은 " +
+                     ", ".join(f"{c['api'][0][1]:g} mg" for c in t1["candidates"] if c["api"]) + "였다.")
+    if t2 and t2.get("parent_mw"):
+        extra.append(f"T2의 분자 특성값은 parent 기준(MW {t2['parent_mw']:.1f}, 염 환산계수 {t2.get('salt_factor')})으로 계산됐다.")
+    if t4 and t4.get("submission"):
+        sub = t4["submission"]
+        extra.append(f"T4에서 입력 에이전트는 측정 문장을 {t4['agent']['source']} 경로로 제출 카드로 바꿨고, 제출은 근거 등급 "
+                     f"‘{sub['grade_ko']}’으로 기록되어 요청 {', '.join(sub['closed_requests']) or '없음'}을 닫았다({sub['rerun_scope']}).")
+    return f"""<h3>7.4 데모 결함 수정의 검증</h3>
+<p>시연 쿼리 3건을 무료 모델로 돌린 데모 실행 결과 보고서와 그 원인·수정·합격 기준을 정리한 개발자 수정 과제(14건)를 반영한 뒤, 과제 문서 §6의
+검증 계획을 {E(fx.get('llm_label') or fx.get('llm'))}로 각 {max(r['repeat'] for r in fx['results'])}회 실행했다(표 7). 수정의 핵심은 세 가지다 — (1) 모든 규칙보다 먼저
+후보가 요청과 맞는지 대조하는 입력 계약 검사(API 1행, 요청 용량의 유리염기 ±0.5%, 고정 부형제, FDA 라벨 1일 최대 용량), (2) 염 형태 입력의 분자 특성값을
+parent로 계산, (3) 측정값 문장을 LLM보다 먼저 규칙으로 잡아 설계를 다시 돌리지 않고 제출. {' '.join(extra)}
+T5(API 누락 후보 주입)·T6(암로디핀 50 mg 후보 주입)은 결정론 계층만의 동작이라 단위 테스트로 고정했다(RC001 · MAX_DAILY_DOSE 반려).</p>
+<table><thead><tr><th>케이스</th><th>회</th><th>종결</th><th>초</th><th>통과한 기준</th><th>실패한 기준</th></tr></thead><tbody>{{rows}}</tbody></table>
+<div class="tcap"><b>표 7.</b> 검증 계획 T1–T4의 실제 실행 결과(devfix_results.json). T1: 로르녹시캄 8 mg·고정 MCC·만니톨·크로스포비돈·유동성 42°/22%/1.28,
+T2: 고령자 암로디핀 2.5 mg + 유당 고정(베실산염 SMILES), T3: T2에서 유당 제외, T4: VX-770 150 mg cold start 후 Tm·용해도 문장 제출.</div>
+""".replace("{rows}", rows)
+
+
 def exp_section(x) -> str:
     if not x:
         return ""
@@ -360,11 +429,7 @@ def exp_section(x) -> str:
 <table><thead><tr><th>시나리오</th><th>회</th><th>종결</th><th>계획 서명</th><th>후보</th><th>게이트 통과</th><th>반려 규칙</th><th>소집 심사관</th><th>점수 있음</th><th>남은 요청</th><th>권고</th><th>초</th></tr></thead>
 <tbody>{rows}</tbody></table>
 <div class="tcap"><b>표 5.</b> 시나리오별 실행 결과(서버 응답·이벤트 스트림에서 기록). 점수 있음 = 실제로 매겨진 심사 점수 / 전체 심사 호출.</div>
-<p>결정론 계층의 결과는 반복 간 {'완전히 같았다' if same else '일부 달랐다'} — 계획 서명, 종결 상태, 반려 규칙이 시나리오마다 동일했다.
-유당을 고정한 소아 플루옥세틴은 세 전략의 후보가 모두 INC002로 반려되어 되돌림 없이 “제약 불가능”으로 끝났고, 용량을 준 이부프로펜은 미분화(MICRO)가
-계획에 들어오며 전략을 좁히는 실험 요청 3건(DSC·KF·TGA·XRPD 고체상 세트와 평형용해도)이 남았다. 반면 LLM이 만드는 부분은 달라졌다 —
-권고 후보는 이부프로펜과 메트포르민에서 반복마다 바뀌었고, 문헌 조사 심사관(REV005)은 설계된 성분이 룰북 밖 조합일 때만 소집되므로 고령자 메트포르민의
-1회차에만 나타났다. 심사 호출은 모두 점수를 받았다(무응답 0). 8회 실행과 입력 에이전트 6개 발화에 쓰인 대회 API 토큰은 약 {tot:,}개였다(응답 헤더의 잔여 토큰 추정치 차이).</p>
+{exp_narrative(x, same, tot)}
 <table><thead><tr><th>ID</th><th>사용자 발화</th><th>제안</th><th>카드 내용</th><th>되물음</th></tr></thead><tbody>{arows}</tbody></table>
 <div class="tcap"><b>표 6.</b> 입력 에이전트 응답. U3(“용량은 알아서”)은 용량을 채우지 않고 되물었고, U4(“SMILES는 네가 기억하는 걸로”)의 구조는 LLM이 아니라
 내장 구조 사전에서 왔다. U5의 “안식각 대충 30도”는 모델이 측정값으로 옮기지 않았다(사용자가 쓴 값이므로 옮겨도 가드레일은 통과한다 — 모호한 표현을
@@ -386,8 +451,22 @@ SHORT = {"pairwise_membership": "쌍 금기", "subset_forbidden": "조합 금지
 def fig_rulegate(data):
     m = data["manifest"]
     b = ""
-    w, x0 = 76, 10
-    b += '<text x="10" y="12" class="gt">규칙표 29개 → manifest 한 줄씩 → 여덟 검사 함수 → 우선순위 단계 (앞 단계의 파생값이 뒤 단계의 발동 조건)</text>'
+    w, x0 = 68, 10
+    # 0단계 — 입력 계약(요청과 후보의 정합). manifest 밖의 계약 규칙표 두 개에서 행 수를 센다.
+    import csv as _csv
+    def _n(rel):
+        pth = ROOT / rel
+        return sum(1 for _ in _csv.DictReader(pth.open(encoding="utf-8-sig"))) if pth.exists() else 0
+    nrc, nmdd = _n("database/06_config/request_contract_rules.csv"), _n("database/05_regulatory/max_daily_dose.csv")
+    b += f'<rect x="{x0}" y="22" width="{w}" height="130" rx="6" fill="#e7f0ff" stroke="#1d4ed8" stroke-width="1.2"/>'
+    b += f'<text x="{x0 + w / 2}" y="36" class="lg" text-anchor="middle">0</text>'
+    b += f'<text x="{x0 + w / 2}" y="52" class="bt" style="font-size:9.5px">입력 계약</text>'
+    for k, t in enumerate(("API 1행", "용량 ±0.5%", "고정 부형제", "1일 최대")):
+        b += f'<text x="{x0 + w / 2}" y="{68 + k * 11}" class="bs">{t}</text>'
+    b += f'<text x="{x0 + w / 2}" y="123" class="bs">계약 {nrc} · 라벨 {nmdd}</text>'
+    b += arrow(x0 + w, 81, x0 + w + 3, 81)
+    x0 = x0 + w + 3
+    b += '<text x="10" y="12" class="gt">요청과 후보의 정합(입력 계약) → 규칙표 29개 · 여덟 검사 함수 · 우선순위 단계 (앞 단계의 파생값이 뒤 단계 조건)</text>'
     for i, ((lo, hi), title) in enumerate(STAGES):
         es = [e for e in m if e["priority"] is not None and lo <= e["priority"] <= hi]
         x = x0 + i * (w + 3)
@@ -474,12 +553,12 @@ def fig_jury(data, x):
     b += f'<circle cx="16" cy="{yl - 3}" r="5" fill="#1d4ed8"/><text x="26" y="{yl}" class="lg">2회 모두 소집</text>'
     b += f'<circle cx="116" cy="{yl - 3}" r="5" fill="none" stroke="#1d4ed8" stroke-width="1.5"/><path d="M 116 {yl - 8} A 5 5 0 0 1 116 {yl + 2} z" fill="#1d4ed8"/><text x="126" y="{yl}" class="lg">1회만(설계 성분에 따라 달라지는 신호)</text>'
     b += f'<circle cx="336" cy="{yl - 3}" r="5" fill="none" stroke="#bbb"/><text x="346" y="{yl}" class="lg">생성되지 않음</text>'
-    b += f'<text x="10" y="{yl + 18}" class="al">소집된 심사관만 후보별로 병렬 실행(LangGraph Send) → 점수 0–1 → 가중치 재정규화 가중평균(결정론) → 통과 후보 사이의 순위. 무응답은 점수 없음.</text>'
+    b += f'<text x="10" y="{yl + 18}" class="al">소집된 심사관만 후보별로 병렬 실행 → 점수 0–1(검증된 DOI·PMID 인용 필수, 없으면 무효) → 가중평균(결정론) → 통과 후보 사이의 순위.</text>'
     return svg(720, yl + 26, b)
 
 
 # ── 본문 ──────────────────────────────────────────────────────────────────
-def build(data, tests: int, browser: str, x=None) -> str:
+def build(data, tests: int, browser: str, x=None, fx=None) -> str:
     r = data["region"]
     sp = data["setpoint"]
     c = data["counts"]
@@ -544,7 +623,9 @@ ol.refs li {{ margin-bottom: 2pt; }}
 실측을 요청한다. ② 개발 스튜디오 그래프는 연구자가 고른 후보를 불변 Handoff로 받아 CQA 계약·FMEA·실험계획법(DoE)·모델
 진단·미래 배치 예측분포 기반 공동확률 영역·독립 확인배치까지를 규칙 171개와 결정론 통계 엔진으로 진행한다.
 두 그래프 앞에는 <b>입력 에이전트</b>가 서서, 서버가 구성한 맥락을 읽고 사용자의 말을 실행 가능한 제안 카드로 바꾸되,
-제안의 수치는 사용자 발화에, 구조식은 사용자 입력·내장 사전·PubChem에만 근거하도록 코드로 강제한다.
+제안의 수치는 사용자 발화에, 구조식은 사용자 입력·내장 사전·PubChem에만 근거하도록 코드로 강제한다. 모든 규칙보다 먼저
+후보가 요청한 약·용량·고정 부형제와 FDA 라벨 1일 최대 용량에 맞는지 대조하는 입력 계약 검사를 두고, 심사 점수에는 Crossref·NCBI로 확인되는
+DOI·PMID 인용을 요구한다.
 공개 논문(Almotairi 등, 2022)의 Lornoxicam 분산정 Box–Behnken 실측 15 run에 적용한 결과, 평균 예측 기준으로는 지지 영역의
 {r['mean_ok_fraction'] * 100:.1f}%가 규격을 만족했으나 미래 배치 공동 통과확률 0.90 기준으로는 {r['feasible_fraction'] * 100:.1f}%만 남았고,
 권장 설정점(비 {sp['actual']['x1']} · 혼합 {sp['actual']['x2']}분 · 크로스포비돈 {sp['actual']['x3']}%)의 공동확률은 {sp['joint_probability']:.3f}였다.
@@ -612,7 +693,8 @@ LLM이 되묻기만 하고 글에서 행동이 명확히 읽히는 경우(예: �
 <h3>5.1 분자 프로파일과 값의 세 계층</h3>
 <p>RDKit으로 구조 품질(파싱·염·전하·입체), 35종 기술자, 구조 패턴 {c['structural_flags']}종을 계산한다. 패턴은 “구조 사실 · 조건부 경고 · 높은 경고”의
 세 등급과 위험 조건·확인 시험을 함께 가지며, 세분화된 아민 분류는 규칙표의 결합 키(<code>primary_amine</code>/<code>secondary_amine</code>)로 연결된다.
-모든 값은 획득 방식에 따라 계산값(A), 경험식 예측값(B), 실측값(C)으로 나뉜다. 예측값은 <code>*_est</code> 변수에만 저장되어 실측을 덮지 않고,
+염 형태로 입력된 구조는 가장 큰 유기 조각을 parent로 확정해 기술자·구조 패턴·용해도 예측을 모두 parent로 계산하고,
+짝이온과 염/유리염기 분자량비는 함량 환산용으로 따로 둔다(베실산 암로디핀: 염 MW 567.1 → parent 408.9). 모든 값은 획득 방식에 따라 계산값(A), 경험식 예측값(B), 실측값(C)으로 나뉜다. 예측값은 <code>*_est</code> 변수에만 저장되어 실측을 덮지 않고,
 BCS 등급은 실측으로만 확정된다. 파생값 {c['derived_quantities']}종(D0, 흡수 한계, Tg 여유, ΔpKa 등)은 CSV의 식으로 정의되고, 상호 의존은 값이 더 바뀌지
 않을 때까지 반복(고정점)해 계산 순서를 코드 줄 순서에 맡기지 않는다.</p>
 <figure>{fig_value_tiers()}
@@ -634,8 +716,15 @@ BCS 등급은 실측으로만 확정된다. 파생값 {c['derived_quantities']}�
 다음 단계의 발동 조건으로 흘러간다. 행마다 <code>verification_status</code>가 있어 검증된 행만 반려를 만들 수 있고, 미검증 행은 심사관 표시로 강등되며,
 출처를 찾지 못한 행은 로드 단계에서 제외된다. 성분명은 문자열 동등 비교가 아니라 두 부형제 마스터(영문·국문·이명)를 사전으로 한 정규화로
 대조하며, 구조를 해석하지 못한 실행은 통과가 아니라 이관(STRUCT000)으로 끝난다.</p>
+<p><b>입력 계약.</b> 모든 규칙보다 먼저 후보가 요청과 맞는지 결정론으로 대조한다 — API 행이 정확히 하나인가, API 함량을 유리염기로 환산했을 때
+요청 1회 용량과 ±0.5% 안인가(이름에 염이 적혀 있으면 RDKit 분자량비로 환산), 고정 부형제가 모두 있는가, 1회 함량이 허가 라벨의 1일 최대 용량을
+넘지 않는가(FDA 라벨 원문 문장과 DailyMed set_id를 함께 저장하고, 약물은 이름이 아니라 parent InChIKey 골격으로 대조). 위반은 되돌림 전이표에 따라
+같은 전략으로 함량·성분을 고쳐 다시 설계하며, 요청 용량 자체가 라벨 최대를 넘으면 재설계 없이 “제약 불가능”으로 끝낸다. 배합비 규칙은 LLM이 붙인
+기능 역할로 부형제를 묶는데, MCC(결합제·희석제 겸용 20–90%)나 탈크(1–10%)처럼 역할만으로 범위가 맞지 않는 부형제는 출처가 있는 매핑표로
+판정용 역할을 바꾸고, 혼합 시간에 달린 과혼합 위험(INC014)은 후보 탐색에서 경고 대신 DoE 요인 후보로 넘긴다.</p>
 <figure>{fig_rulegate(data)}
-<figcaption><b>그림 4.</b> 규칙 기반 게이트. manifest 항목 29개를 우선순위 단계로 묶은 것이다(각 칸: 쓰이는 검사 함수, 판정·LLM·참조 항목 수).
+<figcaption><b>그림 4.</b> 규칙 기반 게이트. 맨 앞의 입력 계약(요청한 그 약·그 용량·그 고정 부형제인가, FDA 라벨 1일 최대 용량)이 모든 규칙보다 먼저
+돌고, 이어서 manifest 항목 29개를 우선순위 단계로 묶어 실행한다(각 칸: 쓰이는 검사 함수, 판정·LLM·참조 항목 수).
 유동성 등급 → 공정 경로, 실측 BCS 등급 같은 파생값이 뒤 단계의 발동 조건으로 흐르고, 공정 세부 규칙표는 통과 조건(pass_when)으로 읽는다.
 아래 두 줄은 행의 근거 상태가 반려 권한을 정하는 방식과, 판정별 다음 경로다. 규칙을 더하는 일은 CSV 행과 manifest 한 줄이다.</figcaption></figure>
 
@@ -654,13 +743,17 @@ G6R: 공정 경로부터, G4: 전략 선택부터)과 제약을 정한다. 하�
 “언제·무엇을·왜·거절 시 대체 경로”는 트리거 표 {c['data_request_triggers']}행에 정의된다. 계획 전에는 전략을 좁히는 요청을, 후보 생성 뒤에는 후보별
 신뢰도 요청을 낸다. 같은 시험을 가리키는 요청은 하나로 병합되고 시료가 적은 Tier부터 제시되며, 용해도 요청은 “예측이 낮거나 모름”과
 “두 예측이 1 log 이상 불일치”를 구분해 표시한다. 요청은 흐름을 막지 않는다 — 건너뛰면 예측값으로 계속하고 후보는 provisional로 남는다.
-신뢰도는 <code>grounded ⟺ 남은 신뢰도 요청 = ∅</code>로 계산되어 LLM이 매길 여지가 없다.</p>
+신뢰도는 <code>grounded ⟺ 남은 신뢰도 요청 = ∅</code>로 계산되어 LLM이 매길 여지가 없다. 산·염기 site가 있는 이온화 가능 약물은
+pH 1.2–6.8에서 용해도가 달라 단일 ESOL 예측으로 판정하지 않고 잠정 용해도를 “미정”으로 둔 채 pH별 평형용해도를 요청하며, 공식 문헌 값이 있는 약물은
+문헌 표(등급: 문헌 표 수치)로 잠정 판정을 채운다. 측정값은 근거 등급(자체 실측·문헌·사용자 진술)과 함께 기록된다.</p>
 
 <h3>5.6 동적 심사위원단과 합의</h3>
 <p>심사관 {c['reviewers']}명(소아 안전, 가용화 전략, 공정 실현성, 규제 취지, 문헌 조사, 고령자 안전, 고체상 안정성)은 소집 조건식이 참일 때만 생성된다.
 심사관은 근거 강도 → 잔여 위험 → 실현 가능성 → 참신성 순의 기준으로 통과 후보에 점수를 매기되 반려 권한이 없고, 합의는 결정론 가중평균이다.
-LLM이 응답하지 않으면 점수를 대신 채우지 않고 “점수 없음”으로 표시하며, 순위는 실제 점수만으로 정한다.
-소집 신호(대상 인구군, 가용화·미분화·ASD 후보 존재, 룰북 밖 성분 조합, 규제 서술 필요, 고체상 경계 구간)는 스펙과 게이트 결과에서 결정론으로 계산되므로,
+LLM이 응답하지 않으면 두 번 재시도한 뒤에도 점수를 대신 채우지 않고 “점수 없음”으로 표시하며, 순위는 실제 점수만으로 정한다.
+점수에는 <b>검증된 인용</b>이 필요하다 — 심사관은 DOI·PMID로만 인용할 수 있고, 후보로는 이 약에 대해 Europe PMC가 돌려준 실제 문헌과 룰북 인용 등록부
+(룰북에 적힌 식별자를 Crossref·NCBI로 조회해 통과한 14건)가 주어진다. 목록 밖 식별자는 실행 중에 같은 방식으로 조회해 실재할 때만 인정하며,
+검증된 인용이 없는 점수는 무효로 합의에서 빠진다. 소집 신호(대상 인구군, 가용화·미분화·ASD 후보 존재, 룰북 밖 성분 조합, 규제 서술 필요, 고체상 경계 구간)는 스펙과 게이트 결과에서 결정론으로 계산되므로,
 같은 요청이라도 설계된 성분이 달라지면 소집 명단이 달라질 수 있다(그림 6의 반쪽 원).</p>
 <figure>{fig_jury(data, x)}
 <figcaption><b>그림 6.</b> 동적 심사위원단. 왼쪽은 명단과 소집 조건(CSV 원문), 오른쪽은 7.3절 재실험(시나리오 4종 × 2회)에서 실제로 소집된 결과다.
@@ -714,7 +807,8 @@ AV ≤ 15, DE30 ≥ 75%이며, DE30 기준은 논문 기준이 아니라 프로�
 모두 발동하고 대체품인 만니톨·전분글리콜산나트륨에서는 발동하지 않음을 회귀 테스트가 고정한다.</p>
 
 {exp_section(x)}
-<h3>7.4 소프트웨어 검증</h3>
+{devfix_section(fx)}
+<h3>7.5 소프트웨어 검증</h3>
 <p>단위·통합 테스트 {tests}개(pytest)가 구조 패턴 진리표, 검사 방향, 근거 정책, 페이즈 게이트, 되돌림·계획 불변식, 입력 에이전트 가드레일, 07_doe 규칙
 fixture 48건, 통계 골든 값, 스터디 흐름을 고정한다. 실제 브라우저 테스트({E(browser)})는 화면 상호작용, 다섯 렌더 경로의 스크립트 주입 차단, 9개 뷰포트
 폭의 반응형, 시연 시나리오의 실제 경로, 개발 스튜디오 9장면, 입력 에이전트의 대화→카드→실행 흐름을 검사한다.</p>
@@ -764,7 +858,9 @@ def main():
     data = json.loads((OUT / "figdata.json").read_text(encoding="utf-8"))
     xp = OUT / "experiments.json"
     x = json.loads(xp.read_text(encoding="utf-8")) if xp.exists() else None
-    (OUT / "report.html").write_text(build(data, a.tests, a.browser, x), encoding="utf-8")
+    fp = OUT / "devfix_results.json"
+    fx = json.loads(fp.read_text(encoding="utf-8")) if fp.exists() else None
+    (OUT / "report.html").write_text(build(data, a.tests, a.browser, x, fx), encoding="utf-8")
     print(OUT / "report.html")
 
 

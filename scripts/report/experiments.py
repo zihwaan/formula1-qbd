@@ -16,18 +16,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8105").rstrip("/")
+LLM = os.environ.get("F1_LLM", "dacon")   # 화면 기본은 Groq — 보고서 실험은 대회 API로 명시
 REPEAT = int(sys.argv[2]) if len(sys.argv) > 2 else 2
 
 # 화면의 시연 시나리오와 같은 입력 (web/static/app.js SCENARIOS) + 고령자 소집 확인용 1건
 SCENARIOS = [
     {"id": "guardrail", "label": "소아 플루옥세틴 · 유당 고정",
-     "body": {"request": "소아용 플루옥세틴 정제를 설계해줘", "required_excipients": ["Lactose monohydrate"]}},
+     "body": {"request": "소아용 플루옥세틴 정제를 설계해줘", "required_excipients": ["Lactose monohydrate"],
+              "measured_params": {"dose_mg": 10}}},
     {"id": "team", "label": "소아 바나나향 아세트아미노펜",
-     "body": {"request": "소아용 바나나향 아세트아미노펜 정제를 설계해줘"}},
+     "body": {"request": "소아용 바나나향 아세트아미노펜 정제를 설계해줘", "measured_params": {"dose_mg": 160}}},
     {"id": "labloop", "label": "성인 이부프로펜 200 mg",
      "body": {"request": "성인용 이부프로펜 정제를 설계해줘", "measured_params": {"dose_mg": 200}}},
     {"id": "geriatric", "label": "고령자 메트포르민",
-     "body": {"request": "고령자용 메트포르민 정제를 설계해줘"}},
+     "body": {"request": "고령자용 메트포르민 정제를 설계해줘", "measured_params": {"dose_mg": 500}}},
 ]
 
 # 입력 에이전트 발화 — 가드레일이 실제로 무엇을 막는지 보기 위한 질의(숫자·구조식 유도 포함)
@@ -79,7 +81,7 @@ def quota():
 
 def run_scenario(sc):
     t0 = time.time()
-    rid = call("POST", "/api/runs", sc["body"])["run_id"]
+    rid = call("POST", "/api/runs", {**sc["body"], "llm": LLM})["run_id"]
     while True:
         s = call("GET", f"/api/runs/{rid}")
         if s["status"] != "unknown":
@@ -109,6 +111,9 @@ def run_scenario(sc):
         "summoned": sorted({x.get("reviewer_id") for x in summoned}),
         "judge_scores": [v["payload"].get("score") for v in verdicts],
         "judge_unscored": sum(1 for v in verdicts if v["payload"].get("score") is None),
+        "judge_uncited": sum(1 for v in verdicts if v["payload"].get("source") == "uncited"),
+        "judge_citations": sum(len(v["payload"].get("citations") or []) for v in verdicts),
+        "contract_fails": sorted({f.get("rule_id") for f in fired if str(f.get("rule_id", "")).startswith(("RC", "MDD"))}),
         "pending_requests": len(s.get("pending_requests") or []),
         "request_groups": [g.get("measurement_id") for g in s.get("request_groups") or []],
         "ranked": [{"candidate_id": r.get("candidate_id"), "score": r.get("score")} for r in s.get("ranked", [])],
@@ -116,7 +121,7 @@ def run_scenario(sc):
 
 
 def run_agent(u, study_id):
-    body = {"message": u["text"], "tab": u["tab"], "history": []}
+    body = {"message": u["text"], "tab": u["tab"], "history": [], "llm": LLM}
     if u.get("study"):
         body["study_id"] = study_id
     t0 = time.time()

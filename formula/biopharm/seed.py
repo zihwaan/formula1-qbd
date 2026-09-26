@@ -61,7 +61,13 @@ def known_keys(base_dir: Path) -> FrozenSet[str]:
                 if key:
                     keys.add(key)
 
+    # 구조 신호(biopharm/structure.py)가 채우는 이름 — CSV 조건식이 참조하지만 위 세 출처 어디에도 없다.
+    # 빠지면 "ionizable is not True" 같은 조건이 NameError로 조용히 죽는다(예전 G3B001·DRQ_PKA가 그랬다).
+    keys.update(STRUCTURE_KEYS)
     return frozenset(keys)
+
+
+STRUCTURE_KEYS = ("ionizable", "ionizable_sites", "bcs_lit_solubility", "bcs_lit_class", "bcs_lit_source")
 
 
 def seed_known_keys(ctx: Dict[str, Any], base_dir: Path) -> None:

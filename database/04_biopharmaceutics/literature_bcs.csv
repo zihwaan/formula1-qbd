@@ -1,0 +1,2 @@
+lit_id,api_name,parent_inchikey_skeleton,bcs_class_literature,solubility_class,pka,source_citation,source_doi,evidence_grade,verification_status,seed_review_status,notes
+LIT001,lornoxicam,WLHQHAUOOXYABV,II,low,4.7,"Ahmed MO, Al-Badr AA. Lornoxicam. Profiles of Drug Substances, Excipients and Related Methodology 2011;36:205-239",10.1016/B978-0-12-387667-6.00006-3,문헌 표 수치,PROVISIONAL,pending_team_review,"개발자 수정 과제 P1-5(2026-09-26)가 인용한 값(pKa 4.7 약산성, BCS II). 서지는 Crossref로 존재를 확인했고 원문 쪽수 대조는 전. BCS 등급(bcs_class)은 실측으로만 확정하므로 여기서는 잠정 용해도 판정(bcs_solubility_provisional)에만 쓴다"

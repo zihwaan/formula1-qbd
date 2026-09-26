@@ -596,9 +596,10 @@ def _groq_stream(system_prefix: str, user: str, on_delta: Optional[Callable[[str
                     delta = frame["choices"][0].get("delta", {})
                 except (KeyError, IndexError):
                     continue
-                # gpt-oss는 추론 텍스트를 reasoning으로 따로 보낸다. 심사관의 사고 과정을
-                # 보여주는 화면이므로 둘 다 흘린다(최종 점수는 별도 구조화 호출로 받는다).
-                text = delta.get("content") or delta.get("reasoning") or ""
+                # gpt-oss는 추론 텍스트를 reasoning 채널로 따로 보낸다. 그걸 화면에 흘리면
+                # "Need score 0-1. Evaluate criteria…" 같은 내부 추론이 심사 소견처럼 보인다 —
+                # 최종 답(content)만 흘린다(개발자 수정 과제 P2-2a).
+                text = delta.get("content") or ""
                 if not text:
                     continue
                 chunks.append(text)

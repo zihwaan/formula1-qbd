@@ -79,13 +79,29 @@ def _constraint_block(spec: FormulationSpec, directive: str) -> str:
     피해 버리면 검증 계층이 무엇을 잡아내는지 화면에 드러나지 않는다(이 시스템의 요지).
     """
     parts: List[str] = []
+    from formula.checkers.contract import requested_dose
+    req_fb, req_raw, basis = requested_dose(spec)
+    profile = spec.api_profile
+    factor = getattr(profile, "salt_factor", None) if profile else None
+    if req_fb is not None:
+        salt_line = (f" 염 형태로 적으려면 API 이름에 염 이름(예: besylate·hydrochloride·염산염)을 붙이고 "
+                     f"{req_fb * factor:.3f} mg(염/유리염기 환산계수 {factor})으로 적는다 — 가능하면 유리염기로 적는다."
+                     if factor else "")
+        parts.append(
+            "## API 함량 (요청 — 하드 제약)\n"
+            f"API 행은 정확히 1개(role=api), 이름은 '{spec.api_name}', amount_mg는 유리염기 {req_fb:g} mg이다."
+            f"{salt_line} 이 값은 결정론 게이트가 ±0.5%로 대조하며, 다르면 반려된다.")
+    else:
+        parts.append("## API\nAPI 행은 정확히 1개(role=api), 이름은 "
+                     f"'{spec.api_name}'로 둔다.")
     if spec.required_excipients:
         listed = ", ".join(spec.required_excipients)
         parts.append(
             "## 반드시 포함할 성분 (현장 제약 — 대체 금지)\n"
             f"{listed}\n"
             "이 성분은 회피하거나 다른 것으로 바꾸지 말고 반드시 처방에 넣는다. "
-            "금기 위험이 의심되더라도 판정은 룰북이 하므로, 당신은 제약을 지킨 처방을 제출한다."
+            "금기 위험이 의심되더라도 판정은 룰북이 하므로, 당신은 제약을 지킨 처방을 제출한다. "
+            "고정 목록 밖 성분을 추가할 수는 있지만, 추가 성분은 'LLM 추가 성분'으로 화면에 표시된다."
         )
     if directive:
         parts.append(f"## 직전 반려에 대한 개선 지시\n{directive}")
@@ -131,6 +147,9 @@ API descriptor: {descriptor_text}
         recipe = parse_structured(Recipe, SYSTEM, user)
         recipe.candidate_id = candidate_id
         recipe.strategy = strategy
+        # API 표준명은 모델 출력이 아니라 intake가 확정한 이름을 쓴다 — 모델의 오타(예: 'Lornoxcam')가
+        # Handoff·study 이름에 영구히 박히지 않게.
+        recipe.api_name = spec.api_name
         recipe.packaging = None   # 산출물 범위 밖 — 모델이 적어도 버린다
         # 공정 단계는 모델이 아니라 전략 가족 표가 정한다(같은 전략 = 같은 단계)
         row = next((r for r in _strategy_family_rows(base_dir) if r.get("strategy_code") == strategy), None)

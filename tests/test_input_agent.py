@@ -94,7 +94,7 @@ def test_rule_parser_reads_only_what_was_written():
     out = ia.rule_parse("소아용 이부프로펜 100mg 현탁액 설계해 줘", ctx, CATALOG)
     assert out.intent == "start_run" and out.run.dose_mg == 100 and out.run.target_population == "pediatric"
     out = ia.rule_parse("녹는점 76", _run_ctx(), CATALOG)
-    assert out.intent == "submit_measurements" and out.measurements == {"녹는점": 76.0}
+    assert out.intent == "submit_measurements" and out.measurements == {"tm_c": 76.0}
     res = ia.build_response(out, "rules", "녹는점 76", [], _run_ctx(), CATALOG, INPUTS)
     assert res["proposals"][0]["measurements"] == {"tm_c": 76.0}
 

@@ -43,11 +43,17 @@ SYSTEM_BASE = """당신은 제형 설계 심사위원단의 한 명이다.
    약한데 참신하다는 이유로 우수도를 높이면 안 된다.
 - 점수는 0.0~1.0. 0.5가 '평범', 0.8 이상은 '이 도메인에서 확실히 우수'를 뜻한다.
 - **표현의 설득력이 아니라 제시된 근거로 판단한다.** rationale의 문장이 매끄럽다고
-  점수를 올리지 않는다. rationale에는 근거를 2~4문장으로 쓴다. 제공된 근거 문서를
-  인용하면 citations에 doc_id를 넣는다.
+  점수를 올리지 않는다. rationale에는 근거를 2~4문장으로 쓴다.
+- **인용은 식별자로만 한다.** citations에는 '인용 가능한 문헌' 목록의 DOI 또는 PMID를 1개 이상
+  넣는다. 저자·학술지 이름만 적은 인용이나 목록 밖의 기억 인용은 인정되지 않고, 검증된 식별자가
+  하나도 없으면 그 점수는 무효가 된다(출처 없는 판단은 쓰지 않는다는 이 시스템의 원칙).
 - 룰북이 못 잡았다고 판단되는 **구체적인** 위험이 보이면 suggestion에 적는다 — 그것이
   룰북 보강의 단서가 된다. 지적할 구체적 위험이 없으면 suggestion은 비워 둔다 — 채우려고
   일반론을 만들어내지 않는다."""
+
+
+# 재시도 간격(초) — 마지막 None은 "더 기다리지 않음"
+RETRY_BACKOFF = (2.0, 5.0, None)
 
 
 class JudgeOutput(BaseModel):
@@ -77,6 +83,12 @@ def evaluate(
         f"{judge.retrieval_namespace} {spec.api_name} {recipe.strategy} "
         + " ".join(i.name for i in recipe.ingredients), k=4)
 
+    from formula.agents import citations as cite
+    cite_pool = cite.pool(spec, base_dir)
+    pool_text = "\n".join(
+        f"- {c['kind'].upper()} {c['id']} — {c['title'][:110]} ({c['container'][:40]} {c['year']})"
+        + (f"\n  요약: {c['abstract']}" if c.get("abstract") else "") for c in cite_pool) or "(없음)"
+
     flagged = [v for v in verdicts if v.failed]
     flagged_text = "\n".join(
         f"- [{v.status.value}] {v.rulebook_id}/{v.rule_id}: {v.reason}" for v in flagged
@@ -103,13 +115,16 @@ API {spec.api_name} · 대상 {spec.target_patient} · 제형 {spec.dosage_form}
 ## 참고 근거
 {evidence}
 
+## 인용 가능한 문헌 (식별자 검증됨 — citations에는 여기의 DOI/PMID만)
+{pool_text}
+
 당신의 도메인 관점에서 이 후보의 상대적 우수도를 평가하라."""
 
-    try:
-        def on_delta(text: str) -> None:
-            emit(node, EventKind.JUDGE_TOKEN, reviewer_id=judge.reviewer_id,
-                 candidate_id=recipe.candidate_id, delta=text)
+    def on_delta(text: str) -> None:
+        emit(node, EventKind.JUDGE_TOKEN, reviewer_id=judge.reviewer_id,
+             candidate_id=recipe.candidate_id, delta=text)
 
+    def attempt() -> "JudgeOutput":
         # 구조화 출력과 스트리밍을 함께 쓰기 위해, 근거는 스트리밍으로 보여주고
         # 최종 점수만 스키마로 다시 받는다(UI 체감 + 파싱 안정성 양립).
         # max_tokens를 실제 필요량으로 잡는다. 무료 티어는 예약분이 그대로 분당 한도에서
@@ -120,21 +135,47 @@ API {spec.api_name} · 대상 {spec.target_patient} · 제형 {spec.dosage_form}
         from formula.agents.client import parse_structured
 
         # 점수 정리 호출에는 평가 맥락 전체를 다시 보내지 않는다. 방금 쓴 소견에 판단 근거가
-        # 이미 들어 있고, 프롬프트를 반복하면 토큰이 두 배로 든다(무료 티어에서 이 낭비가
-        # 분당 한도를 태워 심사관이 폴백으로 떨어지는 원인이었다).
-        output = parse_structured(
+        # 이미 들어 있고, 프롬프트를 반복하면 토큰이 두 배로 든다.
+        return parse_structured(
             JudgeOutput, SYSTEM_BASE,
             f"## 평가 대상\n{recipe.candidate_id} · {recipe.strategy} · {recipe.process}\n\n"
             f"## 당신이 방금 작성한 심사 소견\n{narration}\n\n"
-            "이 소견을 스키마에 맞춰 점수로 정리하라. rationale에는 소견의 핵심을 옮긴다.",
+            f"## 인용 가능한 식별자\n" + "\n".join(f"- {c['id']} {c['title'][:70]}" for c in cite_pool) + "\n\n"
+            "이 소견을 스키마에 맞춰 점수로 정리하라. rationale에는 소견의 핵심을 옮기고, citations에는 "
+            "소견이 기댄 문헌의 식별자(위 목록의 DOI/PMID)를 넣는다.",
             system_suffix=system_suffix, effort="low", max_tokens=400,
         )
-    except LLMUnavailable as exc:
+
+    import time as _time
+    output = None
+    last_exc: Optional[Exception] = None
+    for wait in RETRY_BACKOFF:
+        try:
+            output = attempt()
+            break
+        except LLMUnavailable as exc:
+            last_exc = exc
+            # 자격증명이 없거나 하루 한도가 찬 경우는 기다려도 풀리지 않는다 — 재시도하지 않는다
+            from formula.agents.client import credentials_available
+            if wait is None or not credentials_available() or "일일" in str(exc):
+                break
+            _time.sleep(wait)     # 지수 백오프 후 재시도(무응답 다발 방지 — 개발자 수정 과제 P2-2b)
+    if output is None:
         # 심사는 LLM의 판단이다. 응답이 없으면 점수를 지어내지 않는다 — "점수 없음"을 그대로 알리고,
         # 합의는 실제로 매겨진 점수만으로 순위를 정한다.
         emit(node, EventKind.JUDGE_VERDICT, source="unavailable", rulebook_id=recipe.candidate_id,
              reviewer_id=judge.reviewer_id, persona=judge.persona, score=None, weight=judge.weight,
-             rationale="LLM 응답 없음 — 이 심사관의 점수를 만들지 않았습니다.", reason=str(exc)[:160])
+             rationale="LLM 응답 없음 — 재시도 후에도 응답이 없어 이 심사관의 점수를 만들지 않았습니다.",
+             reason=str(last_exc)[:160])
+        return None
+
+    verified, rejected = cite.verify(output.citations, cite_pool)
+    if not verified:
+        emit(node, EventKind.JUDGE_VERDICT, source="uncited", rulebook_id=recipe.candidate_id,
+             reviewer_id=judge.reviewer_id, persona=judge.persona, score=None, weight=judge.weight,
+             proposed_score=output.score, rationale=output.rationale,
+             reason="검증된 인용(DOI/PMID) 없음 — 점수 무효",
+             rejected_citations=rejected[:5])
         return None
 
     verdict = JudgeVerdict(
@@ -146,7 +187,7 @@ API {spec.api_name} · 대상 {spec.target_patient} · 제형 {spec.dosage_form}
         weight=judge.weight,
         rationale=output.rationale,
         suggestion=output.suggestion,
-        citations=output.citations,
+        citations=[f"{c['kind'].upper()} {c['id']}" for c in verified],
     )
     emit(node, EventKind.JUDGE_VERDICT, source="llm", **verdict.model_dump())
     return verdict

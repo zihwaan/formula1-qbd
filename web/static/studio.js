@@ -52,12 +52,28 @@
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
 
   // ── 서버 호출 ──────────────────────────────────────────────────────────
+  const REQ_TIMEOUT_MS = 90000;
   async function req(method, path, body, headers = {}) {
-    const res = await fetch(api(path), {
+    // 응답이 오래 없으면 "진행 중…"에 멈춰 있지 않고 사유와 함께 풀어 준다(가이드 장면 6 — P2-4f)
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), REQ_TIMEOUT_MS);
+    let res;
+    try {
+      res = await fetch(api(path), {
+        signal: ctl.signal,
       method, headers: { "Content-Type": "application/json", "Actor-ID": "researcher",
         "X-F1-LLM": (window.F1LLM && window.F1LLM.get()) || "groq", ...headers },
       body: body ? JSON.stringify(body) : undefined,
-    });
+      });
+    } catch (e) {
+      const err = new Error(e.name === "AbortError"
+        ? `서버 응답이 ${REQ_TIMEOUT_MS / 1000}초 넘게 없습니다 — 같은 버튼을 다시 눌러 주세요(같은 요청은 한 번만 반영됩니다)`
+        : `네트워크 오류: ${e.message}`);
+      err.status = 0;
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const d = data.detail || {};
@@ -641,12 +657,14 @@
       <td><b>${esc(p.role)}</b><small class="sub">${esc(p.rationale)}</small></td>
       <td>${Object.entries(p.settings).map(([fid, v]) => `${esc(names[fid] || fid)} ${num(v, 2)}`).join("<br>")}</td>
       <td class="c">${num(p.predicted.joint_probability, 3)}</td>
-      ${doe.map((c) => { const x = p.predicted.cqa[c.cqa_id] || {}; return `<td>${num(x.mean, 1)}<small class="sub">${num(x.pi_lower, 1)}–${num(x.pi_upper, 1)}</small></td>`; }).join("")}
+      ${doe.map((c) => { const x = p.predicted.cqa[c.cqa_id] || {}; return `<td>${num(x.mean, 1)}<small class="sub">${num(x.pi_lower, 1)}${x.pi_truncated ? "*" : ""}–${num(x.pi_upper, 1)}</small></td>`; }).join("")}
     </tr>`).join("");
     const pol = vp.pi_policy || {};
     return `<p class="hint">예측구간: family = 필수 확인점 ${esc(pol.n_required_points)} × DoE 반응 ${esc(pol.n_doe_responses)} = ${esc(pol.comparisons)}개 비교,
         Bonferroni family α ${esc(pol.family_alpha)} → 개별 ${pct(pol.per_comparison_level, 2)}. ${vp.locked_at ? `<b>잠금 ${esc(vp.locked_hash)}</b>` : "아직 잠기지 않음"}</p>
-      <div class="table-wrap"><table class="matrix"><thead><tr><th>확인점</th><th>설정</th><th>공동확률</th>${doe.map((c) => `<th>${esc(c.name)}<small class="sub">평균 · family PI</small></th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
+      <div class="table-wrap"><table class="matrix"><thead><tr><th>확인점</th><th>설정</th><th>공동확률</th>${doe.map((c) => `<th>${esc(c.name)}<small class="sub">평균 · family PI</small></th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>
+      ${vp.points.some((p) => Object.values(p.predicted.cqa || {}).some((x) => x.pi_truncated))
+        ? `<p class="hint">* 예측구간 하한이 음수로 계산돼 0에서 절단했습니다(반응은 정의상 0 이상 — 원척도 정규 가정의 한계). 판정에는 영향이 없습니다.</p>` : ""}`;
   }
 
   function verificationForm(s) {
@@ -1074,13 +1092,17 @@
 
   function renderRules(body) {
     const evs = study.evaluations || {};
-    const order = Object.keys(evs).reverse();
+    const keys = Object.keys(evs).reverse();
+    // 지금 상태의 판정을 위에, 지나간 단계의 판정(해소됐거나 현재를 막지 않음)은 접어서 아래에
+    const order = keys.filter((k) => evs[k].current !== false).concat(keys.filter((k) => evs[k].current === false));
+    const firstPast = order.find((k) => evs[k].current === false);
     body.innerHTML = `<p class="hint">모든 판정은 <code>database/07_doe</code> 룰북(171개, AST 화이트리스트 평가기)이 냅니다. 발화하지 않은 규칙도 평가됩니다 — 여기에는 발화·결측만 보입니다.</p>` +
       order.map((k) => {
         const ev = evs[k];
         const vs = ev.verdicts.filter((v) => v.status !== "NOT_FIRES");
         const dec = ev.decisive;
-        return `<div class="rule-block"><div class="rb-head"><b>${esc(k)}</b> <small>${esc(ev.stage)} · 평가 ${esc(ev.evaluated)}건</small>
+        const pastHead = k === firstPast ? `<div class="rb-past">지나간 단계의 판정 — 현재 상태를 막지 않습니다</div>` : "";
+        return `${pastHead}<div class="rule-block${ev.current === false ? " past" : ""}"><div class="rb-head"><b>${esc(k)}</b> <small>${esc(ev.stage)} · 평가 ${esc(ev.evaluated)}건</small>
           ${dec ? `<span class="vchip ${EFFECT_CLS[dec.effect] || ""}">결정: ${esc(dec.rule_id)} ${esc(EFFECT_KO[dec.effect] || dec.effect)}${ev.next_state ? ` → ${esc(ev.next_state)}` : ""}</span>` : ""}</div>
           ${vs.length ? vs.map((v) => `<div class="vrow ${v.status === "NOT_CHECKED" ? "muted" : EFFECT_CLS[v.effect] || ""}">
             <button type="button" class="vchip ${EFFECT_CLS[v.effect] || ""}" data-rule="${esc(v.rule_id)}">${esc(v.rule_id)}</button>

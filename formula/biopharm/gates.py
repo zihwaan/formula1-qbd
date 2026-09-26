@@ -79,7 +79,9 @@ def evaluate_gate(csv_path: Path, ctx: Dict[str, Any]) -> List[GateSignal]:
             key, _, value = pair.partition("=")
             key = key.strip()
             if key:
-                ctx[key] = assigned[key] = _coerce(value)
+                # "$이름"은 ctx의 다른 값을 그대로 옮긴다(예: 문헌 표의 용해도 분류 → 잠정 판정)
+                v = value.strip()
+                ctx[key] = assigned[key] = ctx.get(v[1:]) if v.startswith("$") else _coerce(value)
         fired.append(GateSignal(
             gate=gate_name, rule_id=str(row.get("rule_id") or ""), condition=expression,
             assigned=assigned, action=str(row.get("action") or "ALLOW"),

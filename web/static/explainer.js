@@ -234,6 +234,9 @@
         </div>`,
       note: `에이전트 머리의 <b>모델</b>에서 쓸 LLM을 고른다 — 기본은 무료 모델(Groq)이고, 대회 API 모델은
              비밀번호로 접속한 경우에만 고를 수 있다(게스트 접속은 무료 모델만). 고른 모델은 설계·심사·대화·개발 스튜디오에 함께 쓰인다.<br><br>
+             측정값 제출은 LLM보다 <b>규칙이 먼저</b> 잡는다 — 열린 설계가 있고 “Tm 317도”처럼 측정 이름과 숫자가 있으면
+             곧바로 제출 카드가 되고, 근거 등급(자체 실측·문헌·사용자 진술)을 골라 제출하면 설계를 다시 돌리지 않고 그 값에
+             의존하는 판정만 다시 계산한다.<br><br>
              가드레일은 프롬프트가 아니라 <b>코드</b>다. 에이전트는 어떤 것도 스스로 실행하지 않고,
              판정은 여전히 룰북과 엔진이 한다 — 에이전트가 하는 일은 “말을 시스템이 받을 수 있는 입력으로
              옮기고, 빠진 것을 묻고, 다음에 할 일을 먼저 짚는 것”이다. LLM이 응답하지 않으면 규칙 기반
@@ -320,7 +323,7 @@
           </div>
           <div class="f1-flowmark">▼ Gate 3A → 3B → 4 → 4B, 이 순서로 돈다</div>
           <div class="f1-stack f1-seq">
-            <div class="f1-lvl"><span class="n">3A</span><span>BCS/DCS 용해도·투과도 분류</span><em>bcs_solubility_provisional</em></div>
+            <div class="f1-lvl"><span class="n">3A</span><span>BCS/DCS 용해도·투과도 분류 — 이온화하는 약은 예측 하나로 정하지 않고 “미정”(pH 1.2–6.8 용해도 요청)</span><em>bcs_solubility_provisional</em></div>
             <div class="f1-lvl"><span class="n">3B</span><span>고체상 — 결정형/무정형, advisory</span><em>polymorph_control_note</em></div>
             <div class="f1-lvl key"><span class="n">4</span><span>가용화 전략이 필요한가</span><em>sig_enabling_required</em></div>
             <div class="f1-lvl"><span class="n">4B</span><span>필요하면 어떤 ASD 공정인가</span><em>asd_process</em></div>
@@ -380,6 +383,7 @@
              발동 조건으로 흘러 들어간다.</b>`,
       art: `
         <div class="f1-stack f1-seq">
+          <div class="f1-lvl key"><span class="n">0</span><span>입력 계약 — API 1행 · 요청 용량(유리염기 ±0.5%) · 고정 부형제 · 라벨 1일 최대 용량</span><em>요청한 그 약인가</em></div>
           <div class="f1-lvl"><span class="n">0</span><span>참조 마스터 — 부형제 마스터 · descriptor 정의 · SMARTS 정의</span><span></span></div>
           <div class="f1-lvl"><span class="n">5</span><span>API 물성 임계값 — Ro5 / Veber 경고 밴드</span><span></span></div>
           <div class="f1-lvl flow"><span class="n">10</span><span>유동성 등급 — 안식각 48°</span><em>→ flow_character = "Poor"</em></div>
@@ -394,7 +398,11 @@
           <div class="f1-lvl"><span class="n">60</span><span>BCS 분류 → 전략</span><span></span></div>
           <div class="f1-lvl"><span class="n">70</span><span>포장 · 안정성 · 분석법</span><span></span></div>
         </div>`,
-      note: `폴더 번호만 보면 규제(<code class="f1-mono">05_regulatory</code>)가 마지막 같지만,
+      note: `맨 앞의 <b>입력 계약</b>은 “이 조성이 위험한가”보다 먼저 “요청한 그 약·그 용량·그 고정 부형제인가”를 본다 —
+             설계 AI가 용량을 무시하거나 주성분을 빠뜨리면 배합금기 규칙은 그걸 모르기 때문이다. 최대 용량은 FDA 라벨 원문과 함께
+             저장돼 있고 약물은 이름이 아니라 구조(InChIKey)로 대조한다. 배합비는 MCC·탈크처럼 역할만으로 범위가 안 맞는 부형제를
+             출처 있는 매핑표로 따로 판정한다.<br><br>
+             폴더 번호만 보면 규제(<code class="f1-mono">05_regulatory</code>)가 마지막 같지만,
              실제로는 <b>소아 안전이 21번으로 가장 먼저 도는 축에 속한다.</b>
              값 몇 개를 조정해서 해결되는 문제가 아니라 성분 자체를 바꿔야 하는 반려라,
              무거운 공정 계산을 하기 전에 먼저 걸러내는 편이 낫기 때문이다.`,
@@ -430,7 +438,9 @@
              설계 에이전트도 근거를 읽고 알려진 금기를 피하려 하지만, 판정 권한은 없다 — 현장 제약으로
              <b>반드시 넣어야 하는 성분</b>은 설계자가 회피하지 않고 그대로 넣으며, 걸리는지는 룰북이 판정한다. 다만 걸리려면 <b>두 쪽이 실제로 만나야 한다.</b> 룰북은
              <span class="f1-mono">Lactose monohydrate</span>, 처방은 “유당”이라 적으므로 부형제 마스터를 사전 삼아
-             표기·국문명·계열명을 맞춘 뒤 대조한다. 같은 이유로 <b>구조를 못 읽었으면 통과가 아니라 판정 불가</b>다.`,
+             표기·국문명·계열명을 맞춘 뒤 대조한다. 같은 이유로 <b>구조를 못 읽었으면 통과가 아니라 판정 불가</b>다.<br><br>
+             통과한 후보의 순위를 매기는 심사관도 출처 원칙을 따른다 — 점수에는 <b>검증된 DOI·PMID 인용</b>이 있어야 하고,
+             없으면 그 점수는 무효로 합의에서 빠진다.`,
     },
 
     {

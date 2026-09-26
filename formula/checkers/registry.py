@@ -205,6 +205,35 @@ class RulebookRegistry:
             if on_verdict is not None:
                 on_verdict(verdict)
 
+        # 우선순위 0 — 입력 계약: 이 후보가 요청한 그 약·그 용량·그 고정 부형제인가(checkers/contract.py).
+        # 경로 결정용 빈 처방(probe)에는 적용하지 않는다.
+        if self.base_dir is not None and recipe.ingredients and not str(recipe.candidate_id).startswith("__"):
+            from formula.checkers.contract import check as contract_check
+            from formula.checkers.excipients import IngredientMatcher
+            pinned_ids = self.excipients.identities(set(spec.required_excipients or [])) if spec.required_excipients else {}
+            for verdict in contract_check(spec, recipe, self.base_dir, IngredientMatcher(ctx[CTX_IDENTITIES]),
+                                          pinned_ids):
+                result.verdicts.append(verdict)
+                if on_verdict is not None:
+                    on_verdict(verdict)
+
+        # 역할 재매핑 — 배합비 규칙은 LLM이 붙인 role로 성분을 묶는데, MCC(결합제·희석제 겸용)나
+        # 탈크처럼 역할만으로는 사용 범위가 안 맞는 부형제가 있다. 매핑표(출처 있는 행만)로 판정용
+        # 역할을 바꾸고, 무엇을 바꿨는지 판정문에 남긴다(개발자 수정 과제 P1-2).
+        rule_recipe, remaps = self._remap_roles(recipe, ctx)
+        if remaps:
+            verdict = Verdict(rulebook_id="excipient_role_map", strategy="role_map", status=VerdictStatus.ADVISORY,
+                              action=RuleAction.LABEL_REQUIRED, rule_id="+".join(r["map_id"] for r in remaps),
+                              layer="process",
+                              reason="배합비 판정용 역할 재매핑: " + "; ".join(
+                                  f"{r['ingredient']} {r['from']}→{r['to']}" for r in remaps),
+                              citation=" / ".join(dict.fromkeys(r["source"] for r in remaps)),
+                              evidence={"remaps": remaps})
+            result.verdicts.append(verdict)
+            if on_verdict is not None:
+                on_verdict(verdict)
+        recipe = rule_recipe
+
         for priority, entries in self._stages():
             if max_priority is not None and priority > max_priority:
                 break
@@ -225,6 +254,36 @@ class RulebookRegistry:
                 result.stopped_at_priority = priority
                 break
         return result
+
+    def _role_map_rows(self) -> List[Dict[str, Any]]:
+        path = self.base_dir / "database" / "06_config" / "excipient_role_map.csv"
+        if not path.exists():
+            return []
+        df = pd.read_csv(path, dtype=str, keep_default_na=False).fillna("")
+        # 근거 없는 매핑은 판정에 쓰지 않는다 — 출처·검증 상태가 있는 행만
+        return [r for r in df.to_dict(orient="records")
+                if r.get("source_citation") and evidence_policy(r.get("verification_status"))
+                in (EvidencePolicy.USE, EvidencePolicy.PROVISIONAL)]
+
+    def _remap_roles(self, recipe: Recipe, ctx: Dict[str, Any]):
+        rows = self._role_map_rows()
+        if not rows or not recipe.ingredients:
+            return recipe, []
+        from formula.checkers.excipients import IngredientMatcher
+        matcher = IngredientMatcher(ctx.get(CTX_IDENTITIES) or {})
+        remapped = recipe.model_copy(deep=True)
+        remaps = []
+        for row in rows:
+            hit = matcher.match(row["excipient_name_en"])
+            if hit is None:
+                continue
+            froms = {x.strip().lower() for x in row["from_roles"].split(";") if x.strip()}
+            for ing in remapped.ingredients:
+                if ing.name == hit.ingredient and str(ing.role or "").lower() in froms:
+                    remaps.append({"map_id": row["map_id"], "ingredient": ing.name, "from": ing.role,
+                                   "to": row["to_role"], "source": row["source_citation"]})
+                    ing.role = row["to_role"]
+        return (remapped if remaps else recipe), remaps
 
     @staticmethod
     def _structure_unknown_verdict(spec: FormulationSpec) -> Verdict:

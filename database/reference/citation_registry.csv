@@ -1,0 +1,15 @@
+id,kind,title,container,year,verified_via,retrieved_on,source_files
+10.1016/b978-0-12-387667-6.00006-3,doi,Lornoxicam,"Profiles of Drug Substances, Excipients and Related Methodology",2011,Crossref,2026-09-26,literature_bcs.csv
+10.1208/s12249-017-0878-y,doi,Regulatory Notes on Impact of Excipients on Drug Products and the Maillard Reaction,AAPS PharmSciTech,2017,Crossref,2026-09-26,incompatibility_1to1.csv
+10.3109/03639048209022105,doi,Equilibrium Moisture Content of Pharmaceutical Excipients,Drug Development and Industrial Pharmacy,1982,Crossref,2026-09-26,api_physchem_thresholds.csv
+10.3390/lubricants2010021,doi,Lubricants in Pharmaceutical Solid Dosage Forms,Lubricants,2014,Crossref,2026-09-26,incompatibility_1to1_SOURCES.md
+10.3390/ph15121463,doi,Design and Optimization of Lornoxicam Dispersible Tablets Using Quality by Design (QbD) Approach,Pharmaceuticals,2022,Crossref,2026-09-26,statistical_sources.csv
+PMC3225520,pmc,"Reactive impurities in excipients: profiling, identification and mitigation of drug-excipient incompatibility.",AAPS PharmSciTech,2011,NCBI E-utilities,2026-09-26,incompatibility_1to1.csv;incompatibility_1to1_SOURCES.md
+PMC3755167,pmc,The effect of lubricants on powder flowability for pharmaceutical application.,AAPS PharmSciTech,2013,NCBI E-utilities,2026-09-26,coating_capsule_ratio_SOURCES.md
+PMC4689772,pmc,The Effect of Excipients on the Permeability of BCS Class III Compounds and Implications for Biowaivers.,Pharmaceutical research,2016,NCBI E-utilities,2026-09-26,bcs_strategy_rules_SOURCES.md
+PMC4910824,pmc,"BDDCS, the Rule of 5 and drugability.",Advanced drug delivery reviews,2016,NCBI E-utilities,2026-09-26,api_physchem_thresholds.csv
+PMC5261554,pmc,Effect of roll compaction on granule size distribution of microcrystalline cellulose-mannitol mixtures: computational intelligence modeling and parametric analysis.,"Drug design, development and therapy",2017,NCBI E-utilities,2026-09-26,granulation_SOURCES.md
+PMC7679258,pmc,"Towards better understanding of the influence of process parameters in roll compaction/dry granulation on throughput, ribbon microhardness and granule failure load.",International journal of pharmaceutics: X,2020,NCBI E-utilities,2026-09-26,granulation_SOURCES.md
+PMC9693446,pmc,Compression Density as an Alternative to Identify an Optimal Moisture Content for High Shear Wet Granulation as an Initial Step for Spheronisation.,Pharmaceutics,2022,NCBI E-utilities,2026-09-26,granulation_SOURCES.md
+12036371,pmid,Molecular properties that influence the oral bioavailability of drug candidates.,Journal of medicinal chemistry,2002,NCBI E-utilities,2026-09-26,api_physchem_thresholds.csv
+20821390,pmid,The developability classification system: application of biopharmaceutics concepts to formulation development.,Journal of pharmaceutical sciences,2010,NCBI E-utilities,2026-09-26,api_physchem_thresholds.csv

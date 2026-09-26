@@ -118,6 +118,7 @@ class DevelopmentService:
         if st["status"] in sm.TERMINAL and action not in ("note",):
             raise StudyError(f"종료 상태({st['status']})의 study는 바꿀 수 없습니다. 새 Handoff로 시작하세요.")
         st["_decisions"] = []
+        st["action_seq"] = int(st.get("action_seq") or 0) + 1   # 판정이 어느 행동에서 나왔는지 구분(P2-4e)
         result = handler(st, payload or {}, actor) or {}
         self._advance(st, actor)
         decisions = st.pop("_decisions", [])
@@ -140,6 +141,11 @@ class DevelopmentService:
         st["phase"] = sm.phase_of(st["status"])
         st["phases"] = [{"key": k, "label": lbl} for k, lbl, _ in sm.PHASES]
         st["prompt"] = self._prompt(st)
+        # 현재 판정 = 가장 최근 행동이 만든 판정이거나 지금 상태에서 만든 판정. 나머지는 지나간 단계의
+        # 기록이다 — 해소된 차단(예: 역할 변경의 AA002)이 뒤 단계에서도 '막힘'처럼 보이지 않게(P2-4e).
+        seq = int(st.get("action_seq") or 0)
+        for ev in (st.get("evaluations") or {}).values():
+            ev["current"] = ev.get("at_status") == st["status"] or ev.get("at_action") == seq
         st["script"] = ho.LORNOXICAM_SCRIPT if st.get("demo_script") == "lornoxicam" else None
         st["enforced_rule_count"] = sum(self.rb.enforcement_allowed(r, st["mode"]) for r in self.rb.rules)
         if st.get("region") and st["region"].get("grid"):
@@ -252,7 +258,8 @@ class DevelopmentService:
         overrides = {(o["rule_id"], o.get("subject") or "*") for o in st["overrides"]}
         ev = self.rb.evaluate(stage, subjects, mode=st["mode"], helpers=self._helpers(st),
                               overrides=overrides, **kw)
-        st["evaluations"][key] = ev.as_dict()
+        st["evaluations"][key] = {**ev.as_dict(), "at_status": st.get("status"),
+                                  "at_action": int(st.get("action_seq") or 0)}
         return ev
 
     def _say(self, st: Dict[str, Any], who: str, text: str, **extra) -> None:

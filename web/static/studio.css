@@ -367,3 +367,6 @@ table.mini.cqa-mini td:nth-child(2) { white-space: nowrap; }
   .flow-tab { padding: 10px 12px; }
   .flow-text small { display: none; }
 }
+
+.rule-block.past { opacity: 0.55; }
+.rb-past { margin: 14px 0 6px; font-size: 11px; font-weight: 700; color: var(--ink-muted); border-top: 1px dashed var(--border); padding-top: 8px; }

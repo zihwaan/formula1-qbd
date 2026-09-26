@@ -95,3 +95,8 @@
   .ad-log { max-height: 55vh; }
   .ad-form textarea { font-size: 16px; } /* iOS 확대 방지 */
 }
+
+.ad-card.stale { opacity: 0.55; }
+.ad-grade { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 11.5px; color: var(--ink-2); }
+.ad-grade select { font: inherit; font-size: 11.5px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--page); color: var(--ink-1); }

@@ -14,6 +14,7 @@ from typing import Optional
 
 import rdkit
 from rdkit import Chem
+from rdkit.Chem import Descriptors
 
 from formula.chem.descriptors import compute_descriptors, lipinski_veber
 from formula.chem.estimator import estimate_properties
@@ -100,12 +101,27 @@ def build_profile(
     parent, is_salt = strip_salt(mol)
     profile.is_salt = is_salt
     profile.parent_smiles = Chem.MolToSmiles(parent)
+    try:
+        profile.inchikey = Chem.MolToInchiKey(parent) or ""
+    except Exception:   # noqa: BLE001 — InChI 실패는 이름 대조로 물러난다
+        profile.inchikey = ""
     if is_salt:
+        # 염 전체 값으로 Ro5·Veber·ESOL을 계산하면 짝이온 질량·극성이 섞인다(베실산 암로디핀:
+        # MW 567 → parent 408.9, TPSA 154 → 99.9). 물성은 parent로만 계산하고, 염 정보는
+        # 함량 환산용으로 따로 둔다.
+        full_mw = Descriptors.MolWt(mol)
+        parent_mw = Descriptors.MolWt(parent)
+        counter = [Chem.MolToSmiles(f) for f in Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
+                   if Chem.MolToSmiles(f) != profile.parent_smiles]
+        profile.salt_form = ".".join(counter)
+        profile.salt_molecular_weight = round(full_mw, 3)
+        profile.salt_factor = round(full_mw / parent_mw, 4) if parent_mw else None
         profile.warnings.append(
-            f"염 형태로 판단 — 구조 플래그는 parent({profile.parent_smiles})에 적용했다"
+            f"염 형태로 판단 — descriptor·구조 플래그·용해도 예측은 parent({profile.parent_smiles}, "
+            f"MW {parent_mw:.1f})로 계산했다. 염 MW {full_mw:.1f}, 환산계수 {profile.salt_factor}"
         )
 
-    descriptors, descriptor_warnings = compute_descriptors(mol, base_dir)
+    descriptors, descriptor_warnings = compute_descriptors(parent, base_dir)
     profile.descriptors = descriptors
     profile.warnings.extend(descriptor_warnings)
 

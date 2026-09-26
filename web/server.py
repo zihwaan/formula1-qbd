@@ -179,6 +179,8 @@ class RunRequest(BaseModel):
     measured_params: Dict[str, float] = Field(default_factory=dict)
     property_flags: Dict[str, bool] = Field(default_factory=dict)
     llm: str = Field(default=DEFAULT_CHOICE, max_length=10)   # "groq" | "dacon" (대회 API는 full 접속만)
+    # 1회 용량(measured_params.dose_mg)의 기준 — 유리염기(기본) 또는 입력한 염 형태
+    dose_basis: str = Field(default="free_base", pattern="^(free_base|salt)$")
 
 
 class ChemRequest(BaseModel):
@@ -337,7 +339,8 @@ async def create_run(payload: RunRequest, request: Request) -> Dict[str, Any]:
 
     execution = Run(ROOT, payload.request, smiles=payload.smiles,
                     required_excipients=payload.required_excipients,
-                    measured_params=measured, property_flags=flags, llm=choice)
+                    measured_params=measured, property_flags=flags, llm=choice,
+                    dose_basis=payload.dose_basis)
     # v3: 영속 프로젝트(lifecycle)는 만들지 않는다 — 출력 경계가 후보 처방 목록에서
     # 끝난다(§1). 되돌릴 때는 아래 두 줄과 응답의 project_id를 복구하면 된다.
     # project = lifecycle().create(
@@ -421,6 +424,9 @@ class MeasurementsRequest(BaseModel):
     없거나 일부만 와도 그래프는 이미 끝났으므로 즉시 재계산한다."""
 
     measurements: Dict[str, Union[float, bool, str]] = Field(default_factory=dict, max_length=30)
+    # 근거 등급 — 자체 실측 / 문헌 / 사용자 진술. 트레이스에 그대로 남는다.
+    grade: str = Field(default="self_measured", pattern="^(self_measured|literature|user_statement)$")
+    source: str = Field(default="form", pattern="^(form|agent)$")
 
 
 @app.post("/api/runs/{run_id}/measurements")
@@ -432,7 +438,8 @@ async def submit_measurements(run_id: str, payload: MeasurementsRequest) -> Dict
     if not payload.measurements:
         raise HTTPException(422, "측정값이 비어 있습니다.")
     try:
-        return await asyncio.to_thread(execution.reassess_with_measurements, payload.measurements)
+        return await asyncio.to_thread(execution.reassess_with_measurements, payload.measurements,
+                                       payload.grade, payload.source)
     except KeyError as exc:
         raise HTTPException(409, f"아직 설계가 끝나지 않았습니다: {exc}")
 
@@ -921,6 +928,26 @@ async def get_rule(rule_id: str) -> Dict[str, Any]:
                     "row": match.iloc[0].to_dict(),
                     "sources_doc": _sources_for(entry.file),
                 }
+    # 입력 계약·라벨 최대 용량·역할 매핑 — manifest 밖에서 레지스트리가 직접 읽는 표
+    extra = [("request_contract", "database/06_config/request_contract_rules.csv", "rule_id"),
+             ("max_daily_dose", "database/05_regulatory/max_daily_dose.csv", "rule_id"),
+             ("excipient_role_map", "database/06_config/excipient_role_map.csv", "map_id")]
+    wanted = rule_id.split("+")[0]
+    for rulebook_id, rel, col in extra:
+        path = ROOT / rel
+        if not path.exists():
+            continue
+        df = pd.read_csv(path, dtype=str, keep_default_na=False).fillna("")
+        match = df[df[col] == wanted] if col in df.columns else df.iloc[0:0]
+        if not match.empty:
+            return {"rule_id": rule_id, "rulebook_id": rulebook_id, "file": rel, "layer": "contract",
+                    "strategy": "request_contract", "polarity": "fail_when", "row": match.iloc[0].to_dict(),
+                    "sources_doc": None}
+    if rule_id == "MDD000":
+        return {"rule_id": rule_id, "rulebook_id": "max_daily_dose", "file": "database/05_regulatory/max_daily_dose.csv",
+                "layer": "contract", "strategy": "request_contract", "polarity": "fail_when",
+                "row": {"rule_id": "MDD000", "notes": "이 물질은 허가 라벨의 1일 최대 용량 행이 없어 규칙을 적용하지 않았다(표시만)."},
+                "sources_doc": None}
     # 07_doe (ExperimentalDevelopmentGraph) 규칙
     rule = development().rb.by_id.get(rule_id)
     if rule:

@@ -43,7 +43,7 @@ def pubchem_summary(api_name: str, smiles: str = "") -> Dict[str, Any]:
                            "cid": None, "iupac_name": "", "properties": {},
                            "url": "", "note": ""}
     httpx = _httpx()
-    props = ("MolecularFormula,MolecularWeight,CanonicalSMILES,IUPACName,"
+    props = ("Title,MolecularFormula,MolecularWeight,CanonicalSMILES,IUPACName,"
              "XLogP,TPSA,HBondDonorCount,HBondAcceptorCount")
     routes = []
     if smiles:
@@ -119,9 +119,13 @@ def europepmc_search(api_name: str, limit: int = 6) -> Dict[str, Any]:
 def search_api(api_name: str, smiles: str = "", limit: int = 6) -> Dict[str, Any]:
     """입력 단계 문헌 조사 — PubChem 식별/물성 + Europe PMC 문헌."""
     compound = pubchem_summary(api_name, smiles)
-    papers = europepmc_search(api_name, limit=limit)
+    # 구조(SMILES)로 찾은 PubChem 표제명이 있으면 그 이름으로 문헌을 찾는다 — 입력·LLM 해석의 오타가
+    # 검색어로 번지지 않게.
+    canonical = (compound.get("properties") or {}).get("Title") or "" if compound.get("found") else ""
+    papers = europepmc_search(canonical or api_name, limit=limit)
     return {
         "api_name": api_name,
+        "canonical_name": canonical,
         "compound": compound,
         "literature": papers,
         "summary": _summarize(api_name, compound, papers),

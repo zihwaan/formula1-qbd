@@ -133,13 +133,21 @@ def test_beta_lactam_is_hard_alert():
     [
         ("메트포르민", "CN(C)C(=N)NC(=N)N", "has_guanidine",
          "구아니딘은 강염기성 motif로 별도 분류된다 — 통상적 2차 아민과 반응성이 다르다"),
-        ("암로디핀", "CCOC(=O)C1=C(COCCN)NC(C)=C(C1c1ccccc1Cl)C(=O)OC", "has_cyclic_secondary_amine",
-         "다이하이드로피리딘 고리 NH는 환형 2차 아민으로 분리 검출된다 — 사슬형과 구분 필요"),
     ],
 )
 def test_known_over_detection_is_documented(label, smiles, flag, note):
     got = flags_for(smiles)
     assert got.get(flag) is True, f"{label}: {flag} 가 검출돼야 한다 ({note})"
+
+
+def test_dhp_ring_nh_is_not_a_cyclic_secondary_amine():
+    """1,4-DHP 고리 N–H는 C=C–C=O와 공액된 비닐로그 아미드 — 염기성 2차 아민이 아니다(P1-4).
+    진짜 고리 2차 아민(피페리딘)은 그대로 잡혀야 한다."""
+    amlodipine = flags_for("CCOC(=O)C1=C(COCCN)NC(C)=C(C1c1ccccc1Cl)C(=O)OC")
+    assert not amlodipine.get("has_cyclic_secondary_amine")
+    assert amlodipine.get("has_primary_aliphatic_amine")          # INC001의 근거는 그대로
+    assert flags_for("C1CCNCC1").get("has_cyclic_secondary_amine")  # 피페리딘
+    assert not flags_for("O=C1CCCN1").get("has_cyclic_secondary_amine")  # γ-락탐
 
 
 # ---------------------------------------------------------------------------

@@ -50,6 +50,7 @@ from formula.checkers.applies_when import spec_context
 from formula.checkers.registry import RulebookRegistry
 from formula.contracts import EventKind, ProtocolReadiness, Recipe  # noqa: F401 — evidence 노드가 여전히 참조(주석처리 보류)
 from formula.evidence.gate import EvidenceGate
+from formula.biopharm.structure import apply_structure_signals
 from formula.orchestrator.events import emit
 from formula.orchestrator.state import MAX_REFLECTION_LOOPS, FormulationState
 from formula.planner import strategy_planner
@@ -105,6 +106,24 @@ def _summon_signals(registry: RulebookRegistry, passed: List[Dict[str, Any]]) ->
     return signals
 
 
+CONTRACT_RULEBOOKS = ("request_contract", "max_daily_dose")
+
+
+def _dose_over_label(state: Dict[str, Any], failures: List[Any]) -> bool:
+    """요청 용량 자체가 라벨 1일 최대 용량을 넘는가 — 그러면 다시 설계해도 통과가 없다."""
+    from formula.checkers.contract import requested_dose
+    spec = state.get("spec")
+    if spec is None:
+        return False
+    req_fb, _, _ = requested_dose(spec)
+    for v in failures:
+        if v.rulebook_id == "max_daily_dose" and v.blocking and req_fb is not None:
+            limit = (v.evidence or {}).get("max_daily_free_base_mg")
+            if limit is not None and req_fb > float(limit):
+                return True
+    return False
+
+
 def _required_conflict(state: Dict[str, Any], failures: List[Any]) -> bool:
     """반려 사유가 사용자가 못 박은 성분을 직접 지목하는가.
 
@@ -112,7 +131,12 @@ def _required_conflict(state: Dict[str, Any], failures: List[Any]) -> bool:
     돌기만 한다. 첫 반려에서 바로 이 충돌을 알아채고 결론을 내야 한다.
     """
     spec = state.get("spec")
+    if _dose_over_label(state, failures):
+        return True
     pinned = [p.strip() for p in (getattr(spec, "required_excipients", []) or []) if p.strip()]
+    # 입력 계약 판정(고정 부형제 누락 등)은 "제약을 지켜 다시 설계하라"는 뜻이지 제약이 불가능하다는
+    # 뜻이 아니다 — 그 사유 문구에 고정 성분 이름이 들어 있어도 충돌로 세지 않는다.
+    failures = [v for v in failures if v.blocking and v.rulebook_id not in CONTRACT_RULEBOOKS]
     if not pinned or not failures:
         return False
     haystack = " ".join(
@@ -140,7 +164,8 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         spec = intake.translate(state["request"], base_dir, smiles=state.get("smiles"),
                                 required_excipients=state.get("required_excipients"),
                                 measured_params=state.get("measured_params"),
-                                property_flags=state.get("property_flags"))
+                                property_flags=state.get("property_flags"),
+                                dose_basis=state.get("dose_basis") or "free_base")
         return {"spec": spec, "api_profile": spec.api_profile}
 
     # ── P0/P1/G3A/G3B/G4/G4B/G6R/DRQ_NARROW · 페이즈 게이트 (결정론) ───
@@ -158,6 +183,8 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         # "tm_c is None" 같은 조건이 NameError로 조용히 죽지 않도록, 알려진 모든 변수
         # 이름을 먼저 None으로 깔아 둔다 — formula/biopharm/seed.py의 함정 기록 참고.
         seed_known_keys(ctx, base_dir)
+        # 구조 신호 — 이온화 가능 여부·문헌 BCS 표(biopharm/structure.py)
+        apply_structure_signals(ctx, spec, base_dir)
 
         # P1 — RDKit이 계산 가능한 파생값(D0·SLAD·Tg 여유·logS 등)을 전부 채운다.
         compute_derived_quantities(ctx, base_dir)
@@ -167,6 +194,20 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         probe = Recipe(api_name=spec.api_name, candidate_id="__route_probe__")
         route_result = registry.run(spec, probe, short_circuit=False, derived=dict(ctx), max_priority=11)
         ctx.update(_public_derived(route_result.derived))
+        # 유동성 입력(안식각·Carr·Hausner)이 경로 결정에 쓰였다는 사실을 트레이스에 남긴다 — 예전엔 계산은
+        # 됐는데 화면에 흔적이 없어 "입력이 무시됐다"로 읽혔다(데모 결과 보고서 ①).
+        flow_inputs = {k: spec.measured_params.get(k) for k in ("angle_of_repose", "compressibility_index",
+                                                                 "hausner_ratio") if spec.measured_params.get(k) is not None}
+        for v in (route_result.verdicts if flow_inputs else []):
+            if v.rulebook_id in ("powder_flow_scale", "route_decision_tree"):
+                emit("phase_gates", EventKind.PHASE_GATE, gate=v.rulebook_id, rule_id=v.rule_id or "—",
+                     assigned={k: route_result.derived.get(k) for k in
+                               (("flow_character",) if v.rulebook_id == "powder_flow_scale"
+                                else ("selected_route", "recommended_routes", "excluded_routes"))},
+                     action=v.action.value, rationale=v.reason, citation=v.citation,
+                     inputs={k: spec.measured_params.get(k) for k in
+                             ("angle_of_repose", "compressibility_index", "hausner_ratio")
+                             if spec.measured_params.get(k) is not None})
         # 유동성 데이터가 전혀 없으면 decision_tree 전략이 아무 행도 발동시키지 못해
         # recommended_routes를 아예 안 남긴다 — strategy_families.csv의
         # `'DC' in recommended_routes` 같은 멤버십 조건은 None에 대해선 예외가 난다.
@@ -532,6 +573,14 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         """
         results = state.get("results", [])
         failures = [v for r in results for v in r["verdicts"] if v.failed]
+        if _dose_over_label(state, failures):
+            dose = [v for v in failures if v.rulebook_id == "max_daily_dose" and v.blocking]
+            emit("infeasible", EventKind.WARNING,
+                 reason="요청한 1회 용량 자체가 허가 라벨의 1일 최대 용량을 넘는다 — 이 요청으로는 통과하는 처방이 없다",
+                 required_excipients=[],
+                 blocking=[{"rule_id": v.rule_id, "rulebook_id": v.rulebook_id, "reason": v.reason,
+                            "suggestion": v.suggestion, "citation": v.citation} for v in dose[:1]])
+            return {"status": "infeasible"}
         pinned = list(getattr(state.get("spec"), "required_excipients", []) or [])
         blocking = [
             {

@@ -1868,7 +1868,7 @@
   "measurement_catalog": 20,
   "data_request_triggers": 16,
   "derived_quantities": 23,
-  "backtrack_transitions": 14,
+  "backtrack_transitions": 16,
   "reviewers": 7,
   "strategies": 8,
   "confirmation_tests": 66
@@ -1971,6 +1971,20 @@
    "return_phase": "G4",
    "constraint_patch": "exclude_strategy={recipe.strategy};penalize_family=ENABLING_ASD",
    "directive_hint": "Class I(급속 재결정) — ASD 우선순위 대폭 하향, 대체 전략 검토"
+  },
+  {
+   "transition_id": "BT030",
+   "trigger_type": "rule_verdict",
+   "return_phase": "GATE",
+   "constraint_patch": "",
+   "directive_hint": "요청 계약 위반 — API 1행·요청 용량(유리염기)·고정 부형제를 지켜 같은 전략으로 다시 설계"
+  },
+  {
+   "transition_id": "BT031",
+   "trigger_type": "rule_verdict",
+   "return_phase": "GATE",
+   "constraint_patch": "",
+   "directive_hint": "1회 함량이 라벨 1일 최대 용량 초과 — 요청 용량으로 함량을 낮춰 다시 설계"
   }
  ],
  "strategies": [

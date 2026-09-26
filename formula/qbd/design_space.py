@@ -180,7 +180,13 @@ def predict_point(models: Dict[str, Fit], coded_point: Dict[str, float], level: 
     out = {}
     for cid, fit in models.items():
         pi = fit.prediction_interval(one, level)
-        out[cid] = {"mean": float(pi["mean"][0]), "pi_lower": float(pi["lo"][0]), "pi_upper": float(pi["hi"][0])}
+        lo = float(pi["lo"][0])
+        # 이 도메인의 반응(시간·%·AV 등)은 정의상 0 이상이다. 원척도 정규 가정의 예측구간이 음수로
+        # 내려가면(예: AV −2.1) 물리적으로 불가능한 값이라 0에서 자르고, 자른 사실과 원래 값을 남긴다
+        # (개발자 수정 과제 P1-7). 판정(구간 안/밖)은 실측이 0 이상이라 절단 전후가 같다.
+        out[cid] = {"mean": float(pi["mean"][0]), "pi_lower": max(0.0, lo), "pi_upper": float(pi["hi"][0]),
+                    "pi_lower_raw": lo, "pi_truncated": lo < 0,
+                    "pi_note": "하한 0에서 절단 — 원척도 정규 가정" if lo < 0 else ""}
     return out
 
 

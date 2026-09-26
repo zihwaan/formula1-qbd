@@ -67,8 +67,13 @@ class ApiProfile(BaseModel):
 
     api_name: str
     smiles: str
-    parent_smiles: str = ""  # 염 제거 후 parent (SMARTS는 이걸로 매칭)
+    parent_smiles: str = ""  # 염 제거 후 parent — descriptor·SMARTS·용해도 예측 전부 이것으로 계산
     is_salt: bool = False
+    # 염 정보는 물성 계산과 분리해 따로 보존한다 — 함량 환산(유리염기 ↔ 염)에 쓴다.
+    salt_form: str = ""              # 짝이온 fragment SMILES (예: 베실산)
+    salt_factor: Optional[float] = None   # 염 전체 MW / parent MW (유리염기 1 mg = 염 salt_factor mg)
+    salt_molecular_weight: Optional[float] = None
+    inchikey: str = ""               # parent InChIKey — 이름이 아니라 구조로 API를 대조한다
     descriptors: Dict[str, float] = Field(default_factory=dict)
     flags: List[StructuralFlag] = Field(default_factory=list)
     estimates: List[PhysChemEstimate] = Field(default_factory=list)
@@ -151,6 +156,8 @@ class FormulationSpec(BaseModel):
     required_excipients: List[str] = Field(default_factory=list)
     # RDKit 계층이 채운 프로파일 (있으면 근거 추적에 쓴다)
     api_profile: Optional[ApiProfile] = None
+    # 입력 단계 문헌 조사(Europe PMC) 결과 — 심사관이 인용할 수 있는 **실재 식별자**(PMID·DOI) 풀이다.
+    literature: List[Dict[str, Any]] = Field(default_factory=list)
 
     @property
     def is_pediatric(self) -> bool:

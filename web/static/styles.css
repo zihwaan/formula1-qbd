@@ -810,3 +810,20 @@ table.ll-read td:last-child { text-align: right; color: var(--ink-1); font-weigh
 .drq-row-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
 .drq-row-actions button { padding: 4px 10px; font-size: 11.5px; }
 .drq-fallback { font-size: 11px; color: var(--ink-muted); }
+
+.drq-grade { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
+.drq-grade select { font: inherit; font-size: 12px; padding: 5px 8px; border-radius: var(--radius-s); border: 1px solid var(--border);
+  background: var(--surface-1); color: var(--ink-1); }
+
+.gate-badge, .rank-badge { display: inline-block; font-size: 9.5px; font-weight: 700; padding: 1px 7px;
+  border-radius: var(--radius-pill); margin-left: 6px; vertical-align: 1px; border: 1px solid var(--border); }
+.gate-badge.pass { color: var(--status-good); border-color: color-mix(in srgb, var(--status-good) 45%, var(--border)); }
+.gate-badge.fail { color: var(--status-critical); border-color: color-mix(in srgb, var(--status-critical) 45%, var(--border)); }
+.rank-badge { color: var(--ink-1); }
+.judge-note .cites { margin-top: 3px; font-size: 10.5px; color: var(--ink-muted); }
+.judge-note .cites a { color: var(--ink-2); }
+.drq-done { font-size: 12.5px; color: var(--ink-2); padding: 6px 0; }
+/* 후보 카드 머리 — 순위·게이트·신뢰도 배지가 세로로 깨지지 않게 */
+#cands .card h4 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+#cands .card h4 .tag { flex-basis: 100%; margin-left: 0; }
+.gate-badge, .rank-badge, .drq-badge { white-space: nowrap; margin-left: 0; }

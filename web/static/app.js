@@ -186,13 +186,17 @@ function handle(kind, ev) {
     case "predictions": renderPredictions(p); break;
     case "literature": renderLiterature(p); break;
     case "chem.profile": renderChem(p);
-      addTrace(ev.seq, "intake", `RDKit 계산 완료 · 플래그 ${(p.flags||[]).filter(f=>f.present).length}건`);
+      addTrace(ev.seq, "intake", `RDKit 계산 완료 · 플래그 ${(p.flags||[]).filter(f=>f.present).length}건`
+        + ` · ${p.is_salt ? "parent " : ""}MW ${Number((p.descriptors || {}).molecular_weight || 0).toFixed(1)}`
+        + (p.is_salt && p.salt_molecular_weight ? ` (염 ${Number(p.salt_molecular_weight).toFixed(1)} · 환산 ${p.salt_factor})` : ""));
       break;
 
     case "phase.gate":
       // phase_gates 노드가 BCS/DCS·고체상·가용화 신호마다 하나씩 낸다(candidate 생성 전).
       addTrace(ev.seq, "phase_gates",
-        `${p.gate}/${p.rule_id} → ${p.assigned || p.action}` + (p.citation ? ` · ${p.citation}` : ""));
+        `${p.gate}/${p.rule_id} → ${fmtAssigned(p.assigned) || p.action}`
+        + (p.inputs && Object.keys(p.inputs).length ? ` · 입력 ${fmtAssigned(p.inputs)}` : "")
+        + (p.citation ? ` · ${p.citation}` : ""));
       break;
 
     case "candidate":
@@ -320,12 +324,24 @@ function renderChem(p) {
 }
 
 /* 프로토콜 실행 상태 — 룰 통과와는 다른 축이다. 라벨을 한 곳에서만 관리한다. */
+const rankOf = new Map();   // candidate_id → 합의 순위
+
+function citeLink(c) {
+  const [kind, id] = String(c).split(" ");
+  const url = kind === "DOI" ? `https://doi.org/${id}` : kind === "PMID" ? `https://pubmed.ncbi.nlm.nih.gov/${id}/`
+    : kind === "PMC" ? `https://pmc.ncbi.nlm.nih.gov/articles/${id}/` : "";
+  return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(c)}</a>` : esc(c);
+}
+
 function renderCandidates() {
   const box = $("cands");
   if (!candidates.size) return;
   $("cand-count").textContent = `${candidates.size}건`;
   box.innerHTML = "";
-  for (const [id, entry] of candidates) {
+  // 순위가 매겨졌으면 순위대로(#1 → #2 → #3), 순위 없는 후보는 뒤로
+  const ordered = [...candidates.entries()].sort(([a], [b]) =>
+    (rankOf.get(a) ?? 999) - (rankOf.get(b) ?? 999));
+  for (const [id, entry] of ordered) {
     const gate = entry.gate;
     const card = document.createElement("div");
     card.className = "card " + (gate ? (gate.passed ? "pass" : "fail") : "");
@@ -335,14 +351,20 @@ function renderCandidates() {
       `<span class="chip ${esc(v.status)}" data-rule="${esc(v.rule_id)}">${esc(v.rule_id)}</span>`).join("");
     const judges = entry.judges.map((j) =>
       j.score === null || j.score === undefined
-        ? `<div class="judge-note unscored"><b>${esc(j.persona)}</b> 점수 없음 <span class="stand-in-tag">LLM 응답 없음 · 점수를 만들지 않음</span></div>`
-        : `<div class="judge-note"><b>${esc(j.persona)}</b> ${esc(j.score)} — ${esc(j.rationale)}</div>`).join("");
+        ? (j.source === "uncited"
+          ? `<div class="judge-note unscored"><b>${esc(j.persona)}</b> 점수 무효 <span class="stand-in-tag">검증된 인용(DOI/PMID) 없음 — 제안 점수 ${esc(j.proposed_score ?? "-")}는 합의에 쓰지 않음</span></div>`
+          : `<div class="judge-note unscored"><b>${esc(j.persona)}</b> 점수 없음 <span class="stand-in-tag">LLM 응답 없음 · 재시도 후에도 응답 없어 점수를 만들지 않음</span></div>`)
+        : `<div class="judge-note"><b>${esc(j.persona)}</b> ${esc(j.score)} — ${esc(j.rationale)}
+            ${(j.citations || []).length ? `<div class="cites">${j.citations.map(citeLink).join(" · ")}</div>` : ""}</div>`).join("");
     const readiness = "";
     // v3 — confidence는 pending_refinements가 비어 있는지로 정확히 정해진다(불변식 I-10).
     // LLM이 이 값을 직접 쓰지 않는다 — drq_refine이 매긴 값을 그대로 보여줄 뿐이다.
-    const confidence = entry.recipe.confidence
-      ? `<span class="drq-badge ${esc(entry.recipe.confidence)}">${esc(entry.recipe.confidence)}</span>`
-      : "";
+    // 게이트 판정이 먼저다 — 반려된 후보에는 신뢰도 배지를 붙이지 않는다(반려 + grounded는 모순으로 읽힌다)
+    const gateBadge = gate ? `<span class="gate-badge ${gate.passed ? "pass" : "fail"}">${gate.passed ? "통과" : "반려"}</span>` : "";
+    const rank = rankOf.get(id);
+    const confidence = (rank ? `<span class="rank-badge">#${esc(rank)}</span>` : "") + gateBadge
+      + (entry.recipe.confidence && (!gate || gate.passed)
+        ? `<span class="drq-badge ${esc(entry.recipe.confidence)}">${esc(entry.recipe.confidence)}</span>` : "");
     const refinements = (entry.recipe.pending_refinements || []).length
       ? `<div class="drq-refine">남은 신뢰도 요청: ${entry.recipe.pending_refinements.map(esc).join(", ")}</div>`
       : "";
@@ -367,7 +389,11 @@ function renderCandidates() {
 function renderConsensus(p) {
   const el = $("consensus");
   el.hidden = false;
-  const rows = (p.ranked || []).map((r) =>
+  rankOf.clear();
+  (p.ranked || []).forEach((r) => { if (r.rank) rankOf.set(r.candidate_id, r.rank); });
+  const ranked = [...(p.ranked || [])].sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
+  renderCandidates();
+  const rows = ranked.map((r) =>
     `<div>${r.rank ? `#${esc(r.rank)} ` : "— "}<b>${esc(r.candidate_id)}</b>
       ${r.unscored ? "심사 점수 없음 — 순위 없음" : `점수 ${esc(r.weighted_score ?? "-")} · 분산 ${esc(r.variance ?? "-")} · 심사관 ${esc(r.reviewers)}`}
       ${r.low_confidence && !r.unscored ? " <span class='tag'>저신뢰</span>" : ""}
@@ -576,12 +602,13 @@ function startRunWith(p) {
   startRun();
   return true;
 }
-window.F1Discovery = { startRunWith, submitMeasurements: (m) => submitMeasurements(m), runId: () => runId, running: () => running };
+window.F1Discovery = { startRunWith, submitMeasurements: (m, g) => submitMeasurements(m, g || "user_statement", "agent"),
+  runId: () => runId, running: () => running };
 
 function resetView() {
   candidates.clear(); tokenBuffers.clear(); degraded.clear();
   unavailable.designs = 0; unavailable.judges = 0;
-  winnerId = null; pendingRequests = [];
+  winnerId = null; pendingRequests = []; rankOf.clear();
   resetNarration();
   $("trace").innerHTML = ""; $("cands").innerHTML = "";
   $("consensus").hidden = true;
@@ -636,6 +663,7 @@ async function startRun() {
         + data.rejected_inputs.join(", "), "warn");
     }
     runId = data.run_id;
+    document.dispatchEvent(new CustomEvent("f1:runstart", { detail: { runId } }));
     connect(api(`/api/runs/${runId}/stream`));
   } catch (err) {
     setRunning(false);
@@ -705,7 +733,7 @@ function renderDataRequests(requests, planSignature, groups) {
     return;
   }
   panel.hidden = false;
-  const kindTag = (k) => k === "disagreement" ? "예측 간 불일치" : k === "low_or_unknown" ? "예측이 낮거나 모름" : "";
+  const kindTag = (k) => k === "disagreement" ? "예측 간 불일치" : k === "low_or_unknown" ? "예측이 낮거나 모름" : k === "ph_dependent" ? "pH 의존(이온화)" : "";
   const textKey = (k) => /(_id|_json|_class)$/.test(k);
   body.innerHTML = list.map((g) => `<div class="drq-req" data-mid="${esc(g.measurement_id)}">
       <b><span class="tier">Tier ${esc(g.tier)} · ~${esc(g.sample_mg)} mg</span>${esc(g.name)}</b>
@@ -716,6 +744,9 @@ function renderDataRequests(requests, planSignature, groups) {
         ${g.fallbacks.length ? `<span class="drq-fallback">건너뛰면: ${esc(g.fallbacks[0])}</span>` : ""}</div>
     </div>`).join("") + `
     <div class="drq-actions">
+      <label class="drq-grade">근거 등급 <select id="drq-grade">
+        <option value="self_measured">자체 실측</option><option value="literature">문헌</option>
+        <option value="user_statement">사용자 진술</option></select></label>
       <button id="drq-submit" type="button">값 제출 → 재계산</button>
       <button id="drq-skip" class="ghost" type="button">전부 건너뛰기(예측값으로 계속)</button>
     </div>
@@ -750,19 +781,28 @@ function renderDataRequests(requests, planSignature, groups) {
       notice("최소 한 항목에 값을 입력해 주세요.", "warn");
       return;
     }
-    await submitMeasurements(measurements);
+    await submitMeasurements(measurements, $("drq-grade") ? $("drq-grade").value : "self_measured", "form");
   };
   $("drq-skip").onclick = () => decline(list.flatMap((g) => g.triggers));
 }
 
 // 측정값 제출 — 데이터 요청 패널과 입력 에이전트가 같은 경로를 쓴다
-async function submitMeasurements(measurements) {
+const GRADE_KO = { self_measured: "자체 실측", literature: "문헌", user_statement: "사용자 진술" };
+
+// 판정 객체(예: {bcs_solubility_provisional: "low", bcs_source: "predicted"})를 사람이 읽는 문자열로
+function fmtAssigned(a) {
+  if (a === null || a === undefined || a === "") return "";
+  if (typeof a !== "object") return String(a);
+  return Object.entries(a).map(([k, v]) => `${k}=${Array.isArray(v) ? v.join("|") : v}`).join(" · ");
+}
+
+async function submitMeasurements(measurements, grade = "self_measured", source = "form") {
   const btn = $("drq-submit");
   if (btn) { btn.disabled = true; btn.textContent = "재계산 중…"; }
   try {
     const res = await fetch(api(`/api/runs/${runId}/measurements`), {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ measurements }),
+      body: JSON.stringify({ measurements, grade, source }),
     });
     if (!res.ok) {
       const detail = await res.json().catch(() => ({}));
@@ -780,20 +820,25 @@ async function submitMeasurements(measurements) {
     narrate("drq-reassess", {
       layer: "데이터 요청 재계산", kind: "det", once: false,
       title: out.regenerated ? "전략이 바뀌어 후보를 다시 생성했다" : "같은 후보, 신뢰도만 다시 매겼다",
-      body: `남은 요청이 ${beforeCount}건에서 ${afterCount}건으로 바뀌었습니다.
+      body: `제출: <b>${esc(Object.entries(measurements).map(([k, v]) => `${k}=${v}`).join(", "))}</b>
+        <span class="drq-kind">근거 등급 · ${esc(GRADE_KO[grade] || grade)}</span><br>
+        남은 요청이 ${beforeCount}건에서 ${afterCount}건으로 바뀌었습니다${(out.submission || {}).closed_requests && out.submission.closed_requests.length
+          ? ` — 닫힌 요청 <code>${esc(out.submission.closed_requests.join(", "))}</code>` : ""}.
+        ${(out.phase_signals || []).length ? `<br>다시 판정한 게이트: ${out.phase_signals.slice(0, 6).map((g) => `<code>${esc(g.rule_id)}</code> ${esc(fmtAssigned(g.assigned))}`).join(" · ")}` : ""}
+        <br><small>${esc((out.submission || {}).rerun_scope || "")}</small>
         ${bt.length ? `<br>측정 결과가 전제를 부정해 되돌림: <code>${esc(bt.join(" · "))}</code>` : ""}
         <span class="nr-why">왜 중요한가: 그래프를 처음부터 다시 돌리지 않았습니다 —
         결정론 계층만 재계산했으므로 몇 초 안에 끝납니다.</span>`,
     });
     const summary = out.summary || {};
     renderDataRequests(out.pending_requests || [], out.plan_signature || "", summary.request_groups || []);
-    const freshOut = $("drq-out");
-    if (freshOut) {
-      freshOut.innerHTML = `<div class="drq-refine">${resultMsg}
-        plan_signature = <code>${esc(out.plan_signature)}</code></div>`;
-    } else {
-      notice(`${resultMsg} (남은 요청 ${afterCount}건)`, "info");
+    if (!$("drq-out")) {
+      // 제출값이 남은 요청을 모두 풀었으면 패널을 닫지 않고 결과를 그 자리에 남긴다
+      $("drq").hidden = false;
+      $("drq-body").innerHTML = `<div class="drq-done">남은 데이터 요청이 없습니다 — 제출한 값으로 모두 해결됐습니다.</div><div id="drq-out"></div>`;
     }
+    $("drq-out").innerHTML = `<div class="drq-refine">${resultMsg}
+      근거 등급 ${esc(GRADE_KO[grade] || grade)} · plan_signature = <code>${esc(out.plan_signature)}</code></div>`;
     const entry = candidates.get(summary.winner);
     if (entry) {
       entry.recipe.confidence = summary.confidence;
@@ -847,6 +892,14 @@ function resetNarration() {
     '<div class="empty">시나리오를 누르거나 설계를 실행하면 단계별 해설이 여기에 흐릅니다.</div>';
 }
 
+// 이 약의 실제 구조 플래그로 쓰는 문장 — 약마다 다른 설명을 고정 문구로 두지 않는다
+function aminesNote(flags) {
+  const amines = flags.filter((f) => /amine/.test(f) && !/nitrosatable/.test(f));
+  return amines.length
+    ? `<br>아민 계열 <b>${esc(amines.join(", "))}</b> 검출 — 유당(환원당)과의 Maillard 금기를 룰북이 검사합니다.`
+    : `<br>1·2차 아민이 검출되지 않아 유당 Maillard 금기(INC001·INC002)는 이 약에 해당하지 않습니다.`;
+}
+
 /* 이벤트 → 해설. 한 실행에서 각 단계는 한 번만 말한다(토큰 스트림처럼 반복되는 것 제외). */
 function narrateEvent(kind, ev, p) {
   switch (kind) {
@@ -857,9 +910,10 @@ function narrateEvent(kind, ev, p) {
         title: "분자식에서 시작한다",
         body: `<code>${esc(p.smiles || p.api_name)}</code> 에서 descriptor를 계산하고 구조 플래그를
           검출했습니다 — <b>${on.length ? esc(on.join(", ")) : "검출 없음"}</b>.
-          <span class="nr-why">왜 중요한가: 유당이 위험한지는 “아민기가 있는가”에 달려 있습니다.
-          이걸 사람이 손으로 적으면 틀리기 쉽습니다(아세트아미노펜은 이름과 달리 아미드입니다).
-          그래서 판정의 입력을 사람이 아니라 계산이 만듭니다.</span>`,
+          ${aminesNote(on)}
+          ${p.is_salt ? `<br>염 형태 입력 — 물성은 parent(<code>${esc(p.parent_smiles || "")}</code>)로 계산했습니다.` : ""}
+          <span class="nr-why">왜 중요한가: 유당이 위험한지는 “아민기가 있는가”에 달려 있고, 그건 이름이
+          아니라 구조로 판단해야 합니다. 그래서 판정의 입력을 사람이 아니라 계산이 만듭니다.</span>`,
       });
       break;
     }
@@ -869,7 +923,7 @@ function narrateEvent(kind, ev, p) {
       narrate("phasegate", {
         layer: "P1 · BCS/DCS·고체상 게이트 결정론", kind: "det",
         title: "게이트가 남긴 첫 판정",
-        body: `<code>${esc(p.gate)}/${esc(p.rule_id)}</code> → <b>${esc(p.assigned || p.action)}</b>
+        body: `<code>${esc(p.gate)}/${esc(p.rule_id)}</code> → <b>${esc(fmtAssigned(p.assigned) || p.action)}</b>
           ${esc(p.rationale || "")}
           <span class="nr-why">왜 중요한가: 이 판정은 처방을 반려하지 않습니다. 다음 단계에서
           어떤 전략(예: 미분화·ASD)이 후보로 올라올지를 좁힐 뿐입니다 — 트레이스에서
@@ -1025,7 +1079,8 @@ const SCENARIOS = [
     proves: "검증 계층 · 근거 추적",
     request: "소아용 플루옥세틴 정제를 설계해줘",
     pinned: "Lactose monohydrate",
-    duration: "약 1분",
+    measuredParams: { dose_mg: 10 },   // PROZAC 라벨의 소아 시작 용량 10 mg
+    duration: "약 30초",
     goal: `현장 제약으로 <b>유당을 반드시 쓰라</b>고 못 박았습니다. 설계 AI는 제약을 지키고,
       룰북이 <code>INC002</code>(2차 아민 + 유당 → Maillard 반응)로 막습니다.
       재설계로 풀리지 않는 충돌이라 시스템은 루프를 돌리지 않고
@@ -1037,12 +1092,12 @@ const SCENARIOS = [
     proves: "자기조직형 멀티 에이전트",
     request: "소아용 바나나향 아세트아미노펜 정제를 설계해줘",
     pinned: "",
-    duration: "약 2분",
-    goal: `대상이 <b>소아</b>라서 소아 안전 심사관(REV001)이 그 자리에서 생성됩니다. 명단에 있는
-      가용화·고령자·문헌조사 심사관은 조건에 맞지 않아 <b>아예 만들어지지 않습니다</b> —
-      고정 명단이 없다는 증거입니다. 아세트아미노펜은 아미드라 유당 금기에 걸리지 않는 것도
-      왼쪽 구조 플래그에서 함께 확인됩니다(<code>is_amide_not_amine</code>).
-      접속이 몰려 LLM이 응답하지 못하면 그 심사관은 점수 없이 표시되고, 순위는 실제 점수만으로 정합니다.`,
+    measuredParams: { dose_mg: 160 },  // 소아용 아세트아미노펜 씹는정 1정 강도 160 mg
+    duration: "약 1분",
+    goal: `대상이 <b>소아</b>라서 소아 안전 심사관(REV001)이 그 자리에서 생성되고, 고령자 심사관은
+      <b>만들어지지 않습니다</b>. 나머지 심사관은 설계된 후보에 따라 달라집니다 — 예를 들어 룰북 밖
+      성분 조합이 나오면 문헌 조사 심사관이 들어옵니다. 누가 왜 소집됐는지는 실행 중 해설과 그래프에
+      조건식과 함께 뜹니다. 심사 점수는 검증된 인용(DOI/PMID)이 있어야 합의에 들어갑니다.`,
   },
   {
     id: "labloop",
@@ -1053,11 +1108,11 @@ const SCENARIOS = [
     request: "성인용 이부프로펜 정제를 설계해줘",
     pinned: "",
     measuredParams: { dose_mg: 200 },
-    duration: "약 1~2분",
+    duration: "약 1분",
     autoLab: true,
     goal: `설계가 끝나면 RDKit이 계산 가능한 값(D0·SLAD·logS 등)을 전부 채우고, BCS/DCS·
       고체상·가용화 전략 신호를 판정해 <b>후보를 먼저 냅니다</b> — 값이 없다고 멈추지
-      않습니다. 판정이 실제로 갈리는 지점(예: 결정형·Tm을 모름)에서만 오른쪽
+      않습니다. 판정이 실제로 갈리는 지점(예: 이온화하는 약이라 pH별 용해도를 모름)에서만 오른쪽
       <b>데이터 요청</b> 패널에 구체적 실측을 요청합니다. 가진 측정값을 넣어 제출하면
       그래프를 다시 돌리지 않고 <b>그 자리에서 재계산</b>해, 남은 요청이 줄고 후보의
       신뢰도 태그(<code>grounded</code>/<code>provisional</code>)가 갱신됩니다.

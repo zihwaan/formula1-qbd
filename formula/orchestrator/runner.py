@@ -38,15 +38,17 @@ class Run:
                  run_id: Optional[str] = None, required_excipients: Optional[List[str]] = None,
                  measured_params: Optional[Dict[str, float]] = None,
                  property_flags: Optional[Dict[str, bool]] = None,
-                 llm: str = "groq"):
+                 llm: str = "groq", dose_basis: str = "free_base"):
         self.base_dir = Path(base_dir)
         self.llm = llm            # 화면에서 고른 모델("groq" | "dacon") — 권한 검사는 서버가 끝냈다
         self.state = new_state(request, smiles=smiles, run_id=run_id,
                                required_excipients=required_excipients,
-                               measured_params=measured_params, property_flags=property_flags)
+                               measured_params=measured_params, property_flags=property_flags,
+                               dose_basis=dose_basis)
         self.run_id: str = self.state["run_id"]
         self.bus = EventBus(self.run_id)
         self.declined: set = set()   # 연구자가 건너뛴 데이터 요청 trigger_id
+        self.submissions: List[Dict[str, Any]] = []   # 제출된 측정값 + 근거 등급(트레이스용)
         self.final: Dict[str, Any] = {}
         self.registry = RulebookRegistry(self.base_dir / "config" / "rulebook_manifest.yaml",
                                          base_dir=self.base_dir)
@@ -130,7 +132,16 @@ class Run:
             "strategies": final.get("strategies", []),
             "constraints": final.get("constraints", {}),
             "backtrack": final.get("backtrack", {}),
+            "submissions": list(getattr(self, "submissions", [])),
+            "missing_inputs": self._missing_inputs(),
         }
+
+    def _missing_inputs(self) -> List[str]:
+        """설계 전에 있었어야 할 사용자 입력 중 빠진 것 — 에이전트가 되묻는다."""
+        spec = (self.final or {}).get("spec")
+        if spec is None:
+            return []
+        return [] if spec.measured_params.get("dose_mg") is not None else ["dose_mg"]
 
     def decline(self, trigger_ids: List[str]) -> Dict[str, Any]:
         """연구자가 요청을 건너뛴다 — 멈추지 않고 예측값으로 계속한다(후보는 provisional 유지)."""
@@ -141,10 +152,27 @@ class Run:
         return self.summary()
 
     # ── v3 데이터 요청 재계산 (§4.1) ──────────────────────────────────
-    def reassess_with_measurements(self, measurements: Dict[str, float]) -> Dict[str, Any]:
-        """같은 run의 모델 선택으로 재계산한다(재설계가 필요하면 그 모델로 다시 생성)."""
+    GRADE_KO = {"self_measured": "자체 실측", "literature": "문헌", "user_statement": "사용자 진술"}
+
+    def reassess_with_measurements(self, measurements: Dict[str, float], grade: str = "self_measured",
+                                   source: str = "form") -> Dict[str, Any]:
+        """같은 run의 모델 선택으로 재계산한다(재설계가 필요하면 그 모델로 다시 생성).
+
+        제출값은 근거 등급(자체 실측·문헌·사용자 진술)과 함께 기록한다 — 트레이스와 요약에 그대로 남는다.
+        intake·분자 계산은 다시 돌리지 않는다(이 값에 의존하는 phase_gates 이후만 재평가).
+        """
+        before = {r.get("trigger_id") for r in (self.final or {}).get("pending_narrow", [])}
+        grade = grade if grade in self.GRADE_KO else "user_statement"
         with use_llm(self.llm):
-            return self._reassess_with_measurements(measurements)
+            out = self._reassess_with_measurements(measurements)
+        after = {r.get("trigger_id") for r in self.final.get("pending_narrow", [])}
+        entry = {"measurements": dict(measurements), "grade": grade, "grade_ko": self.GRADE_KO[grade],
+                 "source": source, "closed_requests": sorted(before - after),
+                 "rerun_scope": ("phase_gates 이후 재평가 + 전략 변경으로 후보 재생성(LLM)" if out.get("regenerated")
+                                 else "phase_gates 이후 재평가만 — intake·설계 LLM 재실행 없음")}
+        self.submissions.append(entry)
+        out.update({"submission": entry, "summary": self.summary()})
+        return out
 
     def _reassess_with_measurements(self, measurements: Dict[str, float]) -> Dict[str, Any]:
         """narrows_strategy 요청에 대한 실측값을 반영해 다시 계산한다.
@@ -175,6 +203,8 @@ class Run:
 
         ctx: Dict[str, Any] = spec_context(spec, {})
         seed_known_keys(ctx, self.base_dir)
+        from formula.biopharm.structure import apply_structure_signals
+        apply_structure_signals(ctx, spec, self.base_dir)
         compute_derived_quantities(ctx, self.base_dir)
         from formula.contracts import Recipe as _Recipe
         route_probe = _Recipe(api_name=spec.api_name, candidate_id="__reassess_probe__")
@@ -189,7 +219,9 @@ class Run:
         if not ctx["recommended_routes"] and not ctx.get("flow_character"):
             ctx["recommended_routes"] = [r for r in ("DC", "DG", "WG") if r not in ctx["excluded_routes"]]
             ctx["routes_provisional"] = True
-        run_biopharm_gates(ctx, self.base_dir)
+        fired_signals = run_biopharm_gates(ctx, self.base_dir)
+        self.final["reassess_signals"] = [
+            {"gate": f["gate"], "rule_id": f["rule_id"], "assigned": f["assigned"]} for f in fired_signals]
 
         profile = self.final.get("api_profile")
         flag_names = profile.flag_names() if profile else []
@@ -275,6 +307,7 @@ class Run:
             regenerated = True
 
         return {"regenerated": regenerated, "plan_signature": new_signature,
+                "phase_signals": self.final.get("reassess_signals", []),
                 "backtrack": [d.as_dict() for d in decisions],
                 "pending_requests": self.final["pending_narrow"], "summary": self.summary()}
 

@@ -185,6 +185,7 @@
       if ((p.rejected || []).length) r.push(["허용목록 밖(제외)", p.rejected.join(", ")]);
     } else if (p.kind === "submit_measurements") {
       Object.entries(p.measurements || {}).forEach(([k, v]) => r.push([k, String(v)]));
+      r.push(["재평가 범위", "이 값에 의존하는 판정만(phase_gates 이후) — 설계를 처음부터 다시 돌리지 않음"]);
     } else if (p.kind === "studio_action") {
       r.push(["행동", `${ACTION_LABEL[p.action] || p.action} (${p.action})`]);
       if (p.payload && Object.keys(p.payload).length) r.push(["내용", JSON.stringify(p.payload, null, 1)]);
@@ -199,11 +200,17 @@
   function card(p) {
     const c = document.createElement("div");
     c.className = `ad-card${p.ready ? "" : " incomplete"}`;
+    if (p.run_id) c.dataset.run = p.run_id;   // 다른 설계가 시작되면 이 카드는 잠긴다
+    p._cid = `c${Math.random().toString(36).slice(2, 9)}`;
+    c.dataset.card = p._cid;
     c.innerHTML = `<div class="ad-card-head"><span class="ad-kind">${esc(KIND_LABEL[p.kind] || p.kind)}</span>
         <b>${esc(p.title || "")}</b></div>
       <dl>${rows(p).map(([k, v, url]) => `<dt>${esc(k)}</dt><dd>${url
         ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(v)}</a>` : k === "내용" ? `<pre>${esc(v)}</pre>` : esc(v)}</dd>`).join("")}</dl>
       ${p.ready ? "" : `<p class="ad-missing">빠진 정보(${esc((p.missing || []).join(", "))})를 알려 주시면 실행할 수 있습니다.</p>`}
+      ${p.kind === "submit_measurements" ? `<label class="ad-grade">근거 등급
+        <select class="ad-grade-sel"><option value="user_statement" selected>사용자 진술</option>
+        <option value="self_measured">자체 실측</option><option value="literature">문헌</option></select></label>` : ""}
       <div class="ad-card-actions">
         <button type="button" class="primary ad-run" ${p.ready ? "" : "disabled"}>실행</button>
         ${p.kind === "start_run" ? `<button type="button" class="ad-fill">폼에만 채우기</button>` : ""}
@@ -253,7 +260,8 @@
       if (p.kind === "submit_measurements") {
         if (D.runId() !== p.run_id) { result("그 사이 다른 설계가 시작되어 이 제안은 더 이상 맞지 않습니다.", "warn"); return false; }
         S && S.showTab("discovery");
-        const out = await D.submitMeasurements(p.measurements);
+        const gradeSel = document.querySelector(`[data-card="${p._cid}"] .ad-grade-sel`);
+        const out = await D.submitMeasurements(p.measurements, gradeSel ? gradeSel.value : "user_statement");
         if (!out) { result("제출이 거부되었습니다 — 화면 알림을 확인해 주세요.", "warn"); return false; }
         result(out.regenerated ? "전략이 바뀌어 후보를 다시 생성했습니다." : "재계산했습니다 — 전략 집합은 그대로입니다.", "ok");
         return true;
@@ -274,6 +282,7 @@
         return true;
       }
       if (p.kind === "develop_candidate") {
+        if (D.runId() !== p.run_id) { result("이 카드는 이전 설계의 후보입니다 — 지금 설계의 후보로 다시 요청해 주세요.", "warn"); return false; }
         await S.startFromCandidate(p.run_id, p.candidate_id);
         result("개발 스튜디오로 넘겼습니다.", "ok");
         return true;
@@ -308,6 +317,18 @@
   document.addEventListener("f1:run", (e) => scheduleNudge(`run:${e.detail.runId}:${Date.now()}`));
   document.addEventListener("f1:study", (e) => { if (tab() === "studio") scheduleNudge(`study:${e.detail.studyId}:${e.detail.status}`); });
   document.addEventListener("f1:tab", () => updateCtx());
+  // 새 설계가 시작되면 이전 설계에 묶인 카드(측정값 제출·개발 착수)를 잠근다
+  document.addEventListener("f1:runstart", (e) => {
+    document.querySelectorAll("#agent-log .ad-card[data-run]").forEach((c) => {
+      if (c.dataset.run !== e.detail.runId && !c.classList.contains("done")) {
+        c.classList.add("stale");
+        c.querySelectorAll("button:not(.ad-dismiss)").forEach((b) => { b.disabled = true; });
+        const r = c.querySelector(".ad-result");
+        if (r) { r.hidden = false; r.textContent = "이전 설계의 카드 — 새 설계가 시작되어 잠겼습니다."; }
+      }
+    });
+    updateCtx();
+  });
 
   mount();
   window.F1Agent = { focus: focusAgent };

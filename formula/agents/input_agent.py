@@ -128,6 +128,29 @@ _FORM = [("capsule", ("캡슐", "capsule")), ("oral_liquid", ("시럽", "현탁"
          ("dispersible_tablet", ("분산정",)), ("tablet", ("정제", "tablet", "알약"))]
 
 
+def read_measurements(text: str, catalog: Dict[str, Dict[str, Any]]) -> Dict[str, float]:
+    """글에서 '측정 이름 (조사) 숫자'를 읽는다. 받을 수 있는 키(허용목록·측정 카탈로그·별칭)만.
+
+    영문 키(tm, tm_c)는 단어 경계에서만 잡는다 — 'atm' 같은 글자열에 걸리지 않게.
+    """
+    low = text.lower().replace(",", "")
+    labels = {**{k: k for k in catalog}, **{str(v.get("label") or ""): k for k, v in catalog.items() if v.get("label")}}
+    found: Dict[str, float] = {}
+    for name in sorted(labels, key=len, reverse=True):
+        if not name:
+            continue
+        pre = r"(?<![a-z0-9_])" if re.match(r"[a-z0-9_]", name.lower()) else ""
+        m = re.search(pre + re.escape(name.lower()) + r"\s*(?:값|결과|측정값)?\s*(?:은|는|이|가|=|:)?\s*(?:약\s*)?("
+                      + NUM + r")", low)
+        if m:
+            key = catalog.get(labels[name], {}).get("alias_of") or labels[name]
+            found.setdefault(key, float(m.group(1)))
+    return found
+
+
+DESIGN_WORDS = r"(설계|만들어|처방|전략을 세워|제형 전략)"
+
+
 def rule_parse(message: str, ctx: Dict[str, Any], catalog: Dict[str, Dict[str, Any]]) -> AgentOutput:
     from formula.agents.intake import _fallback as parse_request
     from formula.chem.profile import smiles_error
@@ -137,13 +160,7 @@ def rule_parse(message: str, ctx: Dict[str, Any], catalog: Dict[str, Dict[str, A
     out = AgentOutput(reply="", intent="none")
 
     # 측정값: "라벨/키 (은|는|=|:) 숫자" — 받을 수 있는 키만
-    labels = {**{k: k for k in catalog}, **{str(v.get("label") or ""): k for k, v in catalog.items() if v.get("label")}}
-    for name in sorted(labels, key=len, reverse=True):
-        if not name:
-            continue
-        m = re.search(re.escape(name.lower()) + r"\s*(?:은|는|이|가|=|:)?\s*(?:약\s*)?(" + NUM + r")", low)
-        if m and labels[name] not in out.measurements:
-            out.measurements[labels[name]] = float(m.group(1))
+    out.measurements.update(read_measurements(text, catalog))
 
     tab = ctx.get("tab")
     study = ctx.get("study") or {}
@@ -167,7 +184,7 @@ def rule_parse(message: str, ctx: Dict[str, Any], catalog: Dict[str, Dict[str, A
         return out
 
     run = ctx.get("run") or {}
-    if run and out.measurements and not re.search(r"(설계|만들어|처방)", low):
+    if run and out.measurements and not re.search(DESIGN_WORDS, low):
         out.intent = "submit_measurements"
         return out
     m = re.search(r"(cand-[\w-]+)", text)
@@ -238,10 +255,25 @@ def llm_turn(message: str, history: List[Dict[str, str]], ctx: Dict[str, Any]) -
 def run_turn(message: str, history: List[Dict[str, str]], ctx: Dict[str, Any],
              catalog: Dict[str, Dict[str, Any]]) -> Tuple[AgentOutput, str]:
     """LLM으로 해석하고, 안 되면 규칙 기반 해석으로 내려간다. (결과, 출처)"""
+    # 측정값 제출은 LLM 분류보다 먼저 규칙으로 잡는다 — 열린 설계에 대해 "이름 + 숫자"가 있고 새 설계를
+    # 요청하는 말이 없으면 제출이다. LLM이 이걸 새 설계 요청으로 오분류하면 intake부터 전체가 다시 돌고
+    # 값은 반영되지 않는다(데모 ③ VX-770에서 실제로 일어남 — 개발자 수정 과제 P0-3).
+    if ctx.get("run") and not re.search(DESIGN_WORDS, message):
+        found = read_measurements(message, catalog)
+        allowed = set(ctx.get("measurement_keys") or [])
+        if found and all(k in allowed for k in found):
+            return AgentOutput(reply="측정값을 제출 카드로 정리했습니다 — 설계를 다시 돌리지 않고 이 값에 의존하는 "
+                                     "판정만 다시 계산합니다.", intent="submit_measurements",
+                               measurements=found), "rules-first"
     try:
         out = llm_turn(message, history, ctx)
     except LLMUnavailable:
         return rule_parse(message, ctx, catalog), "rules"
+    if out.intent == "start_run" and ctx.get("run") and not re.search(DESIGN_WORDS, message):
+        # 열린 설계가 있는데 설계 요청 말이 없으면 새 실행을 제안하지 않는다(재실행 낭비 방지)
+        floor = rule_parse(message, ctx, catalog)
+        if floor.intent == "submit_measurements":
+            return floor, "llm+rules"
     # 규칙 기반 해석은 바닥이다 — LLM이 되묻기만 했는데 글에서 행동이 명확히 읽히면 그 행동을 제안한다.
     if out.intent in ("clarify", "none", "explain"):
         floor = rule_parse(message, ctx, catalog)
@@ -254,7 +286,8 @@ def run_turn(message: str, history: List[Dict[str, str]], ctx: Dict[str, Any],
 # ── 측정 키 어휘 ────────────────────────────────────────────────────────
 # 말로 들어온 측정 이름을 시스템 키로 옮기는 사전(값이 아니라 이름만). 카탈로그에 있는 키만 쓴다.
 KEY_WORDS = {
-    "녹는점": "tm_c", "융점": "tm_c", "용해도": "solubility_mg_per_ml", "수분": "water_content_percent",
+    "녹는점": "tm_c", "융점": "tm_c", "tm": "tm_c", "melting point": "tm_c", "실험 용해도": "solubility_mg_per_ml",
+    "평형용해도": "solubility_mg_per_ml", "solubility": "solubility_mg_per_ml", "수분 함량": "water_content_percent", "용해도": "solubility_mg_per_ml", "수분": "water_content_percent",
     "안식각": "angle_of_repose", "압축성": "compressibility_index", "카르 지수": "compressibility_index",
     "하우스너": "hausner_ratio", "용량": "dose_mg", "흡수율": "fraction_absorbed",
     "잔존율": "aqueous_stability_percent", "pka": "pka_acid", "logd": "logd_7_4",
@@ -300,6 +333,7 @@ def snapshot(tab: str, run: Optional[Dict[str, Any]], study: Optional[Dict[str, 
                                                         "result_keys", "triggers", "reasons")}
                                for g in run.get("request_groups", [])],
             "backtrack": run.get("backtrack") or {},
+            "missing_inputs": run.get("missing_inputs") or [],
             "constraints": run.get("constraints") or {},
             "strategies": run.get("strategies") or [],
         }
@@ -307,6 +341,8 @@ def snapshot(tab: str, run: Optional[Dict[str, Any]], study: Optional[Dict[str, 
         prompt = study.get("prompt") or {}
         blocking = []
         for key, ev in (study.get("evaluations") or {}).items():
+            if ev.get("current") is False:
+                continue   # 지나간 단계의 판정은 지금 막는 규칙이 아니다
             for v in ev.get("verdicts", []):
                 if v.get("effect") in ("BLOCK", "INVALIDATE", "REQUEST_DATA") and v.get("status") in ("FIRES", "MISSING"):
                     blocking.append(f"{v.get('rule_id')}: {v.get('message')}")
@@ -514,6 +550,8 @@ def nudge(ctx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             cid = run.get("winner") or run["passed"][0]
             proposals.append({"kind": "develop_candidate", "ready": True, "run_id": run.get("run_id"),
                               "candidate_id": cid, "title": f"{cid}로 개발 착수"})
+        if "dose_mg" in (run.get("missing_inputs") or []):
+            text += " 1회 투여 용량이 없어 후보의 API 함량을 검사하지 못했습니다 — 용량(mg)을 알려 주시면 그 용량으로 다시 설계합니다."
         if run.get("request_groups"):
             text += " 측정값이 있으면 이름과 값을 그대로 말해 주세요 — 제출 카드로 바꿔 드립니다. 없으면 건너뛰어도 예측값으로 계속합니다."
         return {"reply": text, "proposals": proposals, "asks": [], "notes": [], "source": "context"}

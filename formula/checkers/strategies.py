@@ -229,21 +229,45 @@ def pairwise_membership(entry, rows, recipe: Recipe, spec: FormulationSpec, ctx)
         hit = matcher.match(excipient)
         if hit is None:
             continue
+        # 행이 공정 조건을 달고 있으면(예: INC014 과혼합 — 윤활 혼합 시간) 그 조건이 참일 때만 발동한다.
+        # 모르는 변수는 None으로 둔다 — "값을 모름" 자체가 조건인 행이 NameError로 조용히 죽지 않게.
+        cond = str(row.get("required_conditions") or "").strip()
+        if cond and not evaluate(cond, _scope_with_unknowns(cond, spec, ctx)):
+            continue
         # 계열명 매칭은 발동시키되 그 사실을 판정문에 남긴다 — 등급을 특정해 다시
         # 돌릴 수 있어야 하고, 반대로 통과를 주면 두루뭉술한 표기가 게이트를 뚫는다.
         note = ("" if not hit.is_generic else
                 f" [처방의 '{hit.ingredient}'은 등급 미지정 계열명 — "
                 f"룰북의 '{excipient}' 행에 걸렸다. 등급을 명시하면 재판정된다]")
-        verdicts.append(
-            _violation(
-                entry, "pairwise_membership", row,
-                reason=str(row.get(reason_c, "")) + note,
-                suggestion=str(row.get(sugg_c, "")),
-                evidence={"excipient": row.get(left), "functional_group": row.get(right),
-                          "matched_ingredient": hit.ingredient, "match_kind": hit.kind},
-            )
+        verdict = _violation(
+            entry, "pairwise_membership", row,
+            reason=str(row.get(reason_c, "")) + note,
+            suggestion=str(row.get(sugg_c, "")),
+            evidence={"excipient": row.get(left), "functional_group": row.get(right),
+                      "matched_ingredient": hit.ingredient, "match_kind": hit.kind},
         )
+        if str(row.get("defer_to") or "").strip() == "doe_factor" and not verdict.blocking:
+            # 후보 탐색에서 판정할 수 없는 공정 의존 위험 — 경고 대신 개발 스튜디오의 DoE 요인 후보로 넘긴다
+            verdict = verdict.model_copy(update={
+                "status": VerdictStatus.ADVISORY, "action": RuleAction.LABEL_REQUIRED,
+                "reason": f"DoE 요인 후보 — {verdict.reason} (조건: {cond})",
+                "evidence": {**verdict.evidence, "doe_factor_candidate": True, "condition": cond}})
+        verdicts.append(verdict)
     return verdicts or [_pass(entry, "pairwise_membership")]
+
+
+def _scope_with_unknowns(expr: str, spec: FormulationSpec, ctx) -> Dict[str, Any]:
+    import ast as _ast
+    from formula.checkers.applies_when import spec_context
+    scope = spec_context(spec, ctx if isinstance(ctx, dict) else {})
+    try:
+        names = {n.id for n in _ast.walk(_ast.parse(expr, mode="eval")) if isinstance(n, _ast.Name)}
+    except SyntaxError:
+        return scope
+    for n in names:
+        if n not in scope:
+            scope[n] = spec.measured_params.get(n) if n in spec.measured_params else None
+    return scope
 
 
 # ---------------------------------------------------------------------------

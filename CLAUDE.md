@@ -23,7 +23,7 @@ The README.md (Korean) is the authoritative design doc — update it in the same
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 192 tests — run this first when changing the core
+.venv/bin/pytest                                  # 207 tests — run this first when changing the core
 python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.json   # 07_doe static check (errors=0)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
@@ -696,3 +696,50 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
   lock modal) and overwrites any client value; `web/server.py:llm_choice` 403s `dacon` for guests. No header + empty
   BASE_PATH (local dev) = full. `/api/meta` exposes `access_role`, `llm_options`, and `llm_calls` (per-provider success
   counts — use it to prove routing).
+
+## Developer fix list 2026-09-26 (Doyoung's "개발자 수정 과제" + 데모 실행 결과 보고서)
+
+Verification: `tests/test_devfix_0926.py` (15) + `scripts/report/devfix_check.py <url> dacon 2` (T1–T4 against a live
+container; writes `docs/report/devfix_results.json`). T5/T6 are unit tests.
+
+- **Request contract (P0-1/P1-1)** — `formula/checkers/contract.py`, run by `registry.run` *before* all stages (skipped for
+  `__`-prefixed probe recipes): RC001 API exactly one `role=api` row, RC002 API amount → free base (salt tokens in the CSV row ×
+  `profile.salt_factor`) within ±0.5% of `measured_params.dose_mg` (missing dose = SOFT_FLAG "미검사", never a silent pass),
+  RC003 pinned excipients present (resolved through the excipient dictionary), RC004 LLM-added excipients labelled,
+  MAX_DAILY_DOSE from `database/05_regulatory/max_daily_dose.csv` (FDA label sentence + DailyMed set_id; matched by **parent
+  InChIKey skeleton**, not name; salt-labelled maxima converted with RDKit MolWt). Not a ninth strategy on purpose — it is an
+  input contract like STRUCT000, so "8 strategy functions" stays true. BT030/BT031 route contract failures back to GATE;
+  `_required_conflict` ignores contract verdicts (their text contains pinned names), and a *requested* dose above the label
+  max ends `infeasible` immediately (`_dose_over_label`). The generator receives the dose as a hard constraint and
+  `recipe.api_name = spec.api_name`.
+- **Desalt (P0-2)** — descriptors/ESOL now run on the parent (`compute_descriptors(parent)`); `ApiProfile.salt_form`,
+  `salt_factor`, `salt_molecular_weight`, `inchikey`. Amlodipine besylate: parent MW 408.9, TPSA 99.88, factor 1.387.
+- **Canonical name (P2-3)** — `search_api` looks up PubChem by parent SMILES (property `Title`) and Europe PMC by that name;
+  intake replaces `spec.api_name` with the title when the structure resolved (original kept in `api_name_as_parsed`).
+  PubChem now returns `ConnectivitySMILES`/`SMILES`, not `CanonicalSMILES`.
+- **Measurement submit (P0-3)** — `input_agent.run_turn` detects "name + number" for allowed keys **before** the LLM when a
+  run is open and no design verb is present (`source: rules-first`); an LLM `start_run` in that situation is overridden.
+  `POST /api/runs/{id}/measurements` takes `grade` (self_measured|literature|user_statement) + `source`; `Run.submissions`
+  records grade, closed requests and rerun scope; the response carries `phase_signals` (re-judged gates).
+- **Role map (P1-2)** — `database/06_config/excipient_role_map.csv` (sourced rows only) remaps LLM roles for rule evaluation
+  (MCC→diluent_binder FR010 20–90%, talc→talc_glidant_lubricant FR011 1–10%); an ADVISORY verdict lists the remaps.
+- **INC014 (P1-3)** — `incompatibility_1to1.csv` gained `required_conditions` / `defer_to` columns; pairwise evaluates the
+  condition with unknown names as None and `defer_to=doe_factor` turns the flag into ADVISORY "DoE 요인 후보".
+- **DHP N–H (P1-4)** — `FG_NA_CYCLIC_SEC` excludes ring amides, sulfonamides and vinylogous amides (`N-C=C-C=O`).
+  `FG_NA_NITROSATABLE` deliberately unchanged (regulatory; needs a citation to relax).
+- **Ionizable / literature BCS (P1-5)** — `formula/biopharm/structure.py` sets `ionizable` (salt-forming sites from
+  derived_screens) and `bcs_lit_*` (`literature_bcs.csv`, InChIKey-matched). **`ionizable` was referenced by G3B001, DRQ_PKA,
+  DRQ_SOLIDFORM but never set before — those rows were dead.** New G3A013–016; gate assigns accept `$var`. Keys are seeded
+  in `seed.py` (`STRUCTURE_KEYS`) or unit contexts hit the NameError trap.
+- **Judge citations (P1-6)** — `formula/agents/citations.py`: pool = spec.literature (Europe PMC hits, stored on
+  `FormulationSpec.literature`) + `database/reference/citation_registry.csv` (built by `scripts/build_citation_registry.py`,
+  every id verified via Crossref/NCBI; NCBI idconv moved to `pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/` and
+  returns pmid as int). A judge output with zero verified ids → `judge.verdict` `source: "uncited"`, score None. Judges retry
+  (2 s, 5 s) unless no credentials / daily limit. Groq streams no longer include the reasoning channel (P2-2a).
+- **PI floor (P1-7)** — `predict_point` clips `pi_lower` at 0 with `pi_lower_raw`/`pi_truncated`; studio marks `*`.
+- **Studio (P2-4e/f)** — evaluations carry `at_status`/`at_action`; `view()` sets `current`; rules panel folds past ones;
+  the agent's "막힌 규칙" uses current only. `req()` aborts after 90 s with a retry message.
+- **UI (P2-1/4a/4b/4c/4d/4g)** — `fmtAssigned` renders gate objects; cards show rank → gate badge → confidence (no
+  confidence badge on rejected cards) and sort by rank; narration text comes from the run (`aminesNote`), scenario copy no
+  longer claims who won't be summoned; `f1:runstart` locks stale agent cards. Route decisions with flow inputs are emitted as
+  phase.gate events (the flow values were always used — they just never reached the trace).

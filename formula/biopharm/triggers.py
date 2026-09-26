@@ -89,6 +89,8 @@ def _reason(trigger_id: str, ctx: Dict[str, Any], rationale: str):
         a, b = ctx.get("logs_esol"), ctx.get("logs_gse")
         if a is not None and b is not None and abs(a - b) >= 1.0:
             return "disagreement", f"두 예측 모델(ESOL {a:.2f} · GSE {b:.2f})이 {abs(a - b):.2f} log 어긋나 예측을 신뢰할 수 없음"
+        if ctx.get("bcs_source") == "ph_dependent_unmeasured":
+            return "ph_dependent", "이온화 가능한 약물 — pH 1.2·4.5·6.8에서 용해도가 달라 단일 예측으로 판정하지 않음(평형용해도 필요)"
         return "low_or_unknown", "예측 용해도가 낮거나(또는 계산 불가) — 용량을 녹일 수 있는지 실측이 필요"
     return "rule", rationale[:120]
 
