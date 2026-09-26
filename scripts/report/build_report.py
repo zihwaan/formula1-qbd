@@ -348,6 +348,11 @@ def exp_narrative(x, same, tot) -> str:
     cites = sum(r.get("judge_citations", 0) for r in runs)
     parts.append(f"심사 호출 {calls}건 중 {scored}건이 점수를 받았고, 모든 점수는 검증된 DOI·PMID 인용(총 {cites}건)을 달았다"
                  f"(인용이 없어 무효가 된 점수 {uncited}건).")
+    calls_by = x.get("llm_calls") or {}
+    if calls_by:
+        parts.append("실제로 응답한 프로바이더는 " + ", ".join(
+            f"{'대회 API' if k == 'dacon' else '무료 Groq' if k == 'groq' else k} {v}회" for k, v in calls_by.items())
+            + (" — 무료 모델로의 전환은 없었다." if not calls_by.get("groq") else " — 대회 API 한도·오류로 일부가 무료 모델로 전환됐다."))
     if tot:
         parts.append(f"8회 실행과 입력 에이전트 6개 발화에 쓰인 대회 API 토큰은 약 {tot:,}개였다(응답 헤더의 잔여 토큰 추정치 차이).")
     return "<p>" + " ".join(parts) + "</p>"
@@ -378,7 +383,8 @@ def devfix_section(fx) -> str:
                      f"‘{sub['grade_ko']}’으로 기록되어 요청 {', '.join(sub['closed_requests']) or '없음'}을 닫았다({sub['rerun_scope']}).")
     return f"""<h3>7.4 데모 결함 수정의 검증</h3>
 <p>시연 쿼리 3건을 무료 모델로 돌린 데모 실행 결과 보고서와 그 원인·수정·합격 기준을 정리한 개발자 수정 과제(14건)를 반영한 뒤, 과제 문서 §6의
-검증 계획을 {E(fx.get('llm_label') or fx.get('llm'))}로 각 {max(r['repeat'] for r in fx['results'])}회 실행했다(표 7). 수정의 핵심은 세 가지다 — (1) 모든 규칙보다 먼저
+검증 계획을 {E(fx.get('llm_label') or fx.get('llm'))}로 각 {max(r['repeat'] for r in fx['results'])}회 실행했다(표 7; 실제 응답 프로바이더
+{', '.join(f"{'대회 API' if k == 'dacon' else '무료 Groq' if k == 'groq' else k} {v}회" for k, v in (fx.get('llm_calls') or {}).items()) or '기록 없음'}). 수정의 핵심은 세 가지다 — (1) 모든 규칙보다 먼저
 후보가 요청과 맞는지 대조하는 입력 계약 검사(API 1행, 요청 용량의 유리염기 ±0.5%, 고정 부형제, FDA 라벨 1일 최대 용량), (2) 염 형태 입력의 분자 특성값을
 parent로 계산, (3) 측정값 문장을 LLM보다 먼저 규칙으로 잡아 설계를 다시 돌리지 않고 제출. {' '.join(extra)}
 T5(API 누락 후보 주입)·T6(암로디핀 50 mg 후보 주입)은 결정론 계층만의 동작이라 단위 테스트로 고정했다(RC001 · MAX_DAILY_DOSE 반려).</p>

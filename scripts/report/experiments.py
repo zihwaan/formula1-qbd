@@ -147,7 +147,9 @@ def main():
     study = call("POST", "/api/development-studies/demo/lornoxicam")
     agent = [run_agent(u, study["study_id"]) for u in UTTERANCES]
     q1 = quota()
-    out = {"llm_model": meta.get("llm_model"), "llm_provider": meta.get("llm_provider"),
+    # 실제로 응답한 프로바이더별 호출 수(새로 띄운 서버라 이 실험분만 센다) — 대회 API로 돌았는지의 증거
+    calls = call("GET", "/api/meta").get("llm_calls", {})
+    out = {"llm_model": meta.get("llm_model"), "llm_provider": meta.get("llm_provider"), "llm_calls": calls,
            "runs": runs, "agent": agent,
            "contest_tokens_used_estimate": (q0 - q1) if (q0 is not None and q1 is not None) else None}
     (ROOT / "docs" / "report").mkdir(parents=True, exist_ok=True)

@@ -160,9 +160,11 @@ def main():
     meta = call("GET", "/api/meta")
     results = [check(n, c, r + 1) for r in range(REPEAT) for n, c in CASES.items()]
     out = {"llm": LLM, "llm_label": next((o["label"] for o in meta.get("llm_options", []) if o["id"] == LLM), LLM),
+           "llm_calls": call("GET", "/api/meta").get("llm_calls", {}),   # 실제로 응답한 프로바이더별 호출 수
            "results": results}
     (ROOT / "docs" / "report" / "devfix_results.json").write_text(json.dumps(out, ensure_ascii=False, indent=1),
                                                                   encoding="utf-8")
+    print("llm_calls", out["llm_calls"])
     print("ALL PASS" if all(r["pass"] for r in results) else "SOME FAIL")
 
 
