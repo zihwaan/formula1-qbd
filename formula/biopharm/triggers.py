@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import csv as csv_mod
 from functools import lru_cache
 from pathlib import Path
@@ -103,6 +105,7 @@ def group_requests(pending: List[Dict[str, Any]], base_dir: Path,
     연구자가 건너뛴 요청(declined)은 목록에서 빠지고, 거절 시의 대체 경로만 남는다.
     """
     catalog = load_measurement_catalog(Path(base_dir))
+    fields = load_output_fields(Path(base_dir))
     declined_set = set(declined or [])
     groups: Dict[str, Dict[str, Any]] = {}
     for req in pending:
@@ -122,10 +125,18 @@ def group_requests(pending: List[Dict[str, Any]], base_dir: Path,
                                      "text": req.get("label") or req.get("why") or ""})
                 if req.get("fallback"):
                     g["fallbacks"].append(req.get("fallback"))
-            outputs = set(g["outputs"]) or set(req.get("result_keys") or [])
+            # 어느 시험이 어느 값을 내는지는 필드 정의 파일이 기준이다. 정의에 없는 키는 조용히 버리지 않고
+            # 경고를 남긴다 — 버리면 카드는 뜨는데 입력 칸이 없는 요청이 생긴다(측정값 입력 개선 요청서 과제 1).
+            allowed = {k for k, r in fields.items() if r.get("measurement_id") == mid}
+            multi = len(req.get("measurement_ids") or []) > 1
             for k in req.get("result_keys") or []:
-                if k in outputs and k not in g["result_keys"]:
+                if k in allowed and k not in g["result_keys"]:
                     g["result_keys"].append(k)
+                elif k not in allowed and not multi and k not in fields:
+                    log.warning("trigger %s result_key %s 가 %s 필드 정의에 없음", req.get("trigger_id"), k, mid)
+
+    for g in groups.values():
+        g["fields"] = [field_spec(k, fields) for k in g["result_keys"]]
 
     def tier_key(g):
         t = str(g["tier"])
@@ -133,7 +144,40 @@ def group_requests(pending: List[Dict[str, Any]], base_dir: Path,
     return sorted(groups.values(), key=tier_key)
 
 
+log = logging.getLogger(__name__)
 CATALOG_PATH = "database/reference/measurement_catalog.csv"
+FIELDS_PATH = "database/reference/measurement_output_fields.csv"
+
+
+@lru_cache(maxsize=4)
+def load_output_fields(base_dir: Path) -> Dict[str, Dict[str, str]]:
+    """측정 산출 필드의 단일 진실원 — 타입(number·bool·enum·text·json)·단위·선택지·라벨."""
+    path = Path(base_dir) / FIELDS_PATH
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        return {r["field_key"]: r for r in csv_mod.DictReader(handle) if r.get("field_key")}
+
+
+def field_spec(key: str, fields: Dict[str, Dict[str, str]]) -> Dict[str, Any]:
+    f = fields.get(key, {})
+    return {"key": key, "type": f.get("field_type") or "number", "unit": f.get("unit", ""),
+            "enum": [v for v in (f.get("enum_values") or "").split("|") if v],
+            "label": f.get("label_kr") or key, "help": f.get("help_kr", "")}
+
+
+def check_value(key: str, value: Any, fields: Dict[str, Dict[str, str]]) -> Optional[str]:
+    """필드 타입에 맞는지 — 맞으면 None, 아니면 사유. 정의 없는 키는 검사하지 않는다(기존 입력 경로)."""
+    f = fields.get(key)
+    if f is None:
+        return None
+    t = f.get("field_type") or "number"
+    ok = ((t == "number" and isinstance(value, (int, float)) and not isinstance(value, bool))
+          or (t == "bool" and isinstance(value, bool))
+          or (t == "enum" and value in (f.get("enum_values") or "").split("|"))
+          or (t == "text" and isinstance(value, str) and value.strip() != "")
+          or (t == "json" and isinstance(value, (list, dict))))
+    return None if ok else f"{key}: {t} 타입이 필요합니다 (받은 값: {value!r})"
 
 
 @lru_cache(maxsize=4)

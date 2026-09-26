@@ -23,7 +23,8 @@ The README.md (Korean) is the authoritative design doc — update it in the same
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 219 tests — run this first when changing the core
+.venv/bin/pytest                                  # 230 tests — run this first when changing the core
+python scripts/audit_conditions.py                # every CSV/manifest condition names a variable something actually sets (exit 1 on a dead name)
 python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.json   # 07_doe static check (errors=0)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
@@ -244,7 +245,8 @@ theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one ser
   rebuild it. Observed live: a QUIC-layer disconnect used to strand the user on a half-finished run.
 - Verify with a real browser, not curl: `tests/browser/verify.mjs` (33 interaction checks),
   `tests/browser/audit.mjs` (XSS injection, double-run, stand-in exposure, a11y, 9 viewport widths),
-  `tests/browser/evidence.mjs` (dual-loop regression), and `tests/browser/scenarios.mjs` (the 3 demo
+  `tests/browser/evidence.mjs` (dual-loop regression), `tests/browser/drq.mjs` (typed DRQ inputs, attachment → instrument draft → submit, 422 on a wrong type),
+  and `tests/browser/scenarios.mjs` (the 3 demo
   scenario cards actually take the path their on-screen `goal` text claims — see `tests/browser/README.md`).
 
 ### Supporting pieces
@@ -768,3 +770,32 @@ Source: `Formula1_시연쿼리카드.pdf` (3 cards: lornoxicam 8 mg dispersible 
 - **`ctx["drug_loading_pct"]`** feeds RTE008 (<5% → content-uniformity flag); FMEA rows that use `blend_time` for
   `CQA_CU_AV` carry `upstream_signals` from the Handoff verdicts (`fmea.UPSTREAM_TO_CQA`), shown as "↑" in the studio.
 - `measurement_catalog.csv` gained the output keys triggers already asked for (`test_every_trigger_result_key_is_a_catalog_output`).
+
+## Measurement input change request (2026-09-26) — typed fields, attachments, interpretation drafts
+
+Source: `measurement_input_change_request.md` (tasks 1–4). Pinned by `tests/test_measurement_fields.py`,
+`tests/test_attachments.py`, `tests/test_audit_conditions.py`.
+
+- **Field types are data**: `database/reference/measurement_output_fields.csv` (field_key, measurement_id,
+  field_type number|bool|enum|text|json, unit, enum_values, label/help, citation, verification_status) is the single
+  source. `triggers.group_requests` keeps only `result_keys` defined for that measurement (undefined → log warning, card
+  loses the input) and attaches `g["fields"]`; `app.js fieldInput()` renders by type. `check_value()` is enforced server
+  side in `POST /measurements` (422 with reasons — bool must be a JSON bool, enum must be in the list) and by the input
+  agent. Keys kept as the engine names them (`angle_of_repose`, not the md's `_deg`). `flow_character` uses the USP
+  vocabulary. The md's "dropped keys" list didn't apply here; the test instead found M_TGA with **no** inputs
+  (DRQ_SOLIDFORM/DRQ_MOISTURE now ask `weight_loss_100_150c_percent`).
+- **Attachments**: `POST /api/runs/{id}/attachments` (measurement_id + file; png/jpg/pdf/csv/txt/xy/xlsx, 20 MB, 415/413),
+  stored by sha256 under `FORMULA1_EVIDENCE_DIR` (default `/tmp/formula1/evidence` — pod restart loses them, same as
+  runs). Submissions carry `attachments: {mid: [ids]}` (unknown id → 422). **Traceability only — never read by a rule.**
+- **Interpretation drafts** (`…/attachments/{aid}/interpret`): `.xy/.csv/.txt` → `formula/analysis/instrument.py`
+  (deterministic XRPD halo / DSC onset + multiple endotherms, endo-down assumed and stated / TGA 100–150 °C loss + Td5%);
+  png/jpg → `formula/agents/vision.py` (contest API `input_image`, only that measurement's fields, type-checked; 503 when
+  the contest key is missing/exhausted — Groq has no image input, and a guest gets 403 via `llm_choice`). Drafts are
+  "미확인", only fill inputs, and set submission `source` to `instrument_draft`/`vision_draft`. Values that need more
+  conditions (ΔHf, crystalline_form_id) are not derived — `not_derived` says why.
+- **Condition-name audit**: `scripts/audit_conditions.py` parses every condition expression (gates, triggers, strategy
+  families, backtrack, reviewer registry, INC required_conditions, manifest applies_when) and checks names against what
+  is actually put into the eval context. It found manifest `applies_when` relying on property flags (`hygroscopic`,
+  `light_sensitive`, …) that only existed when intake set them — they fell to NameError = "didn't fire", which happened
+  to equal False. `applies_when.PROPERTY_FLAG_DEFAULTS` now seeds them explicitly. If you add a name, the test fails
+  until something sets it (add it to the context, `seed.py`, or `CODE_KEYS` with a reason).

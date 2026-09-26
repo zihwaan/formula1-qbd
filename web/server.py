@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -423,10 +423,12 @@ class MeasurementsRequest(BaseModel):
 
     없거나 일부만 와도 그래프는 이미 끝났으므로 즉시 재계산한다."""
 
-    measurements: Dict[str, Union[float, bool, str]] = Field(default_factory=dict, max_length=30)
+    measurements: Dict[str, Union[bool, float, str, list, dict]] = Field(default_factory=dict, max_length=30)
     # 근거 등급 — 자체 실측 / 문헌 / 사용자 진술. 트레이스에 그대로 남는다.
     grade: str = Field(default="self_measured", pattern="^(self_measured|literature|user_statement)$")
-    source: str = Field(default="form", pattern="^(form|agent)$")
+    source: str = Field(default="form", pattern="^(form|agent|vision_draft|instrument_draft)$")
+    # 원본 증거 첨부 — measurement_id → [attachment_id]. 판정에는 쓰지 않고 추적용으로 제출 기록에 남긴다.
+    attachments: Dict[str, List[str]] = Field(default_factory=dict)
 
 
 @app.post("/api/runs/{run_id}/measurements")
@@ -437,9 +439,18 @@ async def submit_measurements(run_id: str, payload: MeasurementsRequest) -> Dict
     execution = RUNS[run_id]
     if not payload.measurements:
         raise HTTPException(422, "측정값이 비어 있습니다.")
+    # 필드 정의(measurement_output_fields.csv)대로 타입을 검사한다 — bool 칸에 1, enum 칸에 오타가 들어오면 422
+    from formula.biopharm.triggers import check_value, load_output_fields
+    fields = load_output_fields(ROOT)
+    problems = [p for p in (check_value(k, v, fields) for k, v in payload.measurements.items()) if p]
+    if problems:
+        raise HTTPException(422, "; ".join(problems))
+    unknown = [a for ids in payload.attachments.values() for a in ids if a not in execution.attachments]
+    if unknown:
+        raise HTTPException(422, f"존재하지 않는 첨부: {', '.join(unknown)}")
     try:
         return await asyncio.to_thread(execution.reassess_with_measurements, payload.measurements,
-                                       payload.grade, payload.source)
+                                       payload.grade, payload.source, payload.attachments)
     except KeyError as exc:
         raise HTTPException(409, f"아직 설계가 끝나지 않았습니다: {exc}")
 
@@ -559,6 +570,80 @@ async def demo_csv() -> Dict[str, Any]:
     path = ROOT / "tests" / "fixtures" / "lornoxicam_table3.csv"
     return {"filename": path.name, "csv": path.read_text(encoding="utf-8"),
             "source": "Almotairi et al., Pharmaceuticals 2022, 15, 1463 — Table 3 (CC BY)"}
+
+# ---------------------------------------------------------------------------
+# 측정 원본 첨부 — XRPD 패턴·DSC 곡선·크로마토그램·현미경 사진을 증거로 보관한다(측정값 입력 개선 요청서 과제 2).
+# 판정은 구조화된 값으로만 한다. 파일명은 sha256으로 저장해 경로 조작·중복을 막는다.
+# ---------------------------------------------------------------------------
+EVIDENCE_DIR = Path(os.environ.get("FORMULA1_EVIDENCE_DIR", "/tmp/formula1/evidence"))
+ATTACH_ALLOWED = {".png", ".jpg", ".jpeg", ".pdf", ".csv", ".txt", ".xy", ".xlsx"}
+ATTACH_MAX_BYTES = 20 * 1024 * 1024
+
+
+@app.post("/api/runs/{run_id}/attachments")
+async def upload_attachment(run_id: str, measurement_id: str = Form(..., max_length=40),
+                            file: UploadFile = File(...)) -> Dict[str, Any]:
+    execution = RUNS.get(run_id)
+    if execution is None:
+        raise HTTPException(404, "run 없음")
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in ATTACH_ALLOWED:
+        raise HTTPException(415, f"허용 형식: {', '.join(sorted(ATTACH_ALLOWED))}")
+    data = await file.read(ATTACH_MAX_BYTES + 1)
+    if len(data) > ATTACH_MAX_BYTES:
+        raise HTTPException(413, "20 MB 초과")
+    sha = hashlib.sha256(data).hexdigest()
+    path = EVIDENCE_DIR / run_id / f"{sha}{ext}"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_bytes(data)
+    from datetime import datetime, timezone
+    meta = {"attachment_id": sha[:16], "sha256": sha, "filename": Path(file.filename or "file").name[:120],
+            "ext": ext, "size": len(data), "media_type": file.content_type or "application/octet-stream",
+            "measurement_id": measurement_id, "uploaded_at": datetime.now(timezone.utc).isoformat()}
+    execution.attachments[meta["attachment_id"]] = meta
+    return meta
+
+
+@app.get("/api/runs/{run_id}/attachments/{attachment_id}")
+async def get_attachment(run_id: str, attachment_id: str) -> FileResponse:
+    execution = RUNS.get(run_id)
+    meta = execution.attachments.get(attachment_id) if execution else None
+    if meta is None:
+        raise HTTPException(404, "첨부 없음")
+    return FileResponse(EVIDENCE_DIR / run_id / f"{meta['sha256']}{meta['ext']}",
+                        media_type=meta["media_type"], filename=meta["filename"])
+
+
+@app.post("/api/runs/{run_id}/attachments/{attachment_id}/interpret")
+async def interpret_attachment(run_id: str, attachment_id: str, request: Request) -> Dict[str, Any]:
+    """첨부 해석 초안 — 기기 원자료(.xy·.csv·.txt)는 코드로 계산하고, 이미지는 대회 API 모델이 제안한다.
+    어느 쪽이든 입력 칸을 채울 초안일 뿐 자동으로 제출하지 않는다."""
+    execution = RUNS.get(run_id)
+    meta = execution.attachments.get(attachment_id) if execution else None
+    if meta is None:
+        raise HTTPException(404, "첨부 없음")
+    data = (EVIDENCE_DIR / run_id / f"{meta['sha256']}{meta['ext']}").read_bytes()
+    from formula.biopharm.triggers import field_spec, load_output_fields
+    fields = load_output_fields(ROOT)
+    specs = [field_spec(k, fields) for k, v in fields.items() if v.get("measurement_id") == meta["measurement_id"]]
+    if meta["ext"] in (".xy", ".csv", ".txt"):
+        from formula.analysis import instrument
+        try:
+            out = await asyncio.to_thread(instrument.interpret, meta["measurement_id"], data)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+        return {**out, "attachment": meta, "field_specs": specs, "status": "미확인"}
+    if meta["ext"] in (".png", ".jpg", ".jpeg"):
+        llm_choice(request, "dacon")   # 이미지 해석은 대회 API 권한이 있는 접속만
+        from formula.agents import vision
+        try:
+            out = await asyncio.to_thread(vision.interpret_image, meta["measurement_id"], data, meta["media_type"], ROOT)
+        except llm_client.LLMUnavailable as exc:
+            raise HTTPException(503, str(exc))
+        return {**out, "attachment": meta, "field_specs": specs}
+    raise HTTPException(415, "이 형식은 원본 보관만 합니다(해석: .xy·.csv·.txt 기기 원자료 또는 .png·.jpg 이미지)")
+
 
 class DeclineRequest(BaseModel):
     trigger_ids: List[str] = Field(default_factory=list, max_length=30)

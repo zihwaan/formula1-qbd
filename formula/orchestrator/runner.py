@@ -49,6 +49,7 @@ class Run:
         self.bus = EventBus(self.run_id)
         self.declined: set = set()   # 연구자가 건너뛴 데이터 요청 trigger_id
         self.submissions: List[Dict[str, Any]] = []   # 제출된 측정값 + 근거 등급(트레이스용)
+        self.attachments: Dict[str, Dict[str, Any]] = {}   # attachment_id → 원본 파일 메타(증거 보관)
         self.final: Dict[str, Any] = {}
         self.registry = RulebookRegistry(self.base_dir / "config" / "rulebook_manifest.yaml",
                                          base_dir=self.base_dir)
@@ -155,7 +156,8 @@ class Run:
     GRADE_KO = {"self_measured": "자체 실측", "literature": "문헌", "user_statement": "사용자 진술"}
 
     def reassess_with_measurements(self, measurements: Dict[str, float], grade: str = "self_measured",
-                                   source: str = "form") -> Dict[str, Any]:
+                                   source: str = "form",
+                                   attachments: Optional[Dict[str, List[str]]] = None) -> Dict[str, Any]:
         """같은 run의 모델 선택으로 재계산한다(재설계가 필요하면 그 모델로 다시 생성).
 
         제출값은 근거 등급(자체 실측·문헌·사용자 진술)과 함께 기록한다 — 트레이스와 요약에 그대로 남는다.
@@ -168,6 +170,8 @@ class Run:
         after = {r.get("trigger_id") for r in self.final.get("pending_narrow", [])}
         entry = {"measurements": dict(measurements), "grade": grade, "grade_ko": self.GRADE_KO[grade],
                  "source": source, "closed_requests": sorted(before - after),
+                 "attachments": {mid: [self.attachments[a] for a in ids if a in self.attachments]
+                                 for mid, ids in (attachments or {}).items() if ids},
                  "rerun_scope": ("phase_gates 이후 재평가 + 전략 변경으로 후보 재생성(LLM)" if out.get("regenerated")
                                  else "phase_gates 이후 재평가만 — intake·설계 LLM 재실행 없음")}
         self.submissions.append(entry)
@@ -198,6 +202,8 @@ class Run:
                 spec.properties[str(key)] = value
             elif isinstance(value, (int, float)):
                 spec.measured_params[str(key)] = float(value)
+            elif isinstance(value, (list, dict)):
+                spec.properties[str(key)] = value          # pKa 목록·분해 경로 같은 JSON 결과
             else:
                 spec.properties[str(key)] = str(value)   # 결정형 ID 같은 문자열 결과
 

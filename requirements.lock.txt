@@ -59,3 +59,4 @@ xxhash==3.8.1
 zstandard==0.25.0
 pypdf==6.1.3
 scipy==1.18.1
+python-multipart==0.0.32

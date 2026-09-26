@@ -2,7 +2,7 @@
  "llm": "dacon",
  "llm_label": "대회 API · gpt-5.6-sol",
  "llm_calls": {
-  "dacon": 205,
+  "dacon": 271,
   "groq": 2
  },
  "answer_key": {
@@ -44,9 +44,9 @@
   {
    "case": "T1",
    "repeat": 1,
-   "run_id": "9ba7d511ff51",
+   "run_id": "29f0d19276b1",
    "status": "passed",
-   "seconds": 88.5,
+   "seconds": 83.1,
    "winner": "cand-0-MICRO",
    "final_round": 0,
    "candidates": [
@@ -63,9 +63,9 @@
       "Microcrystalline cellulose",
       "Mannitol",
       "Crospovidone",
-      "Sodium lauryl sulfate",
       "Colloidal silicon dioxide",
-      "Magnesium stearate"
+      "Magnesium stearate",
+      "Sodium lauryl sulfate"
      ],
      "passed": true,
      "fired": [
@@ -104,10 +104,6 @@
       [
        "INC014",
        "advisory"
-      ],
-      [
-       "FR004",
-       "soft_flag"
       ]
      ]
     },
@@ -180,6 +176,7 @@
       "Lornoxicam",
       "Microcrystalline cellulose",
       "Mannitol",
+      "Povidone",
       "Crospovidone",
       "Sodium lauryl sulfate",
       "Colloidal silicon dioxide",
@@ -222,6 +219,10 @@
       [
        "INC014",
        "advisory"
+      ],
+      [
+       "FR004",
+       "soft_flag"
       ]
      ]
     }
@@ -314,7 +315,7 @@
    "status_after_tm": "passed_unranked",
    "picked": "cand-reassess-CONV_DC",
    "studio": {
-    "study_id": "DS-e6625979d4",
+    "study_id": "DS-2ff1b5f917",
     "dosage_form": "dispersible_tablet",
     "steps": [
      {
@@ -428,72 +429,12 @@
   {
    "case": "T1",
    "repeat": 2,
-   "run_id": "2a590aa38a88",
+   "run_id": "8ab35acc6657",
    "status": "passed",
-   "seconds": 120.4,
+   "seconds": 104.0,
    "winner": "cand-0-MICRO",
    "final_round": 0,
    "candidates": [
-    {
-     "candidate_id": "cand-0-CONV_DG",
-     "api": [
-      [
-       "Lornoxicam",
-       8.0
-      ]
-     ],
-     "ingredients": [
-      "Lornoxicam",
-      "Microcrystalline cellulose",
-      "Mannitol",
-      "Crospovidone",
-      "Colloidal silicon dioxide",
-      "Magnesium stearate"
-     ],
-     "passed": true,
-     "fired": [
-      [
-       "RC001",
-       "pass"
-      ],
-      [
-       "RC002",
-       "pass"
-      ],
-      [
-       "MDD000",
-       "advisory"
-      ],
-      [
-       "RC003",
-       "pass"
-      ],
-      [
-       "RC004",
-       "advisory"
-      ],
-      [
-       "ROLE001",
-       "advisory"
-      ],
-      [
-       "RTE002",
-       "soft_flag"
-      ],
-      [
-       "RTE008",
-       "soft_flag"
-      ],
-      [
-       "INC014",
-       "advisory"
-      ],
-      [
-       "FR004",
-       "soft_flag"
-      ]
-     ]
-    },
     {
      "candidate_id": "cand-0-MICRO",
      "api": [
@@ -507,8 +448,8 @@
       "Microcrystalline cellulose",
       "Mannitol",
       "Crospovidone",
-      "Colloidal silicon dioxide",
       "Sodium lauryl sulfate",
+      "Colloidal silicon dioxide",
       "Magnesium stearate"
      ],
      "passed": true,
@@ -564,8 +505,73 @@
       "Microcrystalline cellulose",
       "Mannitol",
       "Crospovidone",
+      "Sodium lauryl sulfate",
       "Colloidal silicon dioxide",
       "Magnesium stearate"
+     ],
+     "passed": true,
+     "fired": [
+      [
+       "RC001",
+       "pass"
+      ],
+      [
+       "RC002",
+       "pass"
+      ],
+      [
+       "MDD000",
+       "advisory"
+      ],
+      [
+       "RC003",
+       "pass"
+      ],
+      [
+       "RC004",
+       "advisory"
+      ],
+      [
+       "ROLE001",
+       "advisory"
+      ],
+      [
+       "RTE002",
+       "soft_flag"
+      ],
+      [
+       "RTE008",
+       "soft_flag"
+      ],
+      [
+       "INC014",
+       "advisory"
+      ],
+      [
+       "FR004",
+       "soft_flag"
+      ]
+     ]
+    },
+    {
+     "candidate_id": "cand-0-CONV_DG",
+     "api": [
+      [
+       "Lornoxicam",
+       8.0
+      ]
+     ],
+     "ingredients": [
+      "Lornoxicam",
+      "Microcrystalline cellulose",
+      "Mannitol",
+      "Crospovidone",
+      "Hydroxypropyl cellulose",
+      "Sodium lauryl sulfate",
+      "Colloidal silicon dioxide",
+      "Magnesium stearate",
+      "Sucralose",
+      "Peppermint flavor"
      ],
      "passed": true,
      "fired": [
@@ -613,7 +619,8 @@
    "salt_factor": null,
    "summoned": [
     "REV002",
-    "REV003"
+    "REV003",
+    "REV005"
    ],
    "bcs_signals": [
     [
@@ -696,7 +703,7 @@
    "status_after_tm": "passed_unranked",
    "picked": "cand-reassess-CONV_DC",
    "studio": {
-    "study_id": "DS-96dcab9c2b",
+    "study_id": "DS-f6b6dcab7a",
     "dosage_form": "dispersible_tablet",
     "steps": [
      {
@@ -810,12 +817,64 @@
   {
    "case": "T1",
    "repeat": 1,
-   "run_id": "4bb8b86b61c7",
+   "run_id": "3a42de2108ad",
    "status": "passed",
-   "seconds": 87.4,
+   "seconds": 83.6,
    "winner": "cand-0-CONV_WG",
    "final_round": 0,
    "candidates": [
+    {
+     "candidate_id": "cand-0-CONV_DG",
+     "api": [
+      [
+       "Lornoxicam",
+       8.0
+      ]
+     ],
+     "ingredients": [
+      "Lornoxicam",
+      "Microcrystalline cellulose",
+      "Mannitol",
+      "Crospovidone",
+      "Sodium stearyl fumarate",
+      "Colloidal silicon dioxide"
+     ],
+     "passed": true,
+     "fired": [
+      [
+       "RC001",
+       "pass"
+      ],
+      [
+       "RC002",
+       "pass"
+      ],
+      [
+       "MDD000",
+       "advisory"
+      ],
+      [
+       "RC003",
+       "pass"
+      ],
+      [
+       "RC004",
+       "advisory"
+      ],
+      [
+       "ROLE001",
+       "advisory"
+      ],
+      [
+       "RTE008",
+       "soft_flag"
+      ],
+      [
+       "FR004",
+       "soft_flag"
+      ]
+     ]
+    },
     {
      "candidate_id": "cand-0-MICRO",
      "api": [
@@ -866,59 +925,6 @@
       [
        "INC014",
        "advisory"
-      ],
-      [
-       "FR004",
-       "soft_flag"
-      ]
-     ]
-    },
-    {
-     "candidate_id": "cand-0-CONV_DG",
-     "api": [
-      [
-       "Lornoxicam",
-       8.0
-      ]
-     ],
-     "ingredients": [
-      "Lornoxicam",
-      "Microcrystalline cellulose",
-      "Mannitol",
-      "Crospovidone",
-      "Sodium lauryl sulfate",
-      "Colloidal silicon dioxide",
-      "Sodium stearyl fumarate"
-     ],
-     "passed": true,
-     "fired": [
-      [
-       "RC001",
-       "pass"
-      ],
-      [
-       "RC002",
-       "pass"
-      ],
-      [
-       "MDD000",
-       "advisory"
-      ],
-      [
-       "RC003",
-       "pass"
-      ],
-      [
-       "RC004",
-       "advisory"
-      ],
-      [
-       "ROLE001",
-       "advisory"
-      ],
-      [
-       "RTE008",
-       "soft_flag"
       ]
      ]
     },
@@ -1043,129 +1049,12 @@
   {
    "case": "T2",
    "repeat": 1,
-   "run_id": "aa7486d6b133",
+   "run_id": "2955c682978a",
    "status": "infeasible",
-   "seconds": 42.4,
+   "seconds": 36.3,
    "winner": null,
    "final_round": 0,
    "candidates": [
-    {
-     "candidate_id": "cand-0-CONV_DG",
-     "api": [
-      [
-       "Amlodipine",
-       2.5
-      ]
-     ],
-     "ingredients": [
-      "Amlodipine",
-      "Microcrystalline cellulose",
-      "Lactose monohydrate",
-      "Crospovidone",
-      "Sodium stearyl fumarate",
-      "Colloidal silicon dioxide"
-     ],
-     "passed": false,
-     "fired": [
-      [
-       "RC001",
-       "pass"
-      ],
-      [
-       "RC002",
-       "pass"
-      ],
-      [
-       "MDD001",
-       "pass"
-      ],
-      [
-       "RC003",
-       "pass"
-      ],
-      [
-       "RC004",
-       "advisory"
-      ],
-      [
-       "ROLE001",
-       "advisory"
-      ],
-      [
-       "RTE008",
-       "soft_flag"
-      ],
-      [
-       "INC001",
-       "hard_fail"
-      ],
-      [
-       "INC007",
-       "soft_flag"
-      ]
-     ]
-    },
-    {
-     "candidate_id": "cand-0-CONV_DC",
-     "api": [
-      [
-       "Amlodipine",
-       2.5
-      ]
-     ],
-     "ingredients": [
-      "Amlodipine",
-      "Lactose monohydrate",
-      "Mannitol",
-      "Microcrystalline cellulose",
-      "Crospovidone",
-      "Colloidal silicon dioxide",
-      "Magnesium stearate"
-     ],
-     "passed": false,
-     "fired": [
-      [
-       "RC001",
-       "pass"
-      ],
-      [
-       "RC002",
-       "pass"
-      ],
-      [
-       "MDD001",
-       "pass"
-      ],
-      [
-       "RC003",
-       "pass"
-      ],
-      [
-       "RC004",
-       "advisory"
-      ],
-      [
-       "ROLE001",
-       "advisory"
-      ],
-      [
-       "RTE008",
-       "soft_flag"
-      ],
-      [
-       "INC001",
-       "hard_fail"
-      ],
-      [
-       "INC007",
-       "soft_flag"
-      ],
-      [
-       "INC014",
-       "advisory"
-      ]
-     ]
-    },
     {
      "candidate_id": "cand-0-CONV_WG",
      "api": [
@@ -1233,6 +1122,119 @@
       [
        "MC002",
        "hard_fail"
+      ]
+     ]
+    },
+    {
+     "candidate_id": "cand-0-CONV_DG",
+     "api": [
+      [
+       "Amlodipine",
+       2.5
+      ]
+     ],
+     "ingredients": [
+      "Amlodipine",
+      "Microcrystalline cellulose",
+      "Lactose monohydrate",
+      "Crospovidone",
+      "Colloidal silicon dioxide",
+      "Sodium stearyl fumarate"
+     ],
+     "passed": false,
+     "fired": [
+      [
+       "RC001",
+       "pass"
+      ],
+      [
+       "RC002",
+       "pass"
+      ],
+      [
+       "MDD001",
+       "pass"
+      ],
+      [
+       "RC003",
+       "pass"
+      ],
+      [
+       "RC004",
+       "advisory"
+      ],
+      [
+       "ROLE001",
+       "advisory"
+      ],
+      [
+       "RTE008",
+       "soft_flag"
+      ],
+      [
+       "INC001",
+       "hard_fail"
+      ],
+      [
+       "INC007",
+       "soft_flag"
+      ]
+     ]
+    },
+    {
+     "candidate_id": "cand-0-CONV_DC",
+     "api": [
+      [
+       "Amlodipine",
+       2.5
+      ]
+     ],
+     "ingredients": [
+      "Amlodipine",
+      "Microcrystalline cellulose",
+      "Lactose monohydrate",
+      "Pregelatinized starch",
+      "Croscarmellose sodium",
+      "Colloidal silicon dioxide",
+      "Sodium stearyl fumarate"
+     ],
+     "passed": false,
+     "fired": [
+      [
+       "RC001",
+       "pass"
+      ],
+      [
+       "RC002",
+       "pass"
+      ],
+      [
+       "MDD001",
+       "pass"
+      ],
+      [
+       "RC003",
+       "pass"
+      ],
+      [
+       "RC004",
+       "advisory"
+      ],
+      [
+       "ROLE001",
+       "advisory"
+      ],
+      [
+       "RTE008",
+       "soft_flag"
+      ],
+      [
+       "INC001",
+       "hard_fail"
+      ],
+      [
+       "INC007",
+       "soft_flag"
       ]
      ]
     }
@@ -1291,9 +1293,9 @@
   {
    "case": "T2",
    "repeat": 2,
-   "run_id": "db788208acf2",
+   "run_id": "cfa3195b29c8",
    "status": "infeasible",
-   "seconds": 36.3,
+   "seconds": 38.4,
    "winner": null,
    "final_round": 0,
    "candidates": [
@@ -1309,9 +1311,9 @@
       "Amlodipine",
       "Lactose monohydrate",
       "Microcrystalline cellulose",
-      "Crospovidone",
+      "Croscarmellose sodium",
       "Colloidal silicon dioxide",
-      "Sodium stearyl fumarate"
+      "Magnesium stearate"
      ],
      "passed": false,
      "fired": [
@@ -1349,6 +1351,75 @@
       ],
       [
        "INC007",
+       "soft_flag"
+      ],
+      [
+       "INC014",
+       "advisory"
+      ]
+     ]
+    },
+    {
+     "candidate_id": "cand-0-CONV_DG",
+     "api": [
+      [
+       "Amlodipine",
+       2.5
+      ]
+     ],
+     "ingredients": [
+      "Amlodipine",
+      "Lactose monohydrate",
+      "Microcrystalline cellulose",
+      "Crospovidone",
+      "Hydroxypropyl cellulose",
+      "Colloidal silicon dioxide",
+      "Magnesium stearate"
+     ],
+     "passed": false,
+     "fired": [
+      [
+       "RC001",
+       "pass"
+      ],
+      [
+       "RC002",
+       "pass"
+      ],
+      [
+       "MDD001",
+       "pass"
+      ],
+      [
+       "RC003",
+       "pass"
+      ],
+      [
+       "RC004",
+       "advisory"
+      ],
+      [
+       "ROLE001",
+       "advisory"
+      ],
+      [
+       "RTE008",
+       "soft_flag"
+      ],
+      [
+       "INC001",
+       "hard_fail"
+      ],
+      [
+       "INC007",
+       "soft_flag"
+      ],
+      [
+       "INC014",
+       "advisory"
+      ],
+      [
+       "FR002",
        "soft_flag"
       ]
      ]
@@ -1422,63 +1493,6 @@
        "hard_fail"
       ]
      ]
-    },
-    {
-     "candidate_id": "cand-0-CONV_DG",
-     "api": [
-      [
-       "Amlodipine",
-       2.5
-      ]
-     ],
-     "ingredients": [
-      "Amlodipine",
-      "Microcrystalline cellulose",
-      "Lactose monohydrate",
-      "Hydroxypropyl cellulose",
-      "Croscarmellose sodium",
-      "Colloidal silicon dioxide",
-      "Sodium stearyl fumarate"
-     ],
-     "passed": false,
-     "fired": [
-      [
-       "RC001",
-       "pass"
-      ],
-      [
-       "RC002",
-       "pass"
-      ],
-      [
-       "MDD001",
-       "pass"
-      ],
-      [
-       "RC003",
-       "pass"
-      ],
-      [
-       "RC004",
-       "advisory"
-      ],
-      [
-       "ROLE001",
-       "advisory"
-      ],
-      [
-       "RTE008",
-       "soft_flag"
-      ],
-      [
-       "INC001",
-       "hard_fail"
-      ],
-      [
-       "INC007",
-       "soft_flag"
-      ]
-     ]
     }
    ],
    "parent_mw": 408.88200000000006,
@@ -1496,6 +1510,7 @@
    ],
    "route_signals": [],
    "fired_any": [
+    "FR002",
     "INC001",
     "INC007",
     "INC014",
@@ -1535,62 +1550,12 @@
   {
    "case": "T3",
    "repeat": 1,
-   "run_id": "175bfcf3b327",
+   "run_id": "6f27573f100b",
    "status": "passed",
-   "seconds": 118.8,
-   "winner": "cand-0-CONV_WG",
+   "seconds": 91.0,
+   "winner": "cand-0-CONV_DC",
    "final_round": 0,
    "candidates": [
-    {
-     "candidate_id": "cand-0-CONV_WG",
-     "api": [
-      [
-       "Amlodipine",
-       2.5
-      ]
-     ],
-     "ingredients": [
-      "Amlodipine",
-      "Microcrystalline cellulose",
-      "Mannitol",
-      "Povidone K30",
-      "Crospovidone",
-      "Sodium lauryl sulfate",
-      "Colloidal silicon dioxide",
-      "Magnesium stearate"
-     ],
-     "passed": true,
-     "fired": [
-      [
-       "RC001",
-       "pass"
-      ],
-      [
-       "RC002",
-       "pass"
-      ],
-      [
-       "MDD001",
-       "pass"
-      ],
-      [
-       "ROLE001",
-       "advisory"
-      ],
-      [
-       "RTE008",
-       "soft_flag"
-      ],
-      [
-       "INC007",
-       "soft_flag"
-      ],
-      [
-       "INC014",
-       "advisory"
-      ]
-     ]
-    },
     {
      "candidate_id": "cand-0-CONV_DC",
      "api": [
@@ -1640,7 +1605,7 @@
      ]
     },
     {
-     "candidate_id": "cand-0-CONV_DG",
+     "candidate_id": "cand-0-CONV_WG",
      "api": [
       [
        "Amlodipine",
@@ -1650,11 +1615,11 @@
      "ingredients": [
       "Amlodipine",
       "Microcrystalline cellulose",
-      "Dibasic calcium phosphate anhydrous",
-      "Hydroxypropyl cellulose",
-      "Sodium starch glycolate",
+      "Hypromellose",
+      "Crospovidone",
+      "Sodium lauryl sulfate",
       "Colloidal silicon dioxide",
-      "Magnesium stearate"
+      "Sodium stearyl fumarate"
      ],
      "passed": true,
      "fired": [
@@ -1681,10 +1646,50 @@
       [
        "INC007",
        "soft_flag"
+      ]
+     ]
+    },
+    {
+     "candidate_id": "cand-0-CONV_DG",
+     "api": [
+      [
+       "Amlodipine",
+       2.5
+      ]
+     ],
+     "ingredients": [
+      "Amlodipine",
+      "Microcrystalline cellulose",
+      "Mannitol",
+      "Crospovidone",
+      "Colloidal silicon dioxide",
+      "Sodium stearyl fumarate"
+     ],
+     "passed": true,
+     "fired": [
+      [
+       "RC001",
+       "pass"
       ],
       [
-       "INC014",
+       "RC002",
+       "pass"
+      ],
+      [
+       "MDD001",
+       "pass"
+      ],
+      [
+       "ROLE001",
        "advisory"
+      ],
+      [
+       "RTE008",
+       "soft_flag"
+      ],
+      [
+       "INC007",
+       "soft_flag"
       ]
      ]
     }
@@ -1748,14 +1753,14 @@
   {
    "case": "T3",
    "repeat": 2,
-   "run_id": "f545517974e8",
+   "run_id": "2e3723b4a980",
    "status": "passed",
-   "seconds": 93.5,
-   "winner": "cand-0-CONV_DC",
+   "seconds": 85.0,
+   "winner": "cand-0-CONV_WG",
    "final_round": 0,
    "candidates": [
     {
-     "candidate_id": "cand-0-CONV_WG",
+     "candidate_id": "cand-0-CONV_DC",
      "api": [
       [
        "Amlodipine",
@@ -1765,9 +1770,7 @@
      "ingredients": [
       "Amlodipine",
       "Microcrystalline cellulose",
-      "Povidone K30",
-      "Crospovidone",
-      "Sodium lauryl sulfate",
+      "Croscarmellose sodium",
       "Colloidal silicon dioxide",
       "Magnesium stearate"
      ],
@@ -1802,13 +1805,13 @@
        "advisory"
       ],
       [
-       "FR004",
+       "FR010",
        "soft_flag"
       ]
      ]
     },
     {
-     "candidate_id": "cand-0-CONV_DC",
+     "candidate_id": "cand-0-CONV_WG",
      "api": [
       [
        "Amlodipine",
@@ -1818,7 +1821,9 @@
      "ingredients": [
       "Amlodipine",
       "Microcrystalline cellulose",
-      "Crospovidone",
+      "Hypromellose",
+      "Croscarmellose sodium",
+      "Poloxamer 188",
       "Colloidal silicon dioxide",
       "Sodium stearyl fumarate"
      ],
@@ -1847,10 +1852,6 @@
       [
        "INC007",
        "soft_flag"
-      ],
-      [
-       "FR010",
-       "soft_flag"
       ]
      ]
     },
@@ -1864,11 +1865,11 @@
      ],
      "ingredients": [
       "Amlodipine",
-      "Microcrystalline cellulose",
-      "Mannitol",
-      "Croscarmellose sodium",
-      "Sodium stearyl fumarate",
-      "Colloidal silicon dioxide"
+      "Microcrystalline Cellulose",
+      "Dibasic Calcium Phosphate Anhydrous",
+      "Crospovidone",
+      "Sodium Stearyl Fumarate",
+      "Colloidal Silicon Dioxide"
      ],
      "passed": true,
      "fired": [
@@ -1917,7 +1918,6 @@
    ],
    "route_signals": [],
    "fired_any": [
-    "FR004",
     "FR010",
     "INC007",
     "INC014",
@@ -1960,9 +1960,9 @@
   {
    "case": "T4",
    "repeat": 1,
-   "run_id": "58a6fb408120",
+   "run_id": "b0c58ddf69ab",
    "status": "passed",
-   "seconds": 84.2,
+   "seconds": 108.8,
    "winner": "cand-0-MICRO",
    "final_round": 0,
    "candidates": [
@@ -2021,12 +2021,12 @@
      "ingredients": [
       "VX-770",
       "Microcrystalline cellulose",
-      "Mannitol",
-      "Povidone K30",
+      "Hydroxypropyl cellulose",
       "Croscarmellose sodium",
       "Sodium lauryl sulfate",
       "Colloidal silicon dioxide",
-      "Magnesium stearate"
+      "Magnesium stearate",
+      "Hypromellose"
      ],
      "passed": true,
      "fired": [
@@ -2066,9 +2066,8 @@
      ],
      "ingredients": [
       "VX-770",
-      "Microcrystalline cellulose",
-      "Povidone",
-      "Crospovidone",
+      "Microcrystalline cellulose PH 102",
+      "Croscarmellose sodium",
       "Sodium lauryl sulfate",
       "Colloidal silicon dioxide",
       "Magnesium stearate"
@@ -2088,10 +2087,6 @@
        "pass"
       ],
       [
-       "ROLE001",
-       "advisory"
-      ],
-      [
        "RO5_LOGP_02",
        "soft_flag"
       ],
@@ -2107,7 +2102,8 @@
    "salt_factor": null,
    "summoned": [
     "REV002",
-    "REV003"
+    "REV003",
+    "REV005"
    ],
    "bcs_signals": [
     [
@@ -2152,6 +2148,7 @@
      "DRQ_SOL",
      "DRQ_TM"
     ],
+    "attachments": {},
     "rerun_scope": "phase_gates 이후 재평가 + 전략 변경으로 후보 재생성(LLM)"
    },
    "phase_signals_after": [
@@ -2252,12 +2249,57 @@
   {
    "case": "T4",
    "repeat": 2,
-   "run_id": "de40ee6f44ad",
+   "run_id": "2aeb1837f8ed",
    "status": "passed",
-   "seconds": 101.2,
-   "winner": "cand-0-MICRO",
+   "seconds": 79.8,
+   "winner": "cand-0-CONV_DC",
    "final_round": 0,
    "candidates": [
+    {
+     "candidate_id": "cand-0-CONV_DG",
+     "api": [
+      [
+       "VX-770",
+       150.0
+      ]
+     ],
+     "ingredients": [
+      "VX-770",
+      "Microcrystalline cellulose",
+      "Mannitol",
+      "Croscarmellose sodium",
+      "Sodium lauryl sulfate",
+      "Colloidal silicon dioxide",
+      "Magnesium stearate"
+     ],
+     "passed": true,
+     "fired": [
+      [
+       "RC001",
+       "pass"
+      ],
+      [
+       "RC002",
+       "pass"
+      ],
+      [
+       "MDD004",
+       "pass"
+      ],
+      [
+       "ROLE001",
+       "advisory"
+      ],
+      [
+       "RO5_LOGP_02",
+       "soft_flag"
+      ],
+      [
+       "INC014",
+       "advisory"
+      ]
+     ]
+    },
     {
      "candidate_id": "cand-0-CONV_DC",
      "api": [
@@ -2269,7 +2311,7 @@
      "ingredients": [
       "VX-770",
       "Microcrystalline cellulose",
-      "Croscarmellose sodium",
+      "Crospovidone",
       "Sodium lauryl sulfate",
       "Colloidal silicon dioxide",
       "Magnesium stearate"
@@ -2343,56 +2385,6 @@
       [
        "INC014",
        "advisory"
-      ],
-      [
-       "FR004",
-       "soft_flag"
-      ]
-     ]
-    },
-    {
-     "candidate_id": "cand-0-CONV_DG",
-     "api": [
-      [
-       "VX-770",
-       150.0
-      ]
-     ],
-     "ingredients": [
-      "VX-770",
-      "Microcrystalline cellulose",
-      "Anhydrous dibasic calcium phosphate",
-      "Povidone K30",
-      "Crospovidone",
-      "Sodium lauryl sulfate",
-      "Colloidal silicon dioxide",
-      "Magnesium stearate"
-     ],
-     "passed": true,
-     "fired": [
-      [
-       "RC001",
-       "pass"
-      ],
-      [
-       "RC002",
-       "pass"
-      ],
-      [
-       "MDD004",
-       "pass"
-      ],
-      [
-       "ROLE001",
-       "advisory"
-      ],
-      [
-       "RO5_LOGP_02",
-       "soft_flag"
-      ],
-      [
-       "INC014",
-       "advisory"
       ]
      ]
     }
@@ -2415,7 +2407,6 @@
    ],
    "route_signals": [],
    "fired_any": [
-    "FR004",
     "INC014",
     "MDD004",
     "RC001",
@@ -2448,6 +2439,7 @@
      "DRQ_SOL",
      "DRQ_TM"
     ],
+    "attachments": {},
     "rerun_scope": "phase_gates 이후 재평가 + 전략 변경으로 후보 재생성(LLM)"
    },
    "phase_signals_after": [

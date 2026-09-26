@@ -721,6 +721,105 @@ window.F1LLM = { get: () => llmChoice, set: (id) => setLlm(id), meta: () => llmM
 
    Tier가 낮은(적은 시료로 되는) 요청부터 보여주고, 값을 넣으면 그래프를 다시 돌리지
    않고 /api/runs/{id}/measurements가 그 자리에서 재계산한다. */
+// 필드 타입별 입력 칸 — 참/거짓은 체크박스 대신 3상태(미입력·예·아니오): 안 체크가 "아니오"인지 "아직 안 넣음"인지 구분된다
+function fieldInput(f) {
+  const attrs = `data-key="${esc(f.key)}" data-type="${esc(f.type)}"`;
+  if (f.type === "bool") return `<select ${attrs}><option value="">미입력</option>
+      <option value="true">예</option><option value="false">아니오</option></select>`;
+  if (f.type === "enum") return `<select ${attrs}><option value="">미입력</option>
+      ${(f.enum || []).map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("")}</select>`;
+  if (f.type === "json") return `<textarea ${attrs} rows="2" placeholder="${esc(f.help || "JSON")}"></textarea>`;
+  if (f.type === "text") return `<input type="text" ${attrs} placeholder="${esc(f.help || "값")}">`;
+  return `<input type="number" step="any" ${attrs} placeholder="값">`;
+}
+
+const attachmentsByMid = {};   // measurement_id → [attachment_id] (이번 제출에 실을 원본)
+let draftSource = "form";      // 첨부 해석 창으로 채운 값이면 "vision_draft"
+
+async function uploadAttachment(mid, file) {
+  if (file.size > 20 * 1024 * 1024) { notice("20 MB를 넘는 파일은 올릴 수 없습니다.", "warn"); return null; }
+  const fd = new FormData();
+  fd.append("measurement_id", mid);
+  fd.append("file", file);
+  try {
+    const res = await fetch(api(`/api/runs/${runId}/attachments`), { method: "POST", body: fd });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof out.detail === "string" ? out.detail : `첨부 실패 (${res.status})`);
+    return out;
+  } catch (err) { notice(err.message, "error"); return null; }
+}
+
+function attachmentUrl(a) { return api(`/api/runs/${runId}/attachments/${a.attachment_id}`); }
+
+function renderAttachList(root, mid, a) {
+  const ul = root.querySelector(`.drq-files[data-mid="${mid}"]`);
+  if (!ul || ul.querySelector(`[data-att="${a.attachment_id}"]`)) return;
+  const li = document.createElement("li");
+  li.dataset.att = a.attachment_id;
+  const isImg = /\.(png|jpe?g)$/i.test(a.ext);
+  li.innerHTML = `${isImg ? `<img src="${esc(attachmentUrl(a))}" alt="${esc(a.filename)}">` : ""}
+    <a href="${esc(attachmentUrl(a))}" target="_blank" rel="noopener">${esc(a.filename)}</a>
+    <small>${Math.ceil(a.size / 1024)} KB · sha256 ${esc(a.sha256.slice(0, 10))}…</small>
+    <button type="button" class="ghost drq-interpret" data-att="${esc(a.attachment_id)}" data-mid="${esc(mid)}">에이전트 해석</button>`;
+  ul.appendChild(li);
+  li.querySelector(".drq-interpret").onclick = () => openInterpretation(mid, a);
+}
+
+// 첨부 해석 창 — 왼쪽 원본, 오른쪽 필드별 제안값(수정 가능)·근거·"미확인". 확정하면 카드 입력 칸만 채운다(자동 제출 없음)
+async function openInterpretation(mid, a) {
+  let out;
+  try {
+    const res = await fetch(api(`/api/runs/${runId}/attachments/${a.attachment_id}/interpret`), {
+      method: "POST", headers: { "X-F1-LLM": (window.F1LLM && window.F1LLM.get()) || "groq" } });
+    out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof out.detail === "string" ? out.detail : `해석 실패 (${res.status})`);
+  } catch (err) { notice(err.message, "warn", true); return; }
+  const wrap = document.createElement("div");
+  wrap.className = "interp-overlay";
+  const specs = out.field_specs || [];   // 그 측정의 필드 전부 — 초안이 없는 칸은 비워 두고 이유(not_derived)를 단다
+  const isImg = /\.(png|jpe?g)$/i.test(a.ext);
+  wrap.innerHTML = `<div class="interp-card" role="dialog" aria-label="첨부 해석">
+    <header><b>첨부 해석 초안</b> <span class="drq-kind">${out.method === "vision_draft" ? `이미지 · ${esc(out.model || "")}` : "기기 원자료 · 코드 계산"}</span>
+      <span class="interp-status">미확인</span><button type="button" class="interp-close" aria-label="닫기">✕</button></header>
+    <div class="interp-body">
+      <div class="interp-src">${isImg ? `<img src="${esc(attachmentUrl(a))}" alt="${esc(a.filename)}">`
+        : `<a href="${esc(attachmentUrl(a))}" target="_blank" rel="noopener">${esc(a.filename)}</a>
+           <pre>${esc(JSON.stringify(out.evidence || {}, null, 1)).slice(0, 1200)}</pre>`}</div>
+      <div class="interp-fields">${specs.map((f) => {
+        const v = (out.fields || {})[f.key];
+        const why = (out.rationale || {})[f.key] || (out.not_derived || {})[f.key] || "";
+        return `<label class="drq-num">${esc(f.label)}${f.unit ? ` <small>${esc(f.unit)}</small>` : ""} ${fieldInput(f)}
+          ${why ? `<small class="interp-why">${esc(why)}</small>` : ""}</label>`;
+      }).join("")}
+        ${out.notes ? `<p class="interp-why">${esc(out.notes)}</p>` : ""}
+        ${out.evidence && out.evidence.assumption ? `<p class="interp-why">가정: ${esc(out.evidence.assumption)}</p>` : ""}
+      </div>
+    </div>
+    <footer><button type="button" class="interp-apply primary">확정해서 입력 칸에 넣기</button>
+      <small>입력 칸만 채웁니다 — 제출은 카드의 [값 제출]로 연구자가 합니다.</small></footer></div>`;
+  document.body.appendChild(wrap);
+  // 제안값 채우기
+  for (const [k, v] of Object.entries(out.fields || {})) {
+    const el = wrap.querySelector(`[data-key="${CSS.escape(k)}"]`);
+    if (el) el.value = typeof v === "object" ? JSON.stringify(v) : String(v);
+  }
+  const close = () => wrap.remove();
+  wrap.querySelector(".interp-close").onclick = close;
+  wrap.addEventListener("click", (e) => { if (e.target === wrap) close(); });
+  wrap.querySelector(".interp-apply").onclick = () => {
+    const card = document.querySelector(`#drq-body .drq-req[data-mid="${CSS.escape(mid)}"]`);
+    let filled = 0;
+    wrap.querySelectorAll(".interp-fields [data-key]").forEach((src) => {
+      if (src.value === "") return;
+      const dst = (card || document).querySelector(`[data-key="${CSS.escape(src.dataset.key)}"]`);
+      if (dst) { dst.value = src.value; filled += 1; }
+    });
+    draftSource = out.method === "vision_draft" ? "vision_draft" : "instrument_draft";
+    notice(`첨부 해석 초안 ${filled}개 값을 입력 칸에 넣었습니다 — 확인 후 [값 제출]을 누르세요.`, "info");
+    close();
+  };
+}
+
 function renderDataRequests(requests, planSignature, groups) {
   pendingRequests = requests || [];
   const panel = $("drq");
@@ -734,17 +833,18 @@ function renderDataRequests(requests, planSignature, groups) {
   }
   panel.hidden = false;
   const kindTag = (k) => k === "disagreement" ? "예측 간 불일치" : k === "low_or_unknown" ? "예측이 낮거나 모름" : k === "ph_dependent" ? "pH 의존(이온화)" : "";
-  const textKey = (k) => /(_id|_json|_class)$/.test(k);
-  // 예/아니오로 답하는 결과(열안정성·실현성 확인·잔사 결정형 확인 등)
-  const boolKey = (k) => /(_done|_confirmed|_miscible|_stable_near_tm|multiple_endotherms|is_amorphous_halo)$/.test(k);
+  // 입력 칸의 타입은 서버가 필드 정의 파일(measurement_output_fields.csv)에서 실어 보낸다 — 이름으로 추측하지 않는다
+  const fieldsOf = (g) => (g.fields && g.fields.length) ? g.fields
+    : g.result_keys.map((k) => ({ key: k, type: "number", label: k, unit: "", enum: [], help: "" }));
   body.innerHTML = list.map((g) => `<div class="drq-req" data-mid="${esc(g.measurement_id)}">
       <b><span class="tier">Tier ${esc(g.tier)} · ~${esc(g.sample_mg)} mg</span>${esc(g.name)}</b>
       ${g.reasons.map((r) => `<div class="why">${kindTag(r.kind) ? `<span class="drq-kind">${esc(kindTag(r.kind))}</span> ` : ""}${esc(r.text)} <code>${esc(r.trigger_id)}</code></div>`).join("")}
-      ${g.result_keys.length ? `<div class="measures">${g.result_keys.map((k) => boolKey(k)
-        ? `<label class="drq-num">${esc(k)} <select data-key="${esc(k)}" data-bool="1"><option value="">—</option>
-            <option value="true">예</option><option value="false">아니오</option></select></label>`
-        : `<label class="drq-num">${esc(k)}
-        <input ${textKey(k) ? 'type="text"' : 'type="number" step="any"'} data-key="${esc(k)}" placeholder="값"></label>`).join("")}</div>` : ""}
+      ${fieldsOf(g).length ? `<div class="measures">${fieldsOf(g).map((f) => `<label class="drq-num">${esc(f.label)}${f.unit ? ` <small>${esc(f.unit)}</small>` : ""}
+        ${fieldInput(f)}</label>`).join("")}</div>` : ""}
+      <div class="drq-attach">
+        <label class="drq-file">원본 첨부(선택) <input type="file" accept=".png,.jpg,.jpeg,.pdf,.csv,.txt,.xy,.xlsx" data-mid="${esc(g.measurement_id)}"></label>
+        <ul class="drq-files" data-mid="${esc(g.measurement_id)}"></ul>
+      </div>
       <div class="drq-row-actions"><button type="button" class="ghost drq-decline" data-triggers="${esc(g.triggers.join(","))}">이 시험 건너뛰기</button>
         ${g.fallbacks.length ? `<span class="drq-fallback">건너뛰면: ${esc(g.fallbacks[0])}</span>` : ""}</div>
     </div>`).join("") + `
@@ -774,19 +874,38 @@ function renderDataRequests(requests, planSignature, groups) {
     b.onclick = () => decline(b.dataset.triggers.split(",").filter(Boolean));
   });
 
+  // 원본 첨부 — 고르는 즉시 올리고 attachment_id를 카드에 보관한다(판정에는 쓰지 않는 증거)
+  body.querySelectorAll('.drq-attach input[type="file"]').forEach((inp) => {
+    inp.onchange = async () => {
+      const file = inp.files && inp.files[0];
+      if (!file) return;
+      const out = await uploadAttachment(inp.dataset.mid, file);
+      inp.value = "";
+      if (!out) return;
+      attachmentsByMid[inp.dataset.mid] = [...new Set([...(attachmentsByMid[inp.dataset.mid] || []), out.attachment_id])];
+      renderAttachList(body, inp.dataset.mid, out);
+    };
+  });
+
   $("drq-submit").onclick = async () => {
-    const inputs = [...body.querySelectorAll("input[data-key], select[data-key]")];
     const measurements = {};
-    for (const el of inputs) {
+    for (const el of body.querySelectorAll("[data-key]")) {
       const v = el.value.trim();
       if (v === "") continue;
-      measurements[el.dataset.key] = el.dataset.bool ? v === "true" : el.type === "number" ? Number(v) : v;
+      const t = el.dataset.type;
+      if (t === "number") measurements[el.dataset.key] = Number(v);
+      else if (t === "bool") measurements[el.dataset.key] = v === "true";
+      else if (t === "json") {
+        try { measurements[el.dataset.key] = JSON.parse(v); }
+        catch (e) { notice(`${el.dataset.key}: JSON 형식이 아닙니다.`, "warn"); return; }
+      } else measurements[el.dataset.key] = v;
     }
     if (!Object.keys(measurements).length) {
       notice("최소 한 항목에 값을 입력해 주세요.", "warn");
       return;
     }
-    await submitMeasurements(measurements, $("drq-grade") ? $("drq-grade").value : "self_measured", "form");
+    await submitMeasurements(measurements, $("drq-grade") ? $("drq-grade").value : "self_measured", "form",
+      { ...attachmentsByMid }, draftSource);
   };
   $("drq-skip").onclick = () => decline(list.flatMap((g) => g.triggers));
 }
@@ -801,13 +920,13 @@ function fmtAssigned(a) {
   return Object.entries(a).map(([k, v]) => `${k}=${Array.isArray(v) ? v.join("|") : v}`).join(" · ");
 }
 
-async function submitMeasurements(measurements, grade = "self_measured", source = "form") {
+async function submitMeasurements(measurements, grade = "self_measured", source = "form", attachments = {}, draft = "form") {
   const btn = $("drq-submit");
   if (btn) { btn.disabled = true; btn.textContent = "재계산 중…"; }
   try {
     const res = await fetch(api(`/api/runs/${runId}/measurements`), {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ measurements, grade, source }),
+      body: JSON.stringify({ measurements, grade, source: draft !== "form" ? draft : source, attachments }),
     });
     if (!res.ok) {
       const detail = await res.json().catch(() => ({}));
@@ -835,6 +954,14 @@ async function submitMeasurements(measurements, grade = "self_measured", source 
         <span class="nr-why">왜 중요한가: 그래프를 처음부터 다시 돌리지 않았습니다 —
         결정론 계층만 재계산했으므로 몇 초 안에 끝납니다.</span>`,
     });
+    Object.keys(attachmentsByMid).forEach((k) => delete attachmentsByMid[k]);
+    draftSource = "form";
+    const atts = Object.values((out.submission || {}).attachments || {}).flat();
+    if (atts.length) {
+      narrate("drq-attach", { layer: "증거 보관", kind: "det", once: false, title: "제출 기록에 원본을 붙였다",
+        body: atts.map((a) => `<a href="${esc(attachmentUrl(a))}" target="_blank" rel="noopener">${esc(a.filename)}</a> <small>sha256 ${esc(a.sha256.slice(0, 12))}…</small>`).join("<br>")
+          + `<span class="nr-why">왜 중요한가: 판정은 구조화된 값으로만 하되, 그 값의 원본을 나중에 다시 열어 확인할 수 있어야 합니다.</span>` });
+    }
     const summary = out.summary || {};
     renderDataRequests(out.pending_requests || [], out.plan_signature || "", summary.request_groups || []);
     if (!$("drq-out")) {

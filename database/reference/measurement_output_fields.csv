@@ -1,0 +1,48 @@
+field_key,measurement_id,field_type,unit,enum_values,label_kr,help_kr,source_citation,verification_status
+crystalline_form_id,M_XRPD,text,,,결정형 ID,예: Form I. 패턴 비교로 판정,Aulton's Pharmaceutics 6th ed.,TO_VERIFY
+is_amorphous_halo,M_XRPD,bool,,,비정질 halo 관찰,,Aulton's Pharmaceutics 6th ed.,TO_VERIFY
+solubility_residue_form_confirmed,M_XRPD,bool,,,용해도 잔사 결정형 동일,,,TO_VERIFY
+tm_c,M_DSC,number,°C,,녹는점(onset),,,TO_VERIFY
+delta_hf_j_g,M_DSC,number,J/g,,융해열,,,TO_VERIFY
+multiple_endotherms,M_DSC,bool,,,다중 흡열 관찰,,,TO_VERIFY
+thermally_stable_near_tm,M_DSC,bool,,,Tm 부근 열안정,,,TO_VERIFY
+weight_loss_100_150c_percent,M_TGA,number,%,,100–150 °C 무게 감소,,,TO_VERIFY
+decomposition_onset_c,M_TGA,number,°C,,분해 시작 온도,,,TO_VERIFY
+water_content_percent,M_KF,number,% w/w,,수분,,,TO_VERIFY
+hygroscopicity_class,M_DVS,enum,,non_hygroscopic|slightly|hygroscopic|very|deliquescent,흡습성 등급,Ph. Eur. 5.11 분류,Ph. Eur. 5.11,TO_VERIFY
+moisture_uptake_percent_80rh,M_DVS,number,%,,80% RH 흡습량,,,TO_VERIFY
+dvs_hysteresis,M_DVS,bool,,,흡탈착 이력 관찰,,,TO_VERIFY
+pka_values_json,M_PKA,json,,,pKa 목록,"예: [{""pka"":4.7,""type"":""acid""}]",,TO_VERIFY
+api_pka_base,M_PKA,number,,,염기성 pKa,,,TO_VERIFY
+logp_measured,M_LOGPD,number,,,logP,,,TO_VERIFY
+logd74_measured,M_LOGPD,number,,,logD 7.4,,,TO_VERIFY
+solubility_mg_per_ml,M_EQSOL,number,mg/mL,,최저 평형용해도 (pH 1.2–6.8),,,TO_VERIFY
+solubility_fassif_mg_per_ml,M_EQSOL,number,mg/mL,,FaSSIF 용해도,,,TO_VERIFY
+peff_human_cm_s,M_PERM,number,cm/s,,인체 Peff 환산값,,,TO_VERIFY
+idr_mg_min_cm2,M_IDR,number,mg/min/cm²,,고유용출속도,,,TO_VERIFY
+forced_degradation_done,M_FORCED,bool,,,강제분해 수행,,,TO_VERIFY
+degradation_pathways_json,M_FORCED,json,,,분해 경로,"예: [""hydrolysis"",""oxidation""]",,TO_VERIFY
+polymorph_count,M_POLYSCR,number,,,확인된 결정형 수,,,TO_VERIFY
+most_stable_form_id,M_POLYSCR,text,,,가장 안정한 결정형,,,TO_VERIFY
+gfa_class,M_GFA,enum,,I|II|III,유리형성능 등급,Baird 2010 분류,"Baird, Van Eerdenbrugh, Taylor 2010",TO_VERIFY
+psd_d50_um,M_PSD,number,µm,,d50,,,TO_VERIFY
+psd_d90_um,M_PSD,number,µm,,d90,,,TO_VERIFY
+psd_dissolution_done,M_PSD,bool,,,입도 영향 용출 확인,,,TO_VERIFY
+particle_habit,M_PSD,enum,,needle|plate|prism|spherical|irregular|agglomerate,입자 모양(현미경),현미경 사진 첨부 권장,,TO_VERIFY
+psd_modality,M_PSD,enum,,unimodal|bimodal|multimodal,분포 봉 수,,,TO_VERIFY
+angle_of_repose,M_PFLOW,number,°,,안식각,,USP <1174>,TO_VERIFY
+compressibility_index,M_PFLOW,number,%,,Carr 지수,,USP <1174>,TO_VERIFY
+hausner_ratio,M_PFLOW,number,,,Hausner 비,,USP <1174>,TO_VERIFY
+flow_character,M_PFLOW,enum,,"Excellent|Good|Fair|Passable|Poor|Very poor|Very, very poor",유동성 등급,USP <1174> Table 2 (powder_flow_scale.csv와 같은 어휘),USP <1174>,TO_VERIFY
+tensile_strength_mpa_at_target_pressure,M_COMPACT,number,MPa,,목표 압력 인장강도,,,TO_VERIFY
+salt_screen_done,M_SALT_SCREEN,bool,,,염 스크리닝 수행,,,TO_VERIFY
+selected_counterion,M_SALT_SCREEN,text,,,선정 반대이온,"예: HCl, mesylate",,TO_VERIFY
+asd_feasibility_done,M_ASD_FEAS,bool,,,ASD 실현성 확인,,,TO_VERIFY
+asd_miscible,M_ASD_FEAS,bool,,,API–고분자 혼화,,,TO_VERIFY
+supersaturation_auc,M_ASD_FEAS,number,,,과포화 AUC,,,TO_VERIFY
+sedds_feasibility_done,M_SEDDS_FEAS,bool,,,SEDDS 실현성 확인,,,TO_VERIFY
+droplet_size_nm,M_SEDDS_FEAS,number,nm,,액적 크기,,,TO_VERIFY
+sedds_emulsification_grade,M_SEDDS_FEAS,enum,,A|B|C|D|E,자가유화 육안 등급,Khoo 1998 A–E 등급,Khoo et al. 1998,TO_VERIFY
+cd_feasibility_done,M_CD_FEAS,bool,,,CD 포접 확인,,,TO_VERIFY
+k11_m_inv,M_CD_FEAS,number,M⁻¹,,1:1 복합체 상수,,,TO_VERIFY
+cd_phase_solubility_type,M_CD_FEAS,enum,,AL|AP|AN|BS|BI,상용해도 곡선 유형,Higuchi–Connors 분류,Higuchi & Connors 1965,TO_VERIFY

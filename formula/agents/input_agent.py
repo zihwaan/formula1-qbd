@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field
@@ -128,7 +129,7 @@ _FORM = [("capsule", ("캡슐", "capsule")), ("oral_liquid", ("시럽", "현탁"
          ("dispersible_tablet", ("분산정",)), ("tablet", ("정제", "tablet", "알약"))]
 
 
-def read_measurements(text: str, catalog: Dict[str, Dict[str, Any]]) -> Dict[str, float]:
+def read_measurements(text: str, catalog: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     """글에서 '측정 이름 (조사) 숫자'를 읽는다. 받을 수 있는 키(허용목록·측정 카탈로그·별칭)만.
 
     영문 키(tm, tm_c)는 단어 경계에서만 잡는다 — 'atm' 같은 글자열에 걸리지 않게.
@@ -145,6 +146,27 @@ def read_measurements(text: str, catalog: Dict[str, Dict[str, Any]]) -> Dict[str
         if m:
             key = catalog.get(labels[name], {}).get("alias_of") or labels[name]
             found.setdefault(key, float(m.group(1)))
+    # 예/아니오 · 등급 같은 비수치 필드 — 필드 정의 파일의 타입대로(측정값 입력 개선 요청서 과제 1)
+    from formula.biopharm.triggers import load_output_fields
+    ofields = load_output_fields(Path(__file__).resolve().parents[2])
+    yes, no = r"(예|네|있음|관찰됨|관찰|확인됨|됨|yes|true)", r"(아니오|아니요|없음|미관찰|안\s*됨|no|false)"
+    for key, f in ofields.items():
+        names = [key.lower()] + ([f["label_kr"].lower()] if f.get("label_kr") else [])
+        for name in names:
+            pos = low.find(name)
+            if pos < 0 or key in found:
+                continue
+            tail = low[pos + len(name): pos + len(name) + 24]
+            if f.get("field_type") == "bool":
+                if re.match(r"\s*(?:은|는|이|가|=|:)?\s*" + no, tail):
+                    found[key] = False
+                elif re.match(r"\s*(?:은|는|이|가|=|:)?\s*" + yes, tail):
+                    found[key] = True
+            elif f.get("field_type") == "enum":
+                for v in sorted((f.get("enum_values") or "").split("|"), key=len, reverse=True):
+                    if v and re.match(r"\s*(?:은|는|이|가|=|:)?\s*" + re.escape(v.lower()) + r"(?![a-z])", tail):
+                        found[key] = v
+                        break
     return found
 
 
@@ -442,8 +464,13 @@ def build_response(out: AgentOutput, source: str, message: str, history: List[Di
             if not key or key not in allowed:
                 notes.append(f"'{k}'는 받을 수 있는 측정 키가 아니라 뺐습니다.")
                 continue
+            from formula.biopharm.triggers import check_value, load_output_fields
+            problem = check_value(key, v, load_output_fields(Path(__file__).resolve().parents[2]))
+            if problem:
+                notes.append(f"{problem} — 빼고 제안합니다.")
+                continue
             if isinstance(v, bool) or isinstance(v, str):
-                if isinstance(v, str) and v not in user_text:
+                if isinstance(v, str) and v.lower() not in user_text.lower():
                     dropped.append(key)
                     continue
                 clean[key] = v

@@ -15,6 +15,15 @@ from formula.qbd.analysis import Fit
 from formula.qbd.design_space import Domain, compute_region
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _audited() -> int:
+    """조건식 이름 전수검사가 대조한 식 수(죽은 이름이 있으면 보고서를 만들지 않는다)."""
+    from scripts.audit_conditions import audit
+    n, bad = audit()
+    if bad:
+        raise SystemExit(f"조건식 전수검사 실패: {bad}")
+    return n
 FIX = ROOT / "tests" / "fixtures"
 
 d = pd.read_csv(FIX / "lornoxicam_table3.csv")
@@ -74,6 +83,8 @@ counts = {
     "structural_flags": len(rows("database/00_master/structural_flags_registry.csv")),
     "measurement_catalog": len(rows("database/reference/measurement_catalog.csv")),
     "data_request_triggers": len(rows("database/reference/data_request_triggers.csv")),
+    "measurement_output_fields": len(rows("database/reference/measurement_output_fields.csv")),
+    "conditions_audited": _audited(),
     "derived_quantities": len(rows("database/00_master/derived_quantities.csv")),
     "backtrack_transitions": len(rows("database/06_config/backtrack_transitions.csv")),
     "reviewers": len(rows("database/06_config/reviewer_registry.csv")),

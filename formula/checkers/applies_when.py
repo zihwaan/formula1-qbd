@@ -73,6 +73,12 @@ def population_of(target_patient: str) -> str:
     return "adult"
 
 
+PROPERTY_FLAG_DEFAULTS = {
+    "hygroscopic": False, "light_sensitive": False, "moisture_sensitive": False, "heat_sensitive": False,
+    "coating_required": False, "flavoring_used": False, "colorant_used": False, "solvent_used": False,
+}
+
+
 def spec_context(
     spec: FormulationSpec,
     derived: Optional[Dict[str, Any]] = None,
@@ -101,6 +107,10 @@ def spec_context(
         "always": True,
     }
     ctx.update(spec.measured_params)
+    # intake가 요청에서 읽는 물성 플래그는 "언급 없음 = 아님"이다. 기본값을 명시해 두지 않으면 조건식이
+    # NameError로 조용히 미발동하는데(결과는 같아도 우연에 기대는 것), 전수검사(scripts/audit_conditions.py)가
+    # 그 부류를 죽은 이름으로 잡는다.
+    ctx.update(PROPERTY_FLAG_DEFAULTS)
     # 프로파일 플래그(hygroscopic 등)도 직접 참조 가능하게
     ctx.update(spec.properties)
     if derived:

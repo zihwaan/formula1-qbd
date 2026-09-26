@@ -1867,6 +1867,8 @@
   "structural_flags": 82,
   "measurement_catalog": 20,
   "data_request_triggers": 16,
+  "measurement_output_fields": 47,
+  "conditions_audited": 136,
   "derived_quantities": 23,
   "backtrack_transitions": 16,
   "reviewers": 7,
