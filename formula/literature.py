@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+import re
+
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
@@ -116,12 +118,26 @@ def europepmc_search(api_name: str, limit: int = 6) -> Dict[str, Any]:
     return out
 
 
+def is_spelling_variant(a: str, b: str, threshold: float = 0.8) -> bool:
+    """두 이름이 같은 이름의 철자 차이인가(대소문자·염 표기 무시). 코드명 ↔ 일반명은 아니다."""
+    import difflib
+    norm = lambda x: re.sub(r"[^a-z0-9]", "", str(x or "").lower())
+    x, y = norm(a), norm(b)
+    if not x or not y:
+        return False
+    return x == y or difflib.SequenceMatcher(None, x, y).ratio() >= threshold
+
+
 def search_api(api_name: str, smiles: str = "", limit: int = 6) -> Dict[str, Any]:
     """입력 단계 문헌 조사 — PubChem 식별/물성 + Europe PMC 문헌."""
     compound = pubchem_summary(api_name, smiles)
     # 구조(SMILES)로 찾은 PubChem 표제명이 있으면 그 이름으로 문헌을 찾는다 — 입력·LLM 해석의 오타가
     # 검색어로 번지지 않게.
-    canonical = (compound.get("properties") or {}).get("Title") or "" if compound.get("found") else ""
+    title = (compound.get("properties") or {}).get("Title") or "" if compound.get("found") else ""
+    # 표제명은 **철자 교정**에만 쓴다(예: 'Lornoxcam' → 'Lornoxicam'). 개발 코드명(예: 'VX-770')을 일반명으로
+    # 바꾸면 블라인드 시연에서 정체가 드러나고, 그 이름의 문헌이 심사관에게 넘어간다 — 그래서 이름이 충분히
+    # 비슷할 때만 교정하고, 아니면 사용자가 쓴 이름을 그대로 쓴다.
+    canonical = title if is_spelling_variant(api_name, title) else ""
     papers = europepmc_search(canonical or api_name, limit=limit)
     return {
         "api_name": api_name,

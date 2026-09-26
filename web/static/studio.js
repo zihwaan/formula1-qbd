@@ -372,7 +372,8 @@
           <td><b>${esc(r.row_id)}</b>${r.evidence_status === "LLM_HYPOTHESIS" ? `<span class="hyp-tag">LLM 가설</span>` : ""}
             <div class="rowchips">${chips(vs)}</div></td>
           <td data-label="원인 → 실패">${esc(r.cause)} → <b>${esc(r.failure_mode)}</b><small class="sub">${esc(r.local_effect)} → ${esc(cq)}</small>
-            ${r.rationale ? `<small class="sub">근거: ${esc(r.rationale)}</small>` : ""}</td>
+            ${r.rationale ? `<small class="sub">근거: ${esc(r.rationale)}</small>` : ""}
+            ${(r.upstream_signals || []).map((u) => `<small class="sub upstream">↑ ${esc(u)}</small>`).join("")}</td>
           <td class="c" data-label="S (심각도)">${esc(r.severity ?? "—")}</td>
           <td data-label="O (발생도)"><input data-f="occurrence" type="number" min="1" max="5" value="${esc(r.occurrence ?? "")}" placeholder="UNKNOWN"></td>
           <td data-label="O 근거"><input data-f="occurrence_evidence" value="${esc(r.occurrence_evidence ?? "")}" placeholder="O 근거"></td>

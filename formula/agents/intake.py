@@ -6,6 +6,7 @@ LLM이 하는 일은 **해석**뿐이다: "소아용 바나나향 해열제" 같
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -15,9 +16,9 @@ from formula.agents.client import LLMUnavailable, parse_structured
 from formula.chem.predictions import build_prediction_layer, uncertainty_triggered_tests
 from formula.chem.profile import build_profile, resolve_smiles
 from formula.feedback.test_planner import plan_tests
-from formula.literature import search_api
+from formula.literature import is_spelling_variant, search_api
 from formula.contracts import EventKind, FormulationSpec
-from formula.orchestrator.events import emit
+from formula.orchestrator.events import emit, set_blind
 
 SYSTEM = """당신은 제형 설계 요청을 정량 스펙으로 번역하는 intake 전문가다.
 
@@ -25,7 +26,7 @@ SYSTEM = """당신은 제형 설계 요청을 정량 스펙으로 번역하는 i
 - 사용자 문장에서 확인 가능한 것만 채운다. 물성 수치(logP, 용해도, 유동성 등)는 절대 지어내지 않는다.
   그 값들은 별도의 RDKit 계층이 SMILES로부터 계산한다.
 - target_patient는 pediatric_under_12 / pediatric / adult / geriatric 중 하나로 정규화한다.
-- dosage_form은 tablet / capsule / oral_liquid 중 하나로 정규화한다.
+- dosage_form은 tablet / dispersible_tablet(분산정) / capsule / oral_liquid 중 하나로 정규화한다.
 - properties에는 문장에서 명시적으로 확인되는 플래그만 넣는다
   (hygroscopic, light_sensitive, moisture_sensitive, heat_sensitive, coating_required,
    flavoring_used, colorant_used, solvent_used).
@@ -70,6 +71,11 @@ def translate(
         source = "deterministic-fallback"
         emit(node, EventKind.WARNING, reason=str(exc), fallback=True)
 
+    # 개발코드(예: VX-770)로 부른 물질은 그 코드가 이름이다 — LLM이 기억으로 일반명을 채우면 블라인드가 깨진다.
+    code = _development_code(request)
+    if code and not is_spelling_variant(parsed.api_name, code) and parsed.api_name.lower() not in request.lower():
+        parsed.notes = f"{parsed.notes} (해석 이름 대신 요청의 개발코드 사용)".strip()
+        parsed.api_name = code
     spec = FormulationSpec(
         api_name=parsed.api_name,
         target_patient=parsed.target_patient,
@@ -99,7 +105,7 @@ def translate(
     predictions = build_prediction_layer(profile.parent_smiles or profile.smiles)
     requests = uncertainty_triggered_tests(predictions)
     plan = plan_tests(flag_names, requests,
-                      route="oral_solid" if spec.dosage_form in ("tablet", "capsule") else "other")
+                      route="oral_solid" if spec.dosage_form in ("tablet", "dispersible_tablet", "capsule") else "other")
     emit(node, EventKind.PREDICTIONS, predictions=predictions,
          test_plan=plan, requested_tests=requests)
 
@@ -114,6 +120,8 @@ def translate(
                                else "unknown")
 
     literature = search_api(spec.api_name, profile.parent_smiles or profile.smiles)
+    if code and spec.api_name == code:
+        set_blind(_real_names(literature, profile, base_dir, code))
     emit(node, EventKind.LITERATURE, **literature)
     # 표준명 — 구조로 찾은 PubChem 표제명(예: 'Lornoxicam')을 쓴다. LLM 해석의 철자가 Handoff·study
     # 이름에 영구히 박히지 않게(개발자 수정 과제 P2-3). 구조를 못 얻었으면 이름을 그대로 둔다.
@@ -135,6 +143,35 @@ def translate(
          user_measured=dict(measured_params or {}), user_flags=dict(property_flags or {}))
     emit(node, EventKind.NODE_EXIT, api_name=spec.api_name)
     return spec
+
+
+# 한국어 조사가 바로 붙어도("VX-770의") 잡히게 — \b는 한글도 단어 문자로 봐서 쓸 수 없다
+CODE_RE = re.compile(r"(?<![A-Za-z0-9])[A-Z]{1,6}-\d{2,7}[A-Z]?(?![A-Za-z0-9])")
+
+
+def _development_code(request: str) -> str:
+    m = CODE_RE.search(request or "")
+    return m.group(0) if m else ""
+
+
+def _real_names(literature: Dict[str, Any], profile: Any, base_dir: Path, code: str) -> Dict[str, str]:
+    """코드명 요청에서 가릴 실명 — 구조로 찾은 PubChem 표제명과, 같은 구조(InChIKey 골격)의 라벨 제품명·일반명."""
+    import csv as csv_mod
+    names = {}
+    title = ((literature.get("compound") or {}).get("properties") or {}).get("Title")
+    if title:
+        names[str(title)] = code
+    skel = str(getattr(profile, "inchikey", "") or "").split("-")[0]
+    path = Path(base_dir) / "database" / "05_regulatory" / "max_daily_dose.csv"
+    if skel and path.exists():
+        with path.open(encoding="utf-8-sig", newline="") as h:
+            for row in csv_mod.DictReader(h):
+                if row.get("parent_inchikey_skeleton") == skel:
+                    names[row["api_name"]] = code
+                    brand = re.match(r"([A-Z][A-Z0-9-]{2,})\s*\(", row.get("source_citation") or "")
+                    if brand:
+                        names[brand.group(1)] = code
+    return names
 
 
 def _fallback(request: str) -> IntakeResult:
@@ -167,7 +204,9 @@ def _fallback(request: str) -> IntakeResult:
         patient = "geriatric"
 
     form = "tablet"
-    if any(k in lowered for k in ("캡슐", "capsule")):
+    if any(k in lowered for k in ("분산정", "dispersible")):
+        form = "dispersible_tablet"
+    elif any(k in lowered for k in ("캡슐", "capsule")):
         form = "capsule"
     elif any(k in lowered for k in ("시럽", "현탁", "액상", "syrup", "suspension")):
         form = "oral_liquid"

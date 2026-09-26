@@ -290,6 +290,8 @@ def subset_forbidden(entry, rows, recipe: Recipe, spec: FormulationSpec, ctx) ->
     present |= {g.strip().lower() for g in spec.api_functional_groups}
     present |= {k.lower() for k, v in spec.properties.items() if v is True}
     present |= {str(v).strip().lower() for v in ctx.values() if isinstance(v, str)}
+    # 성분 부류 어휘(reducing_sugar·alkaline_lubricant·primary_amine_API …) — 레지스트리가 처방에서 판별해 둔다
+    present |= {str(t).lower() for t in (ctx.get("_component_classes") or [])} if isinstance(ctx, dict) else set()
     if spec.properties.get("moisture_present") or spec.measured_params.get("moisture", 0) > 0:
         present.add("water")
         present.add("moisture")
@@ -661,14 +663,24 @@ def decision_tree(entry, rows, recipe: Recipe, spec: FormulationSpec, ctx) -> Li
     ctx["excluded_routes"] = sorted(excluded)
     ctx["recommended_routes"] = sorted(viable)
 
-    if verdicts:
-        return verdicts
+    # 경로를 고르는 데 쓰인 행 가운데 action이 REVIEWER_FLAG인 행은 그 자체가 지적이다(예: RTE008 저함량 →
+    # 함량균일성 검증 강화). 예전엔 경로 선택에만 쓰이고 화면·심사관에게는 전달되지 않았다(2026-09-26 전수검사).
+    fired_ids = {f["rule_id"] for f in fired}
+    flags = [_violation(entry, "decision_tree", row, reason=str(row.get(reason_c, "")),
+                        suggestion=str(row.get(sugg_c, "")),
+                        evidence={"condition": row.get(cond_c), "recommended": sorted(viable)})
+             for row in rows
+             if row.get("rule_id") in fired_ids and str(row.get("action", "")).strip().upper() == "REVIEWER_FLAG"]
+
+    if verdicts:          # 메타 규칙(경로 전무 등)이 발동했으면 그 판정이 우선
+        return verdicts + flags
+    verdicts = flags
 
     verdict = _pass(entry, "decision_tree")
     verdict.reason = f"선택 공정 경로 = {selected} (후보 {sorted(viable)}, 배제 {sorted(excluded)})"
     verdict.evidence = {"selected_route": selected, "recommended": sorted(viable),
                         "excluded": sorted(excluded), "fired": fired}
-    return [verdict]
+    return [verdict] + verdicts
 
 
 # 전략 이름 → 함수 레지스트리. 매니페스트의 `strategy` 값이 이 키를 참조한다.

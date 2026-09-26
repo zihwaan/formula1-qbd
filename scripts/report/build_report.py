@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -394,6 +395,183 @@ T2: 고령자 암로디핀 2.5 mg + 유당 고정(베실산염 SMILES), T3: T2�
 """.replace("{rows}", rows)
 
 
+def fig_setpoint(dm):
+    """카드 1 — 시스템 권장 설정점 vs 논문 최적점을 요인 범위 위에 나란히(값은 demo_cards.json)."""
+    c1 = next((r for r in dm["results"] if r.get("card") == "card1" and (r.get("studio") or {}).get("region")), None)
+    if not c1:
+        return ""
+    sp = (c1["studio"]["region"].get("setpoint") or {}).get("actual") or {}
+    opt = dm["answer_key"]["card1"]["optimum"]
+    axes = [("F_filler_ratio", "MCC:만니톨 비", 1, 3, ""), ("F_blend_time", "혼합 시간", 5, 15, "분"),
+            ("F_disintegrant_pct", "크로스포비돈", 2, 10, "%")]
+    b = ""
+    x0, w = 130, 520
+    for i, (k, lab, lo, hi, u) in enumerate(axes):
+        y = 30 + i * 44
+        b += f'<text x="{x0 - 14}" y="{y + 3}" text-anchor="end" class="gt">{lab}</text>'
+        b += f'<line x1="{x0}" y1="{y}" x2="{x0 + w}" y2="{y}" stroke="#ccc" stroke-width="5" stroke-linecap="round"/>'
+        b += (f'<text x="{x0}" y="{y + 17}" text-anchor="middle" class="al">{lo:g}{u}</text>'
+              f'<text x="{x0 + w}" y="{y + 17}" text-anchor="middle" class="al">{hi:g}{u}</text>')
+        o, v = opt.get(k), sp.get(k)
+        if o is not None:
+            px = x0 + (o - lo) / (hi - lo) * w
+            b += (f'<rect x="{px - 5:.1f}" y="{y - 5}" width="10" height="10" fill="#555"/>'
+                  f'<text x="{px:.1f}" y="{y + 17}" text-anchor="middle" class="al">{o:g}</text>')
+        if v is not None:
+            px = x0 + (v - lo) / (hi - lo) * w
+            b += (f'<circle cx="{px:.1f}" cy="{y}" r="6" fill="#c0392b"/>'
+                  f'<text x="{px:.1f}" y="{y - 10}" text-anchor="middle" class="al" fill="#c0392b">{v:g}</text>')
+    b += (f'<circle cx="{x0 + 6}" cy="160" r="5" fill="#c0392b"/><text x="{x0 + 16}" y="163" class="lg">시스템 권장 설정점 — 미래 배치 공동 통과확률 최대·경계 여유</text>'
+          f'<rect x="{x0 + 300}" y="155" width="10" height="10" fill="#555"/><text x="{x0 + 316}" y="163" class="lg">논문 최적점 — 평균 반응 desirability</text>')
+    return svg(720, 172, b)
+
+
+def demo_abstract(dm) -> str:
+    """초록 한 문장 — 시연 카드 결과(demo_cards.json)에서 계산."""
+    if not dm:
+        return ""
+    res = dm["results"]
+    c2 = [r for r in res if r["card"] == "card2"]
+    c3 = [r for r in res if r["card"] == "card3"]
+    ok = all(r.get("pass") for r in res)
+    blk = sorted({b for r in c2 for b in (r.get("infeasible") or {}).get("blocking") or []})
+    sig = sorted({r.get("plan_signature_after") for r in c3})
+    return (f" 약학 담당이 만든 시연 쿼리 3장을 대회 API로 각 2회 실행한 결과 {'모든 합격 기준을 통과했고' if ok else '일부 기준이 실패했고'}, 유당을 고정한 "
+            f"고령자 암로디핀은 {', '.join(blk)}로 “제약 불가능”, 개발코드만 준 신규물질은 Tm·용해도 제출 뒤 분무건조 ASD가 계획({', '.join(sig)})에 들어오고 "
+            f"ASD 공정이 분무건조로 판정되었으며, 실명이 출력에 "
+            f"{'나오지 않았다' if not any(r.get('name_leaks') for r in c3) else '나타났다'}.")
+
+
+def demo_section(dm) -> str:
+    """시연 쿼리 카드 3장 — 정답지와 나란히(demo_cards.json, 실제 서버 실행)."""
+    if not dm:
+        return ""
+    res = dm["results"]
+    ak = dm["answer_key"]
+    by = lambda tag: [r for r in res if r.get("card") == tag]
+    yes = lambda b: "예" if b else "아니오"
+    rows = ""
+    for r in res:
+        label = {"card1": "① 로르녹시캄 8 mg 분산정 (42°)", "card1_flow48": "① 대비: 안식각 48°",
+                 "card2": "② 암로디핀 2.5 mg + 유당 고정", "card2_free": "② 대비: 유당 고정 없음",
+                 "card3": "③ VX-770 150 mg"}[r["card"]]
+        what = []
+        if r["card"].startswith("card1"):
+            what.append(f"계획 {r.get('plan_signature') or '—'}")
+            fl = next((g[1].get("flow_character") for g in r.get("route_signals") or [] if g[1].get("flow_character")), None)
+            rt = next((g[1] for g in r.get("route_signals") or [] if g[1].get("selected_route")), {})
+            what.append(f"흐름성 {fl or '—'} → 경로 {rt.get('selected_route', '—')}"
+                        + (f" (배제 {', '.join(rt['excluded_routes'])})" if rt.get("excluded_routes") else ""))
+            what.append(f"RTE008 {yes(r.get('rte008_fired'))} · Mg stearate 후보 {r.get('mg_stearate_candidates', 0)}개")
+            if r.get("tm_submit"):
+                t = r["tm_submit"]
+                what.append(f"Tm 225 제출({t.get('source')}) → 닫힌 요청 {', '.join(t.get('closed') or []) or '없음'}"
+                            + (f" · 계획 {r.get('plan_signature_after_tm')}로 재생성, 개발 착수 {r.get('picked')}" if t.get("regenerated") else ""))
+            st = r.get("studio") or {}
+            if st.get("region"):
+                sp = (st["region"].get("setpoint") or {}).get("actual") or {}
+                what.append(f"스튜디오 {st.get('final_status')} · 공동확률 영역 {st['region']['feasible_fraction'] * 100:.1f}% "
+                            f"(평균 {st['region']['mean_ok_fraction'] * 100:.1f}%) · 설정점 {sp.get('F_filler_ratio')}/{sp.get('F_blend_time')}분/{sp.get('F_disintegrant_pct')}%")
+            elif st.get("stopped_at"):
+                what.append(f"스튜디오 {st['stopped_at']['action']}에서 멈춤")
+        elif r["card"].startswith("card2"):
+            what.append(f"parent MW {r.get('parent_mw') or 0:.1f} · 염 계수 {r.get('salt_factor')}")
+            what.append("소집 " + (", ".join(r.get("summoned") or []) or "— (심사 전 종료)"))
+            if r.get("infeasible"):
+                what.append("제약 불가능 — 막은 규칙 " + ", ".join(r["infeasible"].get("blocking") or [])
+                            + " · 대체 " + " / ".join(r["infeasible"].get("suggestions") or []))
+            api = [a for c in r.get("api_amounts") or [] for a in c]
+            if api:
+                what.append("통과 후보 API " + ", ".join(f"{n} {m:g} mg" for n, m in api[:3]))
+        else:
+            what.append(f"계획 {r.get('plan_signature_before') or '—'} → {r.get('plan_signature_after') or '—'}")
+            what.append("G4B " + (", ".join(f"{p['rule_id']}" for p in r.get("asd_process_signal") or []) or "—"))
+            what.append(f"유당 금기 미발동 {yes(not ({'INC001', 'INC002'} & set(r.get('fired_any') or [])))}")
+            what.append("이름 누설 " + (", ".join(r.get("name_leaks") or []) + f" ({', '.join(r.get('leak_sources') or [])})"
+                                    if r.get("name_leaks") else "없음"))
+        rows += (f"<tr><td>{E(label)}</td><td>{r['repeat']}</td><td>{E(r['status'])}</td><td>{r['seconds']:.0f}</td>"
+                 f"<td>{E(' · '.join(what))}</td></tr>")
+    c1 = next((r for r in by("card1") if (r.get("studio") or {}).get("region")), None)
+    para = []
+    if c1:
+        sp = c1["studio"]["region"]["setpoint"]["actual"]
+        o = ak["card1"]["optimum"]
+        para.append(f"카드 1에서 연구자가 고른 후보로 개발을 착수하면(Handoff 제형 {E(c1['studio'].get('dosage_form'))}), 논문 Table 3의 15 run을 올린 스튜디오는 "
+                    f"공동확률 ≥ 0.90 영역 {c1['studio']['region']['feasible_fraction'] * 100:.1f}%와 설정점 {sp['F_filler_ratio']} · {sp['F_blend_time']}분 · "
+                    f"{sp['F_disintegrant_pct']}%를 냈다. 논문의 desirability 최적점({o['F_filler_ratio']:g} · {o['F_blend_time']:g}분 · {o['F_disintegrant_pct']:g}%)과 비교하면(그림 10) "
+                    "시스템 설정점은 영역 경계에서 떨어진 쪽(혼합 시간·붕해제가 조금 큰 쪽)으로 옮겨 있다 — 평균 반응을 최적화하는 대신 미래 배치가 네 규격을 "
+                    f"동시에 통과할 확률을 최대화하기 때문이다. 논문 최적 배치의 관측값(분산 {ak['card1']['observed']['dispersion_s']} s, 마손도 "
+                    f"{ak['card1']['observed']['friability_pct']}%, DE {ak['card1']['observed']['DE_pct']}%)은 공개된 결과라 확인 판정에는 쓰지 않는다.")
+        if c1["studio"].get("upstream_rows"):
+            pct = re.search(r"API ([\d.]+)% w/w", " ".join(c1["studio"]["upstream_rows"][0]["signals"]))
+            para.append(f"후보 탐색의 저함량 신호(RTE008 — 고른 후보의 API {pct.group(1) if pct else '?'}% w/w; 카드의 논문 처방은 8/250 mg = 3.2%)는 FMEA의 혼합 시간 행(" +
+                        ", ".join(u["row_id"] for u in c1["studio"]["upstream_rows"]) + ")에 “후보 탐색 신호”로 붙었다.")
+    c1s = by("card1")
+    if c1s and c1s[0].get("tm_submit"):
+        t = c1s[0]
+        para.append(f"카드 1의 Tm 225 °C 제출(입력 에이전트가 LLM보다 먼저 규칙으로 잡음)은 DRQ_TM을 닫았고, Tm을 알게 되자 분무건조 ASD가 전략 후보에 들어와 "
+                    f"계획이 {t.get('plan_signature')} → {t.get('plan_signature_after_tm')}로 바뀌어 그 전략들의 후보만 다시 설계됐다. 이 재설계에는 심사가 붙지 않아 "
+                    f"후보가 순위 없이 남으며(종결 {t.get('status_after_tm')}), 연구자가 고른 후보({t.get('picked')})로 개발에 착수했다.")
+    poor = by("card1_flow48")
+    if poor:
+        ex = next((g[1] for g in poor[0].get("route_signals") or [] if g[1].get("excluded_routes")), {})
+        para.append(f"같은 카드에서 안식각만 48°로 바꾸면 흐름성이 {next((g[1].get('flow_character') for g in poor[0]['route_signals'] if g[1].get('flow_character')), '')}로 판정되어 "
+                    f"{', '.join(ex.get('excluded_routes') or [])}가 배제되고 계획이 {poor[0].get('plan_signature')}로 바뀌었다(42°: {c1s[0].get('plan_signature') if c1s else ''}).")
+    mg = [r.get("mg_stearate_candidates", 0) for r in by("card1")]
+    if mg:
+        para.append(f"카드 1의 마지막 라운드 후보 가운데 스테아르산 마그네슘을 넣은 후보는 실행별 {', '.join(map(str, mg))}개였다 "
+                    "(논문 처방은 SLS 윤활; 넣은 경우 과혼합 위험 INC014는 반려가 아니라 DoE 요인 후보로 넘어간다).")
+    paras = [" ".join(para)]
+    para = []
+    c2 = by("card2")
+    if c2:
+        blk = sorted({b for r in c2 for b in (r.get("infeasible") or {}).get("blocking") or []})
+        free = by("card2_free")
+        para.append(f"카드 2(유당 고정)는 두 번 모두 되돌림 없이 “제약 불가능”으로 끝났고, 막은 규칙은 {', '.join(blk)}였다 — 베실산염을 벗긴 parent에서 1차 아민 × 유당 "
+                    "금기(INC001)가, 습식과립 후보에서 다성분 규칙(유당 + 스테아르산 마그네슘 + 물, Abdoh 2004[14])이 발동했다. 같은 세 성분이라도 직접타정 조합에서는 "
+                    "다성분 규칙이 발동하지 않으며(단위 테스트로 고정), 1,4-디히드로피리딘 고리의 N–H는 2차 아민으로 잡히지 않았다. 대체 성분으로는 만니톨과 유당 없는 처방을 "
+                    "제시했는데, 정답지(NORVASC)도 유당 없는 처방이다. 다성분 규칙의 조건 “40°C/75%RH 스트레스”는 모든 신약 제품이 거치는 가속 안정성 조건"
+                    "(ICH Q1A[17])이므로 번역표에서 항상 성립하는 조건으로 둔다."
+                    + (f" 유당 고정을 뺀 대비 실행에서는 통과 후보의 API가 유리염기 {free[0]['api_amounts'][0][0][1]:g} mg으로 기록되고(염 환산계수 {free[0].get('salt_factor')}), "
+                       f"소아 심사관 대신 고령자 심사관(REV006)이 소집됐다." if free and free[0].get("api_amounts") else ""))
+    paras.append(" ".join(para))
+    para = []
+    c3 = by("card3")
+    if c3:
+        leaks = sorted({l for r in c3 for l in r.get("name_leaks") or []})
+        para.append("카드 3은 구조와 용량만으로 시작해 Tm 317 °C · 용해도 0.00005 mg/mL를 한 문장으로 제출하자 계획이 "
+                    + "; ".join(sorted({f"{r.get('plan_signature_before')} → {r.get('plan_signature_after')}" for r in c3}))
+                    + (" (두 번 모두 같음)" if len(c3) > 1 and len({(r.get('plan_signature_before'), r.get('plan_signature_after')) for r in c3}) == 1 else "")
+                    + f"로 바뀌었다 — 분무건조 ASD가 계획에 들어오고, ASD 공정 게이트(G4B002)는 고융점이라 용융압출보다 분무건조를 택했다(정답지: Kalydeco = 80% HPMCAS 분무건조 분산체[15, 16]). 전략이 ASD 하나로 좁혀지지는 않았다 — 입자 크기 축소(MICRO)와 직접타정도 점수 상위 3개에 남는다. 4-퀴놀론 N–H는 유당 금기를 켜지 않았다. "
+                    + ("요청 해석 LLM은 개발코드만 보고도 일반명을 떠올릴 수 있으므로, 요청에 개발코드가 있으면 그 코드를 이름으로 고정하고 구조로 찾은 실명·라벨 제품명을 "
+                       "이벤트와 LLM 입출력 모두에서 코드로 가린다. 그 결과 출력 전체(이벤트·요약·심사 서술)에 실제 물질명은 나오지 않았다." if not leaks else
+                       f"실제 물질명({', '.join(leaks)})이 {', '.join(sorted({s for r in c3 for s in r.get('leak_sources') or []}))} 출력에 나타났다 — "
+                       "개발코드로 찾은 문헌 초록이 실명을 담고 있기 때문이며, 블라인드 시연에서는 문헌 패널을 가려야 한다.")
+                    + " 용해도는 문헌상 상한(“< 0.05 µg/mL”)인데 입력은 등호 값만 받으므로 상한을 그대로 값으로 넣었다.")
+    paras.append(" ".join(para))
+    paras = [x for x in paras if x]
+    calls = dm.get("llm_calls") or {}
+    return f"""<h3>7.5 시연 쿼리 카드 — 정답지와 나란히</h3>
+<p>약학 담당이 만든 시연 쿼리 카드 3장(① 로르녹시캄 8 mg 분산정 전체 파이프라인, ② 고령자 암로디핀 2.5 mg에 유당 고정, ③ 개발코드만 공개한
+신규물질 cold start)을 카드에 적힌 문장·값 그대로 {E(dm.get('llm_label') or dm.get('llm'))}로 실행했다(각 {max(r['repeat'] for r in res)}회; 실제 응답 프로바이더 —
+수정 뒤 카드별로 다시 돌린 실행까지 누적 — {', '.join(f"{'대회 API' if k == 'dacon' else '무료 Groq' if k == 'groq' else k} {v}회" for k, v in calls.items()) or '기록 없음'}{
+'. 무료 Groq 호출은 대회 API 호출이 오류로 실패해 같은 호출이 넘어간 경우다' if calls.get('groq') else ''}). 데이터 요청에는 카드의 제출 값을
+입력 에이전트에 문장으로 넣었고, 카드 1은 통과 후보 가운데 1위를 연구자가 고르는 방식으로 개발 스튜디오에 넘겨 논문 Table 3로 끝까지 진행했다(표 8).</p>
+<table><thead><tr><th>카드</th><th>회</th><th>종결</th><th>초</th><th>시스템이 한 일</th></tr></thead><tbody>{rows}</tbody></table>
+<div class="tcap"><b>표 8.</b> 시연 쿼리 카드 실행 결과(demo_cards.json — 서버 응답·이벤트 스트림에서 기록). 대비 행은 같은 카드에서 한 값만 바꾼 실행이다.</div>
+<figure>{fig_setpoint(dm)}
+<figcaption><b>그림 10.</b> 카드 1 — 스튜디오의 권장 설정점(공동 통과확률 최대화)과 Almotairi 등[11]의 최적점(평균 반응 desirability)을 요인 범위 위에 표시.</figcaption></figure>
+{''.join(f"<p>{x}</p>" for x in paras)}
+<p><b>카드가 드러낸 결함.</b> 카드를 돌리기 전 코드·규칙표를 카드의 “시연 전 확인” 항목에 맞춰 전수검사했고, 다음을 고쳤다. (1) 다성분 금기표는 성분군·조건 이름
+(<code>reducing_sugar</code>, <code>moisture present</code>)으로 적혀 있는데 처방을 그 어휘로 옮기는 단계가 없어 한 번도 발동할 수 없었다 — 번역표
+(<code>component_classes.yaml</code>: 부형제 마스터 열, API 작용기, 수계 공정, 가속 조건)를 두고 모든 이름이 규칙표에 있는지 테스트로 고정했다. (2) 페놀·이미드처럼
+위장관 pH에서 거의 이온화하지 않는 site만 있는 약도 “pH 의존 → BCS 미정”으로 분류되던 것을 위장관 이온화(<code>ionizable_gi</code>)로 좁혔다. (3) 분산정이
+정제로 뭉개져 Handoff에 분산 시간 CQA가 생기지 않던 것을 제형 끝까지 전달했다. (4) 약물 함량(%)을 규칙 문맥에 넣어 저함량 규칙(RTE008)이 발동하게 하고, 그 신호를
+개발 스튜디오 FMEA의 혼합 행에 연결했다. (5) 개발코드 요청의 실명 노출을 막았다. (6) 제약 불가능 카드의 “막은 규칙”에 검토 flag가 섞이던 것을 반려 권한이 있는
+판정으로 한정했다. (7) 데이터 요청이 기대하는 결과 키 가운데 측정 카탈로그에 없던 것을 추가했다.</p>
+"""
+
+
 def exp_section(x) -> str:
     if not x:
         return ""
@@ -564,7 +742,7 @@ def fig_jury(data, x):
 
 
 # ── 본문 ──────────────────────────────────────────────────────────────────
-def build(data, tests: int, browser: str, x=None, fx=None) -> str:
+def build(data, tests: int, browser: str, x=None, fx=None, dm=None) -> str:
     r = data["region"]
     sp = data["setpoint"]
     c = data["counts"]
@@ -634,7 +812,7 @@ ol.refs li {{ margin-bottom: 2pt; }}
 DOI·PMID 인용을 요구한다.
 공개 논문(Almotairi 등, 2022)의 Lornoxicam 분산정 Box–Behnken 실측 15 run에 적용한 결과, 평균 예측 기준으로는 지지 영역의
 {r['mean_ok_fraction'] * 100:.1f}%가 규격을 만족했으나 미래 배치 공동 통과확률 0.90 기준으로는 {r['feasible_fraction'] * 100:.1f}%만 남았고,
-권장 설정점(비 {sp['actual']['x1']} · 혼합 {sp['actual']['x2']}분 · 크로스포비돈 {sp['actual']['x3']}%)의 공동확률은 {sp['joint_probability']:.3f}였다.
+권장 설정점(비 {sp['actual']['x1']} · 혼합 {sp['actual']['x2']}분 · 크로스포비돈 {sp['actual']['x3']}%)의 공동확률은 {sp['joint_probability']:.3f}였다.{demo_abstract(dm)}
 <div class="kw"><b>주제어</b> 제형 설계 · Quality by Design · 다중 에이전트 · 결정론적 검증 · 환각 억제 · 실험계획법 · 설계공간 · lab-in-the-loop</div>
 </div>
 
@@ -814,7 +992,8 @@ AV ≤ 15, DE30 ≥ 75%이며, DE30 기준은 논문 기준이 아니라 프로�
 
 {exp_section(x)}
 {devfix_section(fx)}
-<h3>7.5 소프트웨어 검증</h3>
+{demo_section(dm)}
+<h3>7.6 소프트웨어 검증</h3>
 <p>단위·통합 테스트 {tests}개(pytest)가 구조 패턴 진리표, 검사 방향, 근거 정책, 페이즈 게이트, 되돌림·계획 불변식, 입력 에이전트 가드레일, 07_doe 규칙
 fixture 48건, 통계 골든 값, 스터디 흐름을 고정한다. 실제 브라우저 테스트({E(browser)})는 화면 상호작용, 다섯 렌더 경로의 스크립트 주입 차단, 9개 뷰포트
 폭의 반응형, 시연 시나리오의 실제 경로, 개발 스튜디오 9장면, 입력 에이전트의 대화→카드→실행 흐름을 검사한다.</p>
@@ -852,6 +1031,10 @@ fixture 48건, 통계 골든 값, 스터디 흐름을 고정한다. 실제 브�
 <li>Almotairi N., Mahrous G.M., et al. Design and Optimization of Lornoxicam Dispersible Tablets Using Quality by Design (QbD) Approach. <i>Pharmaceuticals</i> 15(12):1463, 2022. doi:10.3390/ph15121463 (CC BY)</li>
 <li>Kim S., Chen J., Cheng T., et al. PubChem 2023 update. <i>Nucleic Acids Res.</i> 51(D1):D1373–D1380, 2023. doi:10.1093/nar/gkac956</li>
 <li>Wirth D.D., Baertschi S.W., Johnson R.A., et al. Maillard reaction of lactose and fluoxetine hydrochloride, a secondary amine. <i>J. Pharm. Sci.</i> 87(1):31–39, 1998. doi:10.1021/js9702067</li>
+<li>Abdoh A., Al-Omari M.M., Badwan A.A., Jaber A.M.Y. Amlodipine besylate–excipients interaction in solid dosage form. <i>Pharm. Dev. Technol.</i> 9(1):15–24, 2004. doi:10.1081/PDT-120027414</li>
+<li>Thompson S.A., Davis D.A., Miller D.A., Kucera S.U., et al. Pre-processing a polymer blend into a polymer alloy by KinetiSol enables increased ivacaftor amorphous solid dispersion drug loading and dissolution. <i>Biomedicines</i> 11(5):1281, 2023. doi:10.3390/biomedicines11051281</li>
+<li>Corrie L., Ajjarapu S., Banda S., Parvathaneni M., Bolla P.K., et al. HPMCAS-based amorphous solid dispersions in clinic: a review on manufacturing techniques (hot melt extrusion and spray drying), marketed products and patents. <i>Materials</i> 16(20):6616, 2023. doi:10.3390/ma16206616</li>
+<li>ICH Q1A(R2) Stability Testing of New Drug Substances and Products. International Council for Harmonisation, Step 4, 2003.</li>
 </ol>
 </body></html>"""
 
@@ -866,7 +1049,9 @@ def main():
     x = json.loads(xp.read_text(encoding="utf-8")) if xp.exists() else None
     fp = OUT / "devfix_results.json"
     fx = json.loads(fp.read_text(encoding="utf-8")) if fp.exists() else None
-    (OUT / "report.html").write_text(build(data, a.tests, a.browser, x, fx), encoding="utf-8")
+    dp = OUT / "demo_cards.json"
+    dm = json.loads(dp.read_text(encoding="utf-8")) if dp.exists() else None
+    (OUT / "report.html").write_text(build(data, a.tests, a.browser, x, fx, dm), encoding="utf-8")
     print(OUT / "report.html")
 
 

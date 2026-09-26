@@ -23,7 +23,7 @@ The README.md (Korean) is the authoritative design doc — update it in the same
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 207 tests — run this first when changing the core
+.venv/bin/pytest                                  # 219 tests — run this first when changing the core
 python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.json   # 07_doe static check (errors=0)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
@@ -32,6 +32,7 @@ python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.j
 .venv/bin/python scripts/import_rulebook.py       # re-import rulebook zips from 추가자료/
 # 기술 보고서(논문 PDF, zihwan.com/pdf): 수치는 엔진으로 계산 → HTML → 헤드리스 Chrome PDF → hub/reports/ 복사 → hub 재배포
 docker run --rm -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1-dev python scripts/report/figdata.py
+python3 scripts/report/demo_cards.py <url> dacon 2 [card1,card3…]   # 시연 쿼리 카드 3장 → docs/report/demo_cards.json(보고서 7.5)
 python3 scripts/report/build_report.py --tests <pytest 통과 수> --browser "<브라우저 스위트 요약>"
 "<Chrome>" --headless=new --no-pdf-header-footer --virtual-time-budget=15000 --print-to-pdf=docs/report/Formula1_report.pdf "file://$PWD/docs/report/report.html"
 cp docs/report/Formula1_report.pdf ~/zihwan/hub/reports/formula1_report.pdf
@@ -743,3 +744,27 @@ container; writes `docs/report/devfix_results.json`). T5/T6 are unit tests.
   confidence badge on rejected cards) and sort by rank; narration text comes from the run (`aminesNote`), scenario copy no
   longer claims who won't be summoned; `f1:runstart` locks stale agent cards. Route decisions with flow inputs are emitted as
   phase.gate events (the flow values were always used — they just never reached the trace).
+
+## Demo-card audit (2026-09-26) — three query cards from the pharmacy team
+
+Source: `Formula1_시연쿼리카드.pdf` (3 cards: lornoxicam 8 mg dispersible / geriatric amlodipine 2.5 mg + pinned lactose /
+"VX-770" 150 mg cold start). Pinned by `tests/test_audit_0926.py`; end-to-end run on the contest API by
+`scripts/report/demo_cards.py <url> dacon 2` → `docs/report/demo_cards.json` (report §7.5).
+
+- **Multi-component rules were dead.** `incompatibility_multicomponent.csv` writes component *classes*
+  (`reducing_sugar`, `alkaline_lubricant`, `primary_amine_API`, `water`) and conditions (`moisture present`,
+  `40C/75%RH stress`); nothing translated a recipe into that vocabulary. `config/component_classes.yaml` is the bridge
+  (master columns, names, API flag groups, aqueous process → water/moisture, and `always_present: 40c/75%rh` = ICH Q1A
+  accelerated condition every new product is tested at). `registry._component_classes` builds the `present` set.
+  Result: lactose + Mg stearate + amlodipine fires MC001/MC002 in wet granulation, not in DC (Abdoh 2004's point).
+  MC003 (`packaging permeable`) is left unmapped on purpose — packaging is outside candidate output.
+- **`ionizable_gi`** (not `ionizable`) feeds G3A010–015: phenol/imide-only acids aren't ionised at GI pH, so ivacaftor no
+  longer gets "pH-dependent → BCS undetermined". `ionizable` stays for salt-forming questions (G3B001, DRQ_PKA).
+- **Code names are kept** (`literature.is_spelling_variant`): the PubChem title replaces the parsed name only when it is
+  a spelling variant. The judge prompt tells reviewers to use the requested name. Europe PMC abstracts in the citation
+  pool can still contain the real name — `demo_cards.json` records `name_leaks` per run.
+- **`dispersible_tablet`** is a dosage form end to end (intake prompt + `_fallback` "분산정", `from_recipe` passes it to
+  the Handoff) — otherwise the studio drafts no dispersion-time CQA.
+- **`ctx["drug_loading_pct"]`** feeds RTE008 (<5% → content-uniformity flag); FMEA rows that use `blend_time` for
+  `CQA_CU_AV` carry `upstream_signals` from the Handoff verdicts (`fmea.UPSTREAM_TO_CQA`), shown as "↑" in the studio.
+- `measurement_catalog.csv` gained the output keys triggers already asked for (`test_every_trigger_result_key_is_a_catalog_output`).

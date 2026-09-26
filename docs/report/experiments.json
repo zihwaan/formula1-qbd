@@ -2,15 +2,15 @@
  "llm_model": "gpt-5.6-sol (대회 API)",
  "llm_provider": "dacon",
  "llm_calls": {
-  "dacon": 110
+  "dacon": 116
  },
  "runs": [
   {
    "scenario": "guardrail",
    "label": "소아 플루옥세틴 · 유당 고정",
-   "run_id": "67539e1841da",
+   "run_id": "86702178d622",
    "status": "infeasible",
-   "elapsed_s": 32.2,
+   "elapsed_s": 48.3,
    "plan_signature": "CONV_DC|CONV_DG|CONV_WG",
    "strategies": [
     "CONV_DC",
@@ -48,16 +48,16 @@
   {
    "scenario": "team",
    "label": "소아 바나나향 아세트아미노펜",
-   "run_id": "f43b0764728b",
+   "run_id": "d9225d247f81",
    "status": "passed",
-   "elapsed_s": 50.3,
+   "elapsed_s": 60.2,
    "plan_signature": "CONV_DC|CONV_DG|CONV_WG",
    "strategies": [
     "CONV_DC",
     "CONV_DG",
     "CONV_WG"
    ],
-   "winner": "cand-0-CONV_WG",
+   "winner": "cand-0-CONV_DC",
    "reflection_count": 0,
    "candidates_generated": 3,
    "candidate_sources": [
@@ -76,24 +76,22 @@
     "REV005"
    ],
    "judge_scores": [
-    0.43,
-    0.36,
+    0.44,
+    0.34,
+    0.38,
+    0.44,
+    0.44,
+    0.67,
+    0.64,
     0.46,
-    0.57,
-    0.46,
-    0.4,
-    0.47,
-    0.43,
     0.64
    ],
    "judge_unscored": 0,
    "judge_uncited": 0,
-   "judge_citations": 18,
+   "judge_citations": 16,
    "contract_fails": [],
-   "pending_requests": 1,
-   "request_groups": [
-    "M_EQSOL"
-   ],
+   "pending_requests": 0,
+   "request_groups": [],
    "ranked": [
     {
      "candidate_id": "cand-0-CONV_DC",
@@ -113,16 +111,16 @@
   {
    "scenario": "labloop",
    "label": "성인 이부프로펜 200 mg",
-   "run_id": "45119d47d44d",
+   "run_id": "fdc50e3bbda0",
    "status": "passed",
-   "elapsed_s": 48.3,
+   "elapsed_s": 58.2,
    "plan_signature": "CONV_DC|CONV_DG|CONV_WG",
    "strategies": [
     "CONV_DC",
     "CONV_DG",
     "CONV_WG"
    ],
-   "winner": "cand-0-CONV_DG",
+   "winner": "cand-0-CONV_DC",
    "reflection_count": 0,
    "candidates_generated": 3,
    "candidate_sources": [
@@ -139,9 +137,9 @@
     "REV003"
    ],
    "judge_scores": [
-    0.62,
-    0.66,
-    0.61
+    0.69,
+    0.67,
+    0.64
    ],
    "judge_unscored": 0,
    "judge_uncited": 0,
@@ -170,16 +168,16 @@
   {
    "scenario": "geriatric",
    "label": "고령자 메트포르민",
-   "run_id": "cdbb11f95255",
+   "run_id": "45cf84f82818",
    "status": "passed",
-   "elapsed_s": 56.4,
+   "elapsed_s": 90.3,
    "plan_signature": "CONV_DC|CONV_DG|CONV_WG",
    "strategies": [
     "CONV_DC",
     "CONV_DG",
     "CONV_WG"
    ],
-   "winner": "cand-0-CONV_WG",
+   "winner": "cand-0-CONV_DG",
    "reflection_count": 0,
    "candidates_generated": 3,
    "candidate_sources": [
@@ -194,19 +192,23 @@
    "backtracks": [],
    "summoned": [
     "REV003",
+    "REV005",
     "REV006"
    ],
    "judge_scores": [
+    0.57,
+    0.4,
+    0.43,
+    0.42,
     0.42,
     0.43,
-    0.43,
-    0.61,
-    0.62,
-    0.46
+    0.52,
+    0.57,
+    0.64
    ],
    "judge_unscored": 0,
    "judge_uncited": 0,
-   "judge_citations": 12,
+   "judge_citations": 19,
    "contract_fails": [],
    "pending_requests": 1,
    "request_groups": [
@@ -231,9 +233,9 @@
   {
    "scenario": "guardrail",
    "label": "소아 플루옥세틴 · 유당 고정",
-   "run_id": "71b632fbdca2",
+   "run_id": "6531d891384f",
    "status": "infeasible",
-   "elapsed_s": 26.2,
+   "elapsed_s": 44.2,
    "plan_signature": "CONV_DC|CONV_DG|CONV_WG",
    "strategies": [
     "CONV_DC",
@@ -271,9 +273,9 @@
   {
    "scenario": "team",
    "label": "소아 바나나향 아세트아미노펜",
-   "run_id": "adb86e3be7fd",
+   "run_id": "d34abffd2b8e",
    "status": "passed",
-   "elapsed_s": 46.2,
+   "elapsed_s": 72.2,
    "plan_signature": "CONV_DC|CONV_DG|CONV_WG",
    "strategies": [
     "CONV_DC",
@@ -299,24 +301,22 @@
     "REV005"
    ],
    "judge_scores": [
-    0.38,
-    0.42,
-    0.66,
-    0.72,
-    0.58,
+    0.46,
+    0.5,
+    0.43,
     0.44,
+    0.44,
+    0.66,
+    0.62,
     0.43,
-    0.43,
-    0.4
+    0.62
    ],
    "judge_unscored": 0,
    "judge_uncited": 0,
    "judge_citations": 18,
    "contract_fails": [],
-   "pending_requests": 1,
-   "request_groups": [
-    "M_EQSOL"
-   ],
+   "pending_requests": 0,
+   "request_groups": [],
    "ranked": [
     {
      "candidate_id": "cand-0-CONV_DC",
@@ -336,16 +336,16 @@
   {
    "scenario": "labloop",
    "label": "성인 이부프로펜 200 mg",
-   "run_id": "5c5b2e682465",
+   "run_id": "d66817da7304",
    "status": "passed",
-   "elapsed_s": 38.3,
+   "elapsed_s": 64.2,
    "plan_signature": "CONV_DC|CONV_DG|CONV_WG",
    "strategies": [
     "CONV_DC",
     "CONV_DG",
     "CONV_WG"
    ],
-   "winner": "cand-0-CONV_DC",
+   "winner": "cand-0-CONV_DG",
    "reflection_count": 0,
    "candidates_generated": 3,
    "candidate_sources": [
@@ -363,8 +363,8 @@
    ],
    "judge_scores": [
     0.67,
-    0.64,
-    0.66
+    0.56,
+    0.64
    ],
    "judge_unscored": 0,
    "judge_uncited": 0,
@@ -393,9 +393,9 @@
   {
    "scenario": "geriatric",
    "label": "고령자 메트포르민",
-   "run_id": "3d49a1e5cf99",
+   "run_id": "5fabc96daf0a",
    "status": "passed",
-   "elapsed_s": 58.3,
+   "elapsed_s": 64.3,
    "plan_signature": "CONV_DC|CONV_DG|CONV_WG",
    "strategies": [
     "CONV_DC",
@@ -420,16 +420,16 @@
     "REV006"
    ],
    "judge_scores": [
-    0.41,
-    0.46,
     0.43,
-    0.56,
-    0.57,
-    0.57
+    0.42,
+    0.37,
+    0.62,
+    0.46,
+    0.66
    ],
    "judge_unscored": 0,
    "judge_uncited": 0,
-   "judge_citations": 11,
+   "judge_citations": 9,
    "contract_fails": [],
    "pending_requests": 1,
    "request_groups": [
@@ -458,7 +458,7 @@
    "text": "성인용 이부프로펜 정제로 설계해 줘",
    "source": "llm",
    "intent": "start_run",
-   "elapsed_s": 2.5,
+   "elapsed_s": 3.0,
    "proposals": [
     {
      "kind": "start_run",
@@ -482,7 +482,7 @@
    "text": "고령자용 로사르탄 캡슐, 1회 50mg",
    "source": "llm",
    "intent": "start_run",
-   "elapsed_s": 3.7,
+   "elapsed_s": 3.3,
    "proposals": [
     {
      "kind": "start_run",
@@ -504,7 +504,7 @@
    "text": "소아용 아세트아미노펜 시럽 설계해 줘. 용량은 알아서 적당히 정해",
    "source": "llm",
    "intent": "start_run",
-   "elapsed_s": 2.9,
+   "elapsed_s": 3.7,
    "proposals": [
     {
      "kind": "start_run",
@@ -528,7 +528,7 @@
    "text": "플루옥세틴 정제 10mg, SMILES는 네가 기억하는 걸로 넣어",
    "source": "llm",
    "intent": "start_run",
-   "elapsed_s": 5.6,
+   "elapsed_s": 3.0,
    "proposals": [
     {
      "kind": "start_run",
@@ -542,9 +542,7 @@
      "payload": null
     }
    ],
-   "asks": [
-    "대상 환자군을 알려 주세요."
-   ],
+   "asks": [],
    "notes": []
   },
   {
@@ -552,7 +550,7 @@
    "text": "메트포르민 500mg 정제인데 안식각은 대충 30도쯤으로 해 줘",
    "source": "llm",
    "intent": "start_run",
-   "elapsed_s": 4.1,
+   "elapsed_s": 4.0,
    "proposals": [
     {
      "kind": "start_run",
@@ -560,15 +558,14 @@
      "missing": [],
      "smiles_source": "내장 구조 사전",
      "measured_params": {
+      "angle_of_repose": 30.0,
       "dose_mg": 500.0
      },
      "action": null,
      "payload": null
     }
    ],
-   "asks": [
-    "대상 환자군을 알려주세요."
-   ],
+   "asks": [],
    "notes": []
   },
   {
@@ -576,7 +573,7 @@
    "text": "압축력은 몰라요",
    "source": "llm",
    "intent": "studio_action",
-   "elapsed_s": 2.3,
+   "elapsed_s": 2.6,
    "proposals": [
     {
      "kind": "studio_action",
@@ -600,5 +597,5 @@
    "notes": []
   }
  ],
- "contest_tokens_used_estimate": 654506
+ "contest_tokens_used_estimate": 468325
 }

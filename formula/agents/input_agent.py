@@ -290,7 +290,7 @@ KEY_WORDS = {
     "평형용해도": "solubility_mg_per_ml", "solubility": "solubility_mg_per_ml", "수분 함량": "water_content_percent", "용해도": "solubility_mg_per_ml", "수분": "water_content_percent",
     "안식각": "angle_of_repose", "압축성": "compressibility_index", "카르 지수": "compressibility_index",
     "하우스너": "hausner_ratio", "용량": "dose_mg", "흡수율": "fraction_absorbed",
-    "잔존율": "aqueous_stability_percent", "pka": "pka_acid", "logd": "logd_7_4",
+    "잔존율": "aqueous_stability_percent", "pka": "api_pka_base", "logd": "logd_7_4",
 }
 
 

@@ -67,7 +67,7 @@ def known_keys(base_dir: Path) -> FrozenSet[str]:
     return frozenset(keys)
 
 
-STRUCTURE_KEYS = ("ionizable", "ionizable_sites", "bcs_lit_solubility", "bcs_lit_class", "bcs_lit_source")
+STRUCTURE_KEYS = ("ionizable", "ionizable_gi", "ionizable_sites", "bcs_lit_solubility", "bcs_lit_class", "bcs_lit_source")
 
 
 def seed_known_keys(ctx: Dict[str, Any], base_dir: Path) -> None:

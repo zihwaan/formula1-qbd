@@ -77,7 +77,10 @@ def from_recipe(rb: DoeRulebook, recipe: Dict[str, Any], *, run_id: str, spec: D
         "batch_scale": None, "evidence_snapshot_id": f"EV-{run_id}-{recipe['candidate_id']}",
         "rule_verdict_ids": [v.get("rule_id", "") for v in verdicts if v.get("rule_id")],
         "rulebook_version": rb.version, "created_by": actor, "created_at": now(),
-        "dosage_form": "tablet", "release_type": "immediate_release", "coating": "none", "api": api,
+        # 후보 탐색이 해석한 제형을 그대로 넘긴다 — 분산정이면 분산시간·분산 미세도 CQA가 템플릿에서 나온다
+        # (예전엔 'tablet'으로 고정돼, 분산정 요청으로 만든 study에 분산시간 CQA가 없었다 — 2026-09-26 전수검사)
+        "dosage_form": spec.get("dosage_form") if spec.get("dosage_form") in ("tablet", "dispersible_tablet") else "tablet",
+        "release_type": "immediate_release", "coating": "none", "api": api,
         "equipment_id": None, "unit_weight_mg": total,
         "upstream_verdicts": [{"rule_id": v.get("rule_id"), "status": _vstatus(v.get("status")),
                                "resolved": False} for v in verdicts],

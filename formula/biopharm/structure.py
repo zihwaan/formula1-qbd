@@ -16,6 +16,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 LIT_CSV = "database/04_biopharmaceutics/literature_bcs.csv"
+# 위장관 pH(1.2–6.8)에서 이온화 상태가 거의 바뀌지 않는 약산성기 — 통상 pKa가 8을 넘는다(페놀 ≈10, 이미드 ≈9–10).
+# 이 기만 있는 약물(예: ivacaftor의 페놀)은 pH 의존 용해도가 판정을 가르지 않으므로 BCS 잠정 판정에서 '이온화'로
+# 세지 않는다. 염 형성 가능성(ionizable — Gate 3B)은 그대로 센다.
+GI_WEAK_ONLY = {"has_phenol", "has_imide"}
 
 
 @lru_cache(maxsize=4)
@@ -38,9 +42,13 @@ def apply_structure_signals(ctx: Dict[str, Any], spec, base_dir: Path) -> None:
     screens = getattr(profile, "derived_screens", None) or {}
     if profile is not None and profile.structure_resolved and "salt_forming_site_count" in screens:
         ctx["ionizable"] = bool(screens.get("salt_forming_site_count"))
-        ctx["ionizable_sites"] = screens.get("ionizable_group_summary")
+        sites = screens.get("ionizable_group_summary") or {}
+        ctx["ionizable_sites"] = sites
+        gi = [f for f in (sites.get("acidic") or []) + (sites.get("basic") or []) if f not in GI_WEAK_ONLY]
+        ctx["ionizable_gi"] = bool(gi) or bool(sites.get("permanent_charge"))
     else:
         ctx.setdefault("ionizable", None)
+        ctx.setdefault("ionizable_gi", None)
     row = literature_row(profile, base_dir)
     ctx["bcs_lit_solubility"] = row.get("solubility_class") if row else None
     ctx["bcs_lit_class"] = row.get("bcs_class_literature") if row else None

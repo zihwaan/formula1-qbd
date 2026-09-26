@@ -192,8 +192,15 @@ class RulebookRegistry:
         ctx.setdefault("packaging", recipe.packaging)
         ctx.setdefault("packaging_traits", self.packaging_traits(recipe.packaging))
         ctx.setdefault("candidate_id", recipe.candidate_id)
+        # 약물 함량(%) — 경로 규칙 RTE007(고함량)·RTE008(저함량 → 함량균일성)이 조건으로 쓴다. 처방이 있어야
+        # 계산되므로 경로 결정용 빈 처방에서는 None(모름)이다.
+        api_mg = sum((i.amount_mg or 0) for i in recipe.ingredients if str(i.role or "").lower() == "api")
+        total_mg = sum((i.amount_mg or 0) for i in recipe.ingredients)
+        ctx["drug_loading_pct"] = round(api_mg / total_mg * 100, 3) if api_mg and total_mg else None
         # 성분명 사전 조회는 여기서 한 번에 끝내고, 전략 함수에는 순수 dict만 넘긴다.
         ctx[CTX_IDENTITIES] = self.excipients.identities(recipe.ingredient_names())
+        # 다성분 금기표의 성분 부류(reducing_sugar·alkaline_lubricant·primary_amine_API …)를 처방에서 판별한다
+        ctx["_component_classes"] = sorted(self._component_classes(spec, recipe, ctx[CTX_IDENTITIES]))
 
         # 구조를 확정하지 못했으면 구조 기반 배합금기는 **판정 자체가 성립하지 않는다.**
         # 아무 규칙도 발동하지 않은 것을 통과로 세면, SMILES 오타 한 글자가 게이트를
@@ -254,6 +261,45 @@ class RulebookRegistry:
                 result.stopped_at_priority = priority
                 break
         return result
+
+    def _component_classes(self, spec: FormulationSpec, recipe: Recipe, identities) -> set:
+        import yaml
+        cfg_path = self.base_dir / "config" / "component_classes.yaml"
+        if not cfg_path.exists() or not recipe.ingredients:
+            return set()
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        master_path = self.base_dir / "database" / "00_master" / "excipient_master.csv"
+        master = (pd.read_csv(master_path, dtype=str, keep_default_na=False).fillna("").to_dict(orient="records")
+                  if master_path.exists() else [])
+        from formula.checkers.excipients import IngredientMatcher
+        matcher = IngredientMatcher(identities or {})
+        yes = lambda v: str(v).strip().lower() in ("yes", "y", "true", "1")
+        out = set()
+        for row in master:
+            if matcher.match(row.get("excipient_name_en", "")) is None:
+                continue
+            for token, col in (cfg.get("excipient_master_columns") or {}).items():
+                if yes(row.get(col)):
+                    out.add(token)
+            alk = cfg.get("alkaline_lubricant") or {}
+            if alk and yes(row.get(alk.get("column"))) and alk.get("functional_category", "") in row.get("functional_category", ""):
+                out.add("alkaline_lubricant")
+        for token, names in (cfg.get("excipient_names") or {}).items():
+            if any(matcher.match(n) is not None for n in names):
+                out.add(token)
+        groups = {g.lower().removeprefix("has_") for g in spec.api_functional_groups}
+        for token, need in (cfg.get("api_groups") or {}).items():
+            if groups & set(need):
+                out.add(token)
+        salt = cfg.get("amine_salt_API") or {}
+        is_salt = bool(getattr(spec.api_profile, "is_salt", False)) if spec.api_profile else False
+        if salt and groups & set(salt.get("api_groups") or []) and (is_salt or not salt.get("requires_salt")):
+            out.add("amine_salt_API")
+        out |= {str(t).lower() for t in ((cfg.get("always_present") or {}).get("tokens") or [])}
+        aq = cfg.get("aqueous_process_water") or {}
+        if aq and aq.get("process_contains", "") in str(recipe.process or ""):
+            out |= set(aq.get("tokens") or [])
+        return out
 
     def _role_map_rows(self) -> List[Dict[str, Any]]:
         path = self.base_dir / "database" / "06_config" / "excipient_role_map.csv"

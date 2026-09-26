@@ -591,7 +591,8 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
                 "citation": v.citation,
             }
             for v in failures
-            if any(p.split()[0].lower() in (v.reason or "").lower() for p in pinned if p.strip())
+            # 반려 권한이 있는 판정만 — 사유에 고정 성분 이름이 나올 뿐인 검토 flag(RTE008 등)는 '막은 규칙'이 아니다
+            if v.blocking and any(p.split()[0].lower() in (v.reason or "").lower() for p in pinned if p.strip())
         ]
         emit("infeasible", EventKind.WARNING,
              reason=f"고정 제약({', '.join(pinned)})이 검증된 규칙과 충돌 — "
@@ -599,7 +600,7 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
              required_excipients=pinned,
              blocking=blocking or [
                  {"rule_id": v.rule_id, "reason": v.reason, "suggestion": v.suggestion}
-                 for v in failures
+                 for v in failures if v.blocking
              ])
         return {"status": "infeasible"}
 

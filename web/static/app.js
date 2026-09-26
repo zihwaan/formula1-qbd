@@ -735,10 +735,15 @@ function renderDataRequests(requests, planSignature, groups) {
   panel.hidden = false;
   const kindTag = (k) => k === "disagreement" ? "예측 간 불일치" : k === "low_or_unknown" ? "예측이 낮거나 모름" : k === "ph_dependent" ? "pH 의존(이온화)" : "";
   const textKey = (k) => /(_id|_json|_class)$/.test(k);
+  // 예/아니오로 답하는 결과(열안정성·실현성 확인·잔사 결정형 확인 등)
+  const boolKey = (k) => /(_done|_confirmed|_miscible|_stable_near_tm|multiple_endotherms|is_amorphous_halo)$/.test(k);
   body.innerHTML = list.map((g) => `<div class="drq-req" data-mid="${esc(g.measurement_id)}">
       <b><span class="tier">Tier ${esc(g.tier)} · ~${esc(g.sample_mg)} mg</span>${esc(g.name)}</b>
       ${g.reasons.map((r) => `<div class="why">${kindTag(r.kind) ? `<span class="drq-kind">${esc(kindTag(r.kind))}</span> ` : ""}${esc(r.text)} <code>${esc(r.trigger_id)}</code></div>`).join("")}
-      ${g.result_keys.length ? `<div class="measures">${g.result_keys.map((k) => `<label class="drq-num">${esc(k)}
+      ${g.result_keys.length ? `<div class="measures">${g.result_keys.map((k) => boolKey(k)
+        ? `<label class="drq-num">${esc(k)} <select data-key="${esc(k)}" data-bool="1"><option value="">—</option>
+            <option value="true">예</option><option value="false">아니오</option></select></label>`
+        : `<label class="drq-num">${esc(k)}
         <input ${textKey(k) ? 'type="text"' : 'type="number" step="any"'} data-key="${esc(k)}" placeholder="값"></label>`).join("")}</div>` : ""}
       <div class="drq-row-actions"><button type="button" class="ghost drq-decline" data-triggers="${esc(g.triggers.join(","))}">이 시험 건너뛰기</button>
         ${g.fallbacks.length ? `<span class="drq-fallback">건너뛰면: ${esc(g.fallbacks[0])}</span>` : ""}</div>
@@ -770,12 +775,12 @@ function renderDataRequests(requests, planSignature, groups) {
   });
 
   $("drq-submit").onclick = async () => {
-    const inputs = [...body.querySelectorAll("input[data-key]")];
+    const inputs = [...body.querySelectorAll("input[data-key], select[data-key]")];
     const measurements = {};
     for (const el of inputs) {
       const v = el.value.trim();
       if (v === "") continue;
-      measurements[el.dataset.key] = el.type === "number" ? Number(v) : v;
+      measurements[el.dataset.key] = el.dataset.bool ? v === "true" : el.type === "number" ? Number(v) : v;
     }
     if (!Object.keys(measurements).length) {
       notice("최소 한 항목에 값을 입력해 주세요.", "warn");

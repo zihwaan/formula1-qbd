@@ -718,6 +718,43 @@ def _dacon_stream(system_prefix: str, user: str, on_delta: Optional[Callable[[st
 # ---------------------------------------------------------------------------
 # 공개 인터페이스 — 호출부는 이 두 함수만 안다
 # ---------------------------------------------------------------------------
+def _blind(text):
+    """코드명 블라인드 실행이면 실명을 가린다 — 모델에 보내는 글과 모델이 낸 글 모두(events.mask)."""
+    from formula.orchestrator.events import mask
+    return mask(text)
+
+
+def _blind_model(out):
+    from formula.orchestrator.events import current_bus
+    bus = current_bus()
+    if bus is None or not bus.blind or not hasattr(out, "model_dump"):
+        return out
+    return type(out).model_validate(_blind(out.model_dump()))
+
+
+def _blind_stream(on_delta):
+    """스트림 조각 사이에 이름이 쪼개져도("Iva"+"caftor") 가려지게 — 가장 긴 실명 길이만큼 늦게 흘린다."""
+    from formula.orchestrator.events import current_bus
+    bus = current_bus()
+    if on_delta is None or bus is None or not bus.blind:
+        return on_delta, lambda: None
+    hold = max(len(k) for k in bus.blind)
+    st = {"raw": "", "sent": 0}
+
+    def wrapped(delta: str) -> None:
+        st["raw"] += delta
+        safe = _blind(st["raw"][:max(0, len(st["raw"]) - hold)])
+        if len(safe) > st["sent"]:
+            on_delta(safe[st["sent"]:])
+            st["sent"] = len(safe)
+
+    def flush() -> None:
+        rest = _blind(st["raw"])[st["sent"]:]
+        if rest:
+            on_delta(rest)
+    return wrapped, flush
+
+
 def parse_structured(
     output_format: Type[T],
     system_prefix: str,
@@ -733,6 +770,7 @@ def parse_structured(
     (lab-in-the-loop 판독·지시)은 조금 더 기다려서라도 실제 LLM 결과를 받는 편이 낫다.
     """
     last: Optional[LLMUnavailable] = None
+    system_prefix, user, system_suffix = _blind(system_prefix), _blind(user), _blind(system_suffix)
     for name in providers():
         try:
             if name == "dacon" and _DACON_EXHAUSTED["flag"]:
@@ -745,7 +783,7 @@ def parse_structured(
                 out = _groq_parse(output_format, system_prefix, user, system_suffix, effort,
                                   max_tokens, wait_budget)
             _count(name)
-            return out
+            return _blind_model(out)
         except LLMUnavailable as exc:
             last = exc          # 다음 프로바이더로 (대회 API 소진·오류 → 무료 Groq)
     raise last or LLMUnavailable("LLM 자격증명 없음 (DACON_API_KEY / GROQ_API_KEY 미설정)")
@@ -762,6 +800,8 @@ def stream_text(
     """토큰을 흘리며 응답을 받는다 — 심사관 사고 과정을 UI에 실시간 노출하는 용도."""
     last: Optional[LLMUnavailable] = None
     emitted = [False]
+    system_prefix, user, system_suffix = _blind(system_prefix), _blind(user), _blind(system_suffix)
+    on_delta, flush = _blind_stream(on_delta)
     for name in providers():
         try:
             if name == "dacon" and _DACON_EXHAUSTED["flag"]:
@@ -773,7 +813,8 @@ def stream_text(
             else:
                 out = _groq_stream(system_prefix, user, on_delta, system_suffix, effort, max_tokens)
             _count(name)
-            return out
+            flush()
+            return _blind(out)
         except LLMUnavailable as exc:
             last = exc
             if emitted[0]:      # 이미 화면에 흘린 뒤라면 다른 모델로 이어 붙이지 않는다

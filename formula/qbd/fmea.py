@@ -85,8 +85,24 @@ def draft_fmea(rb: DoeRulebook, handoff: Dict[str, Any], cqas: Dict[str, Dict[st
             "evidence_type": seed["evidence_type"], "source_ids": seed["source_ids"],
             "alternative_control": None, "approval_ref": None, "deleted": False,
             "unrecorded_parameters": unrecorded, "origin": "SEED",
+            "upstream_signals": _upstream_signals(handoff, linked, factors),
         })
     return rows
+
+
+# 후보 탐색이 남긴 지적 가운데 FMEA 행과 같은 CQA를 가리키는 것 — 발생도 점수는 바꾸지 않고(출처 있는 환산표가
+# 없다) 연구자가 볼 수 있게 행에 붙인다. 예: RTE008(저함량 → 함량균일성) → 혼합 시간 행(CQA_CU_AV). 시연 카드 1.
+UPSTREAM_TO_CQA = {"RTE008": ("CQA_CU_AV", "blend_time", "후보 탐색 RTE008: 저함량 약물 — 함량균일성 위험(혼합 공정 확인)")}
+
+
+def _upstream_signals(handoff: Dict[str, Any], linked: List[str], factors: List[str]) -> List[str]:
+    out = []
+    pct = (handoff.get("api") or {}).get("pct_w_w")
+    for v in handoff.get("upstream_verdicts") or []:
+        hit = UPSTREAM_TO_CQA.get(v.get("rule_id"))
+        if hit and hit[0] in linked and hit[1] in factors:
+            out.append(hit[2] + (f" · API {pct:.1f}% w/w" if isinstance(pct, (int, float)) else ""))
+    return out
 
 
 def rpn(row: Dict[str, Any]) -> Optional[int]:

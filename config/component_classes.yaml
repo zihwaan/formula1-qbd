@@ -1,0 +1,29 @@
+# 다성분 배합금기표(database/02_incompatibility/incompatibility_multicomponent.csv)의 성분 부류 어휘 → 판별 기준.
+# 이 다리가 없던 동안 다성분 규칙은 처방의 실제 이름·작용기와 한 번도 만나지 못해 발동할 수 없었다
+# (2026-09-26 전수검사). 판별은 전부 데이터로 한다 — 부형제 마스터의 열, 구조 플래그 어휘, 공정.
+excipient_master_columns:        # excipient_master.csv 의 해당 열이 yes 인 성분이 처방에 있으면 그 부류
+  reducing_sugar: reducing_sugar
+  hygroscopic_excipient: hygroscopic
+alkaline_lubricant:              # 알칼리 표면 pH(yes) 이면서 기능이 활택제
+  column: alkaline_surface_ph
+  functional_category: lubricant
+excipient_names:                 # 이름으로 정하는 부류(부형제 사전으로 대조)
+  lactose: [Lactose monohydrate, Lactose anhydrous, Lactose spray-dried]
+  magnesium_stearate: [Magnesium stearate]
+  polyol_excipient: [Sorbitol, Glycerin]   # MC004 근거(cetirizine–sorbitol·glycerol 에스터화)가 든 폴리올만
+api_groups:                      # API 구조 플래그(룰북 조인 어휘) 중 하나라도 있으면 그 부류
+  primary_amine_API: [primary_amine]
+  amine_API: [primary_amine, secondary_amine]
+  carboxylic_acid_API: [carboxylic_acid]
+  hydrolyzable_API: [ester, lactone, beta_lactam, anhydride, carbonate, thioester, sulfonate_ester]
+amine_salt_API:                  # 아민 API가 염으로 입력됐을 때
+  api_groups: [primary_amine, secondary_amine, tertiary_amine]
+  requires_salt: true
+aqueous_process_water:           # 수계 습식과립은 공정 중 물이 들어간다 → water·moisture 부류
+  process_contains: wet_granulation
+  tokens: [water, moisture]
+# 매핑하지 않은 부류: excipient_with_double_bond(MC005) — 해당 부형제 목록의 출처를 확보하지 못함
+always_present:                  # 모든 신약 제품에 적용되는 조건 — 다성분 금기표의 required_conditions 어휘
+  tokens: ["40c/75%rh"]
+  source: "ICH Q1A(R2) 2.2.7 — 신약 제품의 가속 안정성 시험 조건 40 ± 2 °C / 75 ± 5 %RH (MC002의 '40C/75%RH stress')"
+# 매핑하지 않은 조건: MC003 'packaging permeable' — 포장은 후보 처방의 산출 범위 밖이라 판별하지 않는다
