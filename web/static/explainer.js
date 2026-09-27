@@ -531,6 +531,32 @@
     },
 
     {
+      nav: "v7 — 단계마다 승인, 어떤 DoE든",
+      kicker: "DoE v7.0 실험개발 탭 · 샌드박스(규칙은 모두 DRAFT)",
+      title: "여섯 단계마다 연구자가 승인해야 넘어가고, run 데이터가 있는 DoE는 무엇이든 같은 길을 간다",
+      lead: `<b>후보·CQA → FMEA·요인 → 범위·feasibility → 실험표 → 결과·모델 → 영역·확인.</b> 단계마다 질문 카드가 할 일을 묻고,
+             승인 지점 9개(CQA 선택 · FMEA · 요인·범위 · feasibility 계획 · DoE 계획 · 실행 프로토콜 · 플래그 모델 수용 · 확인 계획 · 확인 영역)는
+             연구자가 누르지 않으면 넘어가지 않는다. 시작은 ① 통과 후보, 또는 <b>run 단위 실험 데이터를 가진 DoE 데이터셋</b>(공통 JSON 형식) —
+             실제로 돌린 행렬이 표준 설계와 달라도 그 행렬을 가져와 같은 검사를 거치고, 결과는 CSV로 붙여 넣는다.`,
+      art: `
+        <div class="f1-story f1-seq">
+          <div class="f1-beat"><div class="who">범위</div><div class="what"><div class="card">경계 근거가 '제안'뿐이면 RSM으로 바로 가지 않는다 → <b>2k+1 feasibility</b>(2요인 5조건). 통과해야 근거가 <b>FEASIBILITY_CONFIRMED</b>로 바뀐다 — 사람이 등급을 올리는 버튼은 없다</div></div></div>
+          <div class="f1-beat"><div class="who">설계</div><div class="what"><div class="card">요인 수로 정해진다 — 1요인 7 · 2요인 FCCD 13 · 3요인 BBD 17 run. 조성 요인은 balance 성분으로 100%를 맞추고 음수면 차단(RS002)</div></div></div>
+          <div class="f1-beat reject"><div class="who">모델</div><div class="what"><div class="card">사람이 항을 고르지 않는다 — 계층 모형 전부를 LOOCV로 비교해 1-표준오차 안에서 가장 단순한 식. 경고가 붙은 모형은 연구자가 사유를 적어야 영역으로 간다</div></div></div>
+          <div class="f1-beat jud"><div class="who">확인</div><div class="what"><div class="card">결과 전에 SETPOINT·BOUNDARY·ROBUSTNESS 예측구간을 잠근다. 모델에 쓴 batch·같은 blend·문헌 lot은 확인이 아니다(VR003·RQ009·VR015)</div></div></div>
+        </div>
+        <div class="guide-note warn" style="margin-top:14px">
+          <b>CBD 구강붕해정 문헌 재현(Monton 2026, Table 9 원자료 17 run)</b><br>
+          반응 곡면은 논문 Figure 1과 같은 모양(반응 × CCS 1·3·5%)으로 그린다. 논문은 평균 예측으로 design space를 선언했지만,
+          잠근 기준(모든 규격을 동시에 만족할 확률 ≥ 0.90)에서 최대값이 <b>0.889</b>라 영역이 비고(DR018), 논문의 확인 lot 3개가 규격을 통과해도
+          <b>승격하지 않는다</b>. 시스템은 판별시험 후보(RB18)를 보여 주고 FMEA 재검토로 돌려보낸다.
+        </div>`,
+      note: `v7 규칙 18권은 모두 전문가 검토 전(DRAFT)이라 <b>운영 집행은 꺼져 있고</b> study는 샌드박스로만 만든다 — 판정은 study를 실제로 막고 보내지만
+             화면의 모든 판정에 DRAFT가 붙는다. 룰북 데이터와 명세가 어긋난 곳(예: 확인 용도로 허용된 근거 등급이 하나도 없음, 압축력 kN 단위 미등록)은
+             코드로 메우지 않고 결정과 함께 기록했다.`,
+    },
+
+    {
       nav: "실제로 참고한 연구가 있다",
       kicker: "이 설계의 출처 · Robin (FutureHouse)",
       title: "진단 가설은 실제 연구의 지시문을 읽고 설계했다",
@@ -612,7 +638,8 @@
         밟습니다 — 규칙이 제약을 반려하는 경우, 인구군에 따라 심사관이 바뀌는 경우, 값을 몰라도 후보부터
         나오고 갈리는 지점만 되묻는 경우, 후보 이후의 개발까지. 후보 카드의 <b>이 후보로 개발 착수</b>를 누르면 ②로 넘어갑니다.<br>
         네 번째 카드 또는 <b>② 개발 스튜디오</b>의 <b>가이드 시연 — Lornoxicam 분산정</b>은 장면 9개를 따라
-        CQA부터 확인배치까지 걷습니다(한 단계씩 또는 자동 진행). 규칙 ID를 누르면 <b>원본 CSV 행과 출처</b>가 열립니다.</p>
+        CQA부터 확인배치까지 걷습니다(한 단계씩 또는 자동 진행). <b>DoE v7.0 실험개발</b> 탭에서는 CBD 문헌 재현이나 직접 가진
+        run 데이터(데이터셋)로 여섯 단계를 승인하며 진행합니다. 규칙 ID를 누르면 <b>원본 CSV 행과 출처</b>가 열립니다.</p>
       <button type="button" id="guide-finish">설명 닫고 실행하기 →</button>
     </div>`;
 

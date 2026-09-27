@@ -195,10 +195,7 @@
     if (active && active.box !== box) purge();
     if (active && active.box === box && window.Plotly) active.divs.forEach((el) => { try { window.Plotly.purge(el); } catch (e) { /* 무시 */ } });
     const redraw = () => render(box, d, opts);
-    if (d.kind !== "SURFACE") {
-      box.innerHTML = `<p class="d7-muted">요인이 1개라 곡면이 아닌 곡선입니다.</p>`;
-      return;
-    }
+    if (d.kind === "LINE") return renderLines(box, d, opts);
     const sf = d.slice_factor;
     const cols = d.responses[0]?.slices.length || 1;
     const lab = (s, i) => (sf ? `(${LETTERS[i]}) ${esc(sf.name)} ${fx(s.level_actual, 3)}${esc(sf.unit || "")}` : "");
@@ -230,6 +227,48 @@
       }
     }
     if (!P) box.querySelector("figcaption").insertAdjacentHTML("beforeend", ` <span class="d7-muted">(3D를 불러오지 못해 2D 색지도로 그렸습니다)</span>`);
+  }
+
+  // 요인 1개 — 반응마다 한 줄: 예측 곡선 + 실험점(잔차 세로줄) + 규격선(2D, WebGL 없음)
+  async function renderLines(box, d, opts) {
+    const f = d.factors[0];
+    box.innerHTML = `<figure class="rsg" style="--rsg-cols:1">
+      ${opts.sources && d.published_available ? `<div class="rsg-tools"><button type="button" data-src="selected" class="${d.source === "selected" ? "on" : ""}">시스템 선택 모형</button>
+        <button type="button" data-src="published" class="${d.source === "published" ? "on" : ""}">보고된 항 구성으로 재적합</button></div>` : ""}
+      ${d.responses.map((r, ri) => `<div class="rsg-bar">${esc(r.name)}<small>${esc(r.unit || "")}${specText(r) ? ` · 규격 ${esc(specText(r))}` : ""} · ${esc(r.formula || "")}${r.status ? ` · ${esc(r.status)}` : ""}</small></div>
+        <div class="rsg-row"><div class="rsg-cell"><div class="rsg-plot rsg-line" id="rsg-${box.id}-${ri}-0"></div></div></div>`).join("")}
+      <figcaption>${esc(d.note || "")} <span class="rsg-key"><i class="up"></i>관측값이 곡선 위 <i class="dn"></i>곡선 아래 · 세로줄 = 잔차 · 점선 = 규격</span></figcaption></figure>`;
+    box.querySelectorAll(".rsg-tools button").forEach((b) => b.addEventListener("click", () => opts.onSource && opts.onSource(b.dataset.src)));
+    let P = null;
+    try { P = await loadPlotly(); } catch (e) { P = null; }
+    const ink = css("--ink-1", "#222"), grid = css("--grid", "#ccc"), warn = css("--status-warn", "#b7791f");
+    for (const [ri, r] of d.responses.entries()) {
+      const el = document.getElementById(`rsg-${box.id}-${ri}-0`);
+      if (!el) return;
+      const xs = r.line.x;
+      if (!P) {
+        const W = 300, H = 160, [lo, hi] = r.zrange;
+        const px = (v) => ((v - xs[0]) / (xs[xs.length - 1] - xs[0])) * W, py = (v) => H - ((v - lo) / (hi - lo || 1)) * H;
+        el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="rsg-2d"><polyline fill="none" stroke="${ink}" stroke-width="2" points="${xs.map((x, i) => `${px(x).toFixed(1)},${py(r.line.y[i]).toFixed(1)}`).join(" ")}"/>
+          ${r.points.map((p) => `<line x1="${px(p.a)}" x2="${px(p.a)}" y1="${py(p.y)}" y2="${py(p.pred)}" stroke="#3a0a0a"/><circle cx="${px(p.a)}" cy="${py(p.y)}" r="3" fill="${p.above ? "#8b0000" : "#f7caca"}" stroke="#8b0000"/>`).join("")}</svg>`;
+        continue;
+      }
+      const tr = [{ type: "scatter", mode: "lines", x: xs, y: r.line.y, line: { color: ramp(0.3), width: 3 }, hovertemplate: "%{x:.4g} → %{y:.3g}<extra></extra>" }];
+      const SX = [], SY = [];
+      r.points.forEach((p) => { SX.push(p.a, p.a, null); SY.push(p.y, p.pred, null); });
+      tr.push({ type: "scatter", mode: "lines", x: SX, y: SY, line: { color: "#3a0a0a", width: 1.5 }, hoverinfo: "skip" });
+      for (const up of [true, false]) {
+        const Pt = r.points.filter((p) => p.above === up);
+        if (Pt.length) tr.push({ type: "scatter", mode: "markers", x: Pt.map((p) => p.a), y: Pt.map((p) => p.y),
+          marker: { size: 8, color: up ? "#8b0000" : "#f7caca", line: { color: "#8b0000", width: 1 } }, hovertemplate: "관측 %{y:.3g}<extra></extra>" });
+      }
+      const shapes = [r.lower, r.upper].filter((v) => v != null && r.operator !== "TARGET_TOL").map((v) => ({ type: "line", xref: "paper", x0: 0, x1: 1, y0: v, y1: v, line: { color: warn, dash: "dash", width: 1.5 } }));
+      await P.newPlot(el, tr, { height: 260, margin: { l: 56, r: 12, t: 8, b: 44 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+        showlegend: false, font: { color: ink, size: 11 }, shapes,
+        xaxis: { title: { text: `${f.id}: ${f.name}${f.unit ? ` (${f.unit})` : ""}` }, gridcolor: grid, zeroline: false },
+        yaxis: { title: { text: `${r.name}${r.unit ? ` (${r.unit})` : ""}` }, gridcolor: grid, zeroline: false, range: r.zrange } },
+        { displaylogo: false, responsive: true, modeBarButtonsToRemove: ["toImage"] });
+    }
   }
 
   window.F1Surfaces = { render, loadPlotly, purge };

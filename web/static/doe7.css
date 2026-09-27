@@ -128,3 +128,4 @@
 .rsg-slice { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; margin-left: auto; }
 .rsg-slice select { font-size: 12px; border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; background: var(--page); color: var(--ink-1); max-width: 100%; }
 .rsg-tools:empty { display: none; }
+.rsg-plot.rsg-line { min-height: 260px; }

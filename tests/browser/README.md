@@ -50,6 +50,9 @@ CHROME=<chrome 실행 파일 경로> node tests/browser/scenarios.mjs http://loc
   반응 3 × CCS 3수준 곡면 격자와 모형 전환, 플래그 승인 뒤 REGION_EMPTY(DR018) → RB18 LB012 → 재검토로 FMEA에 돌아가는지, 3D(또는 2D 대체) 곡면, 모든 단계 넘침 0.
 - `doe7dataset.mjs` — '데이터셋으로 시작'에 실데이터(CBD를 공통 형식으로 옮긴 `/datasets/cbd_odt`)를 붙여 넣고 형식 오류 목록 →
   실행 행렬 가져오기 → 결과 CSV 붙여넣기(시험법 버전·독립성 열이 없으면 RB12가 막음) → 모델·곡면 격자 9칸.
+- `doe7full.mjs` — **로컬 컨테이너 전용**(테스트 전용 합성 데이터라 운영 주소에서는 스스로 멈춘다). 마법사의 모든 폼을 클릭으로:
+  feasibility 경계 실패 → LB002 → 재제출 → 통과 → FCCD → 결과 → 영역 → 확인계획 잠금 → 문헌 lot 거부(VR015) → 독립 확인 batch →
+  최종 승인 → VERIFIED(승인 지점 9개 모두), 이어서 요인 1개 데이터셋 → 예측 곡선.
 - `doe7.mjs` — 같은 탭의 검증 비교 하위 탭(CBD 재현 요약 · 범위 gate 계산기).
 - `doe7candidate.mjs` — **LLM 1회**: ① 설계 실행이 끝난 뒤 통과 후보의 "v7 실험개발로 시작" → 신규 API study, RB01이
   설비·배치 규모·등급을 요청하는지.

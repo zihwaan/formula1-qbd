@@ -626,7 +626,7 @@
     });
     const jb = $("d7w-joint");
     const allFit = Object.values(s.models).every((m) => m.selected);
-    if (!jb || !allFit || Object.keys(s.models).length < 2) return;
+    if (!jb || !allFit || Object.keys(s.models).length < 2 || Object.keys(s.factors).length < 2) return;   // 요인 1개면 2D 확률 지도 대신 곡선만
     const levels = Object.keys(s.factors).length === 3 ? [-1, 0, 1] : [0];
     const maps = [];
     for (const lv of levels) {
