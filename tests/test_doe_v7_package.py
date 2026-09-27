@@ -4,7 +4,7 @@ import shutil
 
 import pytest
 
-from formula.doe.package import DoeModuleConfig, PackageError, load_package, package
+from formula.doe.package import REPO, DoeModuleConfig, PackageError, load_package, package
 
 
 def test_counts_and_references():
@@ -63,3 +63,19 @@ def test_legacy_assets_untouched():
     with (root / "database/reference/confirmation_test_master.csv").open(encoding="utf-8-sig") as h:
         assert len(list(csv.DictReader(h))) == 66
     assert "v7_0" not in (root / "config/rulebook_manifest.yaml").read_text(encoding="utf-8")
+
+
+def test_migration_matrix_covers_every_legacy_file():
+    """INSTALLATION §6.2 — v6.1 파일마다 이관 상태가 하나씩 있어야 archive를 검토할 수 있다."""
+    import csv
+    root = REPO / "database" / "07_doe"
+    legacy = {str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()
+              and not str(p.relative_to(root)).startswith(("v7_0", "archive")) and p.name != "V6_TO_V7_MIGRATION_MATRIX.csv"}
+    with (root / "V6_TO_V7_MIGRATION_MATRIX.csv").open(encoding="utf-8") as h:
+        rows = list(csv.DictReader(h))
+    assert {r["legacy_file"] for r in rows} == legacy
+    allowed = {"MIGRATED", "PARTIALLY_MIGRATED", "NOT_MIGRATED", "REPLACED", "DEPRECATED_AFTER_VALIDATION"}
+    assert all(r["migration_status"] in allowed for r in rows)
+    for r in rows:
+        if r["v7_target"]:
+            assert (root / r["v7_target"]).exists(), r["v7_target"]
