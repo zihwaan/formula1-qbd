@@ -7,7 +7,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Sequence, Optional
 
 import numpy as np
 
@@ -86,3 +86,17 @@ def validate(plan: Dict[str, Any], factors: Sequence[FactorSpec]) -> Dict[str, A
     add("randomized", sorted(r["run_order"] for r in runs) == list(range(1, len(runs) + 1)) and plan.get("random_seed") is not None,
         f"seed {plan.get('random_seed')}")
     return {"ok": all(c["ok"] for c in checks), "checks": checks, "pure_error_df": max(n_c - 1, 0)}
+
+
+def classify(runs: Sequence[Dict[str, Any]], ids: Sequence[str]) -> Optional[str]:
+    """실행된 행렬의 설계점 집합이 표준 설계(1요인 3수준 · FCCD · BBD)와 같으면 그 이름 — 지지 영역(domain) 정책에 쓴다.
+    중심점 반복 수는 보지 않는다(run 수 검사는 Validator 몫)."""
+    pts = {tuple(round(float(r["coded"][i]), 6) for i in ids) for r in runs}
+    for dt in ("ONE_FACTOR_QUADRATIC", "FCCD", "BBD"):
+        try:
+            C = coded_matrix(dt, len(ids))
+        except (ValueError, KeyError, IndexError):
+            continue
+        if {tuple(round(float(v), 6) for v in row) for row in C} == pts:
+            return dt
+    return None

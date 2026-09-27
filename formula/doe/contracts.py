@@ -113,7 +113,7 @@ ACTIONS: Dict[str, Sequence[str]] = {
     "RANGE_REVISION_REQUIRED": ("range_submit",),
     "PROTOTYPE_REVISION_REQUIRED": ("revise",),
     "ADVANCED_DESIGN_REQUIRED": ("design_import",),
-    "DOE_PLAN_REVIEW": ("plan_approve", "plan_reject"),
+    "DOE_PLAN_REVIEW": ("plan_approve", "plan_reject", "plan_import"),
     "WAITING_FOR_RESULTS": ("results_submit",),
     "RESULT_QUALITY_REVIEW": ("results_confirm", "results_revise"),
     "MODEL_FIT": ("model_accept_flags",),

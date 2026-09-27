@@ -9,7 +9,7 @@ import pytest
 
 from formula.development.service import StudyError
 from formula.development.store import StudyStore, VersionConflict
-from formula.doe import demo
+from formula.doe import dataset as DS
 from formula.doe import handoff as H
 from formula.doe.contracts import TransitionError, check_transition
 from formula.doe.service import DoeStudyService
@@ -25,13 +25,14 @@ def act(svc, sid, action, payload=None, **kw):
 
 
 def fill(svc, sid, action):
-    p = demo.fill(svc.view(sid)["study"], action) or {}
+    p = DS.fill(svc.view(sid)["study"], action) or {}
     p.pop("note", None)
     return p
 
 
 def cbd(svc):
-    return svc.create(H.from_fixture(demo.fixture(), "t"), study_type="LITERATURE_REPLAY", demo="cbd_odt")["study"]["study_id"]
+    ds = DS.validate(svc.pkg, DS.cbd())
+    return svc.create(DS.handoff(ds, "t"), study_type=ds["study_type"], dataset=ds)["study"]["study_id"]
 
 
 # ── CBD 문헌 재현: 폼 채우기 값 = 논문 표 ─────────────────────────────────────────
@@ -151,13 +152,13 @@ def test_forbidden_states_unreachable():
 
 def test_production_mode_refused(svc):
     with pytest.raises(StudyError):
-        svc.create(H.from_fixture(demo.fixture(), "t"), study_type="LITERATURE_REPLAY", execution_mode="PRODUCTION")
+        svc.create(DS.handoff(DS.cbd(), "t"), study_type="LITERATURE_REPLAY", execution_mode="PRODUCTION")
 
 
 def test_new_api_study_has_no_demo_fill(svc):
     h = _candidate_handoff()
     sid = svc.create(h, study_type="NEW_API")["study"]["study_id"]
-    assert demo.fill(svc.view(sid)["study"], "results_submit") is None
+    assert DS.fill(svc.view(sid)["study"], "results_submit") is None
 
 
 # ── 신규 API walk (합성 결과 — 테스트 전용) ────────────────────────────────────────
@@ -305,3 +306,6 @@ def test_cbd_fill_matches_factors_by_key_not_position(svc):
     act(svc, sid, "results_submit", fill(svc, sid, "results_submit"))
     s = act(svc, sid, "results_confirm")["study"]
     assert s["models"]["CQA_BREAKING_FORCE"]["selected"]["formula"] == "1 + X2 + X3"   # 같은 모형, 요인 이름만 바뀜
+    surf = svc.surfaces(sid)                              # 곡면 축·단면은 데이터셋 순서(압축력 × MCC, CCS 단면) — 고른 순서와 무관
+    assert surf["slice_factor"]["name"] == "CCS" and surf["axis"]["a"]["id"] == "X3"
+    assert svc.surfaces(sid, slice_factor="X3")["slice_factor"]["name"] == "Compression force"

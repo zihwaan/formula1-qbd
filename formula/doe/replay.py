@@ -142,3 +142,28 @@ def _raw_models(pkg: DoePackage = None) -> Dict[str, Dict[str, Any]]:
     center = np.all(np.stack([coded[i] for i in ids]) == 0, axis=0)
     return {resp["id"]: select_model(coded, np.array([_y(r, resp["id"]) for r in fx["runs"]]), center_mask=center,
                                      constants=pkg.constants)["selected"] for resp in fx["responses"]}
+
+
+def surfaces(pkg: DoePackage = None, *, source: str = "selected", steps: int = 25) -> Dict[str, Any]:
+    """논문 Figure 1과 같은 배치(반응 3 × CCS 1·3·5%)의 곡면 격자. selected = 재현이 자동 선택한 모형,
+    published = 논문 ANOVA 항 구성(Table 10·11)으로 같은 Table 9 원자료를 재적합(계수는 논문에서 베끼지 않는다)."""
+    from formula.doe import surfaces as SF
+    from formula.doe.models import fit_ols
+    pkg = pkg or package()
+    fx = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    factors = factors_from(fx)
+    ids = [f.factor_id for f in factors]
+    coded = {i: np.array([D.to_coded(r[KEY[i]], f) for r in fx["runs"]]) for i, f in zip(ids, factors)}
+    center = np.all(np.stack([coded[i] for i in ids]) == 0, axis=0)
+    rows = [{"coded": {i: float(coded[i][k]) for i in ids}, "y": {r["id"]: _y(run, r["id"]) for r in fx["responses"]}}
+            for k, run in enumerate(fx["runs"])]
+    if source == "published":
+        models = {r["id"]: fit_ols(["1"] + fx["published_models"][r["id"]]["anova_terms"], coded,
+                                   np.array([row["y"][r["id"]] for row in rows]), center) for r in fx["responses"]}
+    else:
+        models = _raw_models(pkg)
+    responses = [{**r, "formula": models[r["id"]]["formula"]} for r in fx["responses"]]
+    out = SF.build(factors, models, responses, rows, design_type="BBD", steps=steps)
+    out["source"] = source
+    out["published_available"] = True
+    return out

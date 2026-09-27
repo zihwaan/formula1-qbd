@@ -30,9 +30,10 @@ from formula.doe import handoff as H
 from formula.doe import labloop as L
 from formula.doe import protocol as P
 from formula.doe import region as RG
+from formula.doe import surfaces as SF
 from formula.doe.contracts import (ACTIONS, APPROVAL_POINT, EVIDENCE_STATUSES, REVISE_STATES, STAY, STEP_OF, STEPS,
                                    Decision, FactorSpec, TransitionError, check_transition, resolve_state)
-from formula.doe.models import predict, select_model
+from formula.doe.models import fit_ols, predict, select_model
 from formula.doe.package import DoePackage, package
 
 BLOCKING = ("BLOCK_STAGE", "REQUEST_DATA", "INVALIDATE")
@@ -117,7 +118,7 @@ class DoeStudyService:
     # ======================================================================
     def create(self, handoff: Dict[str, Any], *, study_type: str, actor: str = "researcher",
                idempotency_key: Optional[str] = None, execution_mode: str = "SANDBOX",
-               demo: Optional[str] = None) -> Dict[str, Any]:
+               demo: Optional[str] = None, dataset: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         replay = self.store.replay(idempotency_key)
         if replay:
             return self.view(replay["study_id"])
@@ -130,7 +131,7 @@ class DoeStudyService:
             "study_id": sid, "study_type": study_type, "execution_mode": execution_mode, "mode": execution_mode.lower(),
             "status": "HANDOFF_RECEIVED", "state_version": 0, "created_at": now, "updated_at": now,
             "title": handoff.get("title"), "candidate_ref": f"{handoff['candidate_id']}@{handoff['candidate_version']}",
-            "demo": demo, "handoff": handoff, "handoff_history": [handoff["handoff_id"]],
+            "demo": demo or ("dataset" if dataset else None), "dataset": dataset, "handoff": handoff, "handoff_history": [handoff["handoff_id"]],
             "cqas": {}, "fmea": {"version": 0, "rows": []}, "factor_candidates": [], "selection": None, "factors": {},
             "range_gate": None, "feasibility": None, "design_decision": None, "plans": [], "active_plan": None,
             "run_sheet": None, "results": {}, "models": {}, "flags_accepted": None, "region": None, "verification": None,
@@ -578,7 +579,11 @@ class DoeStudyService:
         st["active_plan"] = len(st["plans"]) - 1
         st["run_sheet"] = self._compile(st, plan, self._default_balance(st))
         self._record(st, "design", ds + self._dv(plan, self._factors(st)) + self._rs(st))
-        self._move(st, "DOE_PLAN_REVIEW", "DOE_PLAN_DRAFTED", rule="RB10")
+        if st["status"] == "DOE_PLAN_REVIEW":
+            st["timeline"].append({"from": st["status"], "to": st["status"], "reason": "DOE_PLAN_REPLACED", "rule": "RB10",
+                                   "at": H.now(), "seq": st["action_seq"]})
+        else:
+            self._move(st, "DOE_PLAN_REVIEW", "DOE_PLAN_DRAFTED", rule="RB10")
 
     def _dv(self, plan, factors) -> List[Dict[str, Any]]:
         """design.validate 검사 → RB10 행."""
@@ -657,26 +662,57 @@ class DoeStudyService:
         self._move(st, "RANGE_EVIDENCE_CHECK", "DOE_PLAN_REJECTED")
         return {}
 
-    def _act_design_import(self, st, p, actor):
+    def _imported_plan(self, st, p) -> Dict[str, Any]:
+        """실행된(또는 외부에서 검증된) 설계 행렬 → 계획. run 순서는 seed로 무작위화, 설계점 집합이 표준 설계와 같으면
+        지지 영역 정책을 그 설계로(design_family). 같은 Validator(RB10)를 다시 지난다."""
         factors = self._factors(st)
         runs_in = p.get("runs") or []
-        if len(runs_in) < 3:
-            raise StudyError("가져올 설계 행렬이 없습니다.", status=422)
+        n_terms = (len(factors) + 1) * (len(factors) + 2) // 2
+        if len(runs_in) < n_terms + 1:
+            raise StudyError(f"설계 행렬 run이 {len(runs_in)}개 — 2차 모형 항 {n_terms}개 + 잔차 자유도 1 이상이 필요합니다.", status=422)
         seed = int(self.pkg.rulebooks["RB15"].get("random_seed", 20260926))
         order = np.random.default_rng(seed).permutation(len(runs_in))
         runs = []
         for run_no, idx in enumerate(order, 1):
-            act = {f.factor_id: _num(runs_in[idx]["actual"][f.factor_id]) for f in factors}
+            src = runs_in[idx].get("actual") or {}
+            act = {}
+            for f in factors:
+                v = _num(src.get(f.factor_id))
+                if v is None:
+                    raise StudyError(f"행렬 {idx + 1}행: 요인 {f.factor_id} 값이 없습니다.", status=422)
+                act[f.factor_id] = v
             coded = {f.factor_id: D.to_coded(act[f.factor_id], f) for f in factors}
             runs.append({"run_id": f"R{run_no:02d}", "std_order": int(idx) + 1, "run_order": run_no, "coded": coded, "actual": act,
-                         "is_center": all(abs(v) < 1e-12 for v in coded.values())})
-        plan = {"design_type": "IMPORTED", "factors": [f.factor_id for f in factors], "random_seed": seed,
+                         "is_center": all(abs(v) < 1e-12 for v in coded.values()), "label": runs_in[idx].get("label")})
+        ids = [f.factor_id for f in factors]
+        plan = {"design_type": "IMPORTED", "design_family": D.classify(runs, ids), "factors": ids, "random_seed": seed,
                 "center_points": sum(r["is_center"] for r in runs), "runs": runs, "intended_model_family": "HIERARCHICAL_QUADRATIC",
                 "source": p.get("source")}
         plan["matrix_hash"] = _hash([[r["std_order"], r["coded"]] for r in runs])
         plan["validation"] = D.validate(plan, factors)
-        self._install_plan(st, plan, [st["design_decision"]] if st.get("design_decision") else [])
+        return plan
+
+    def _act_design_import(self, st, p, actor):
+        self._install_plan(st, self._imported_plan(st, p), [st["design_decision"]] if st.get("design_decision") else [])
         return {}
+
+    def _act_plan_import(self, st, p, actor):
+        """DOE_PLAN_REVIEW에서 초안 대신 이미 실행된 행렬을 쓴다(선행 batch·외부 원자료·문헌 데이터셋). 초안은 plans[]에 남는다."""
+        prev = self._plan(st)
+        if prev is not None:
+            prev["replaced"] = {"by": actor, "at": H.now(), "reason": p.get("source") or "실행 행렬로 교체"}
+        self._install_plan(st, self._imported_plan(st, p), [st["design_decision"]] if st.get("design_decision") else [])
+        return {"design_family": self._plan(st).get("design_family")}
+
+    def parse_results_csv(self, study_id: str, text: str) -> Dict[str, Any]:
+        from formula.doe import dataset as DS
+        st, _ = self._load(study_id)
+        if st["status"] != "WAITING_FOR_RESULTS":
+            raise StudyError("결과 CSV는 결과 입력 단계에서만 읽습니다.", status=409)
+        try:
+            return DS.parse_results_csv(st, text)
+        except DS.DatasetError as exc:
+            raise StudyError(str(exc), status=422)
 
     # ======================================================================
     # D8 결과 (RB12 · M05)
@@ -808,7 +844,8 @@ class DoeStudyService:
         return out
 
     def _design_type(self, st) -> str:
-        return self._plan(st)["design_type"]
+        plan = self._plan(st)
+        return plan.get("design_family") or plan["design_type"]
 
     def _region(self, st) -> None:
         ds = []
@@ -1002,6 +1039,42 @@ class DoeStudyService:
             extra["awaiting_final_approval"] = bool(((st.get("verification") or {}).get("verdict") or {}).get("all_pass"))
         return {"status": s, "step": STEP_OF.get(s), "question_ko": QUESTIONS.get(s, ""), "actions": actions,
                 "blocking": blocking, "labloop": st["labloop"].get("current"), **extra}
+
+    def surfaces(self, study_id: str, source: str = "selected", steps: int = 25, slice_factor: Optional[str] = None) -> Dict[str, Any]:
+        """반응(행) × 세 번째 요인 수준(열) 곡면 격자. source=published는 문헌 재현 study에서만 — 논문 항 구성으로 같은 원자료를 재적합."""
+        from formula.doe import dataset as DS
+        st, _ = self._load(study_id)
+        if not st["models"]:
+            raise StudyError("아직 적합된 모델이 없습니다.", status=409)
+        ids, runs, coded, center = self._coded(st)
+        resp = self._responses(st)
+        rows = [{"coded": r["coded"], "y": {c["id"]: st["results"][r["run_id"]]["values"][c["key"]] for c in resp}} for r in runs]
+        models, info = {}, {}
+        if source == "published":
+            terms = DS.reported_terms(st)
+            if terms is None:
+                raise StudyError("보고된 모형 항 구성은 데이터셋에 reported_models가 있는 study에만 있습니다.", status=422)
+            for c in resp:
+                y = np.array([row["y"][c["id"]] for row in rows], dtype=float)
+                m = fit_ols(terms[c["id"]], coded, y, center)
+                models[c["id"]] = m
+                info[c["id"]] = {"formula": m["formula"], "status": "PUBLISHED_TERMS_REFIT"}
+        else:
+            for k, m in st["models"].items():
+                models[k] = m["selected"]
+                info[k] = {"formula": m["selected"]["formula"], "status": m["status"]}
+        responses = [{**c, **info.get(c["id"], {})} for c in resp]
+        ids = sorted(st["factors"])
+        if st.get("dataset"):            # 데이터셋 study는 데이터셋의 요인 순서(보고 그림과 같은 축 · 단면)
+            pos = {f["key"]: n for n, f in enumerate(st["dataset"]["factors"])}
+            ids.sort(key=lambda fid: pos.get(st["factors"][fid].get("key"), 99))
+        if slice_factor in ids and len(ids) == 3:
+            ids = [i for i in ids if i != slice_factor] + [slice_factor]
+        out = SF.build(self._factors(st), models, responses, rows, design_type=self._design_type(st), steps=steps, order=ids)
+        out["source"] = source
+        out["factor_choices"] = [{"id": fid, "name": st["factors"][fid]["name"]} for fid in sorted(st["factors"])]
+        out["published_available"] = bool((st.get("dataset") or {}).get("reported_models"))
+        return _plain(out)
 
     def surface(self, study_id: str, response: Optional[str] = None, x3: float = 0.0, steps: int = 31) -> Dict[str, Any]:
         """반응 곡면 격자(X1×X2, 3요인이면 X3 고정 coded 값) + 공동 통과확률 + 실험점. 3D·contour 공용."""
