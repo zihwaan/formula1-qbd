@@ -1,0 +1,577 @@
+{
+ "_note": "논문 원문 표를 그대로 옮긴 문헌 재현 fixture(LITERATURE_DIRECT). 값을 고치거나 보간하지 않는다.",
+ "citation": "Monton C. et al. Quality by Design–Driven Formulation Development of Cannabidiol Orally Disintegrating Tablets. Scientifica. 2026;2026:3553253.",
+ "doi": "10.1155/sci5/3553253",
+ "pmcid": "PMC13519653",
+ "pmid": "42662497",
+ "retrieved_from": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC13519653/fullTextXML",
+ "prototype_table": "Table 1",
+ "prototype": [
+  {
+   "material": "CBD",
+   "mg": 10,
+   "pct": 4,
+   "function": "API"
+  },
+  {
+   "material": "Spray-dried mannitol",
+   "mg": 127,
+   "pct": 50.8,
+   "function": "filler"
+  },
+  {
+   "material": "MCC",
+   "mg": 100,
+   "pct": 40,
+   "function": "filler/binder"
+  },
+  {
+   "material": "CCS",
+   "mg": 7.5,
+   "pct": 3,
+   "function": "superdisintegrant"
+  },
+  {
+   "material": "Fumed silica",
+   "mg": 2.5,
+   "pct": 1,
+   "function": "glidant"
+  },
+  {
+   "material": "Sucralose",
+   "mg": 0.5,
+   "pct": 0.2,
+   "function": "sweetener"
+  },
+  {
+   "material": "MgSt",
+   "mg": 2.5,
+   "pct": 1,
+   "function": "lubricant"
+  }
+ ],
+ "factors_table": "Table 2",
+ "factors": [
+  {
+   "id": "X1",
+   "name": "Compression force",
+   "unit": "psi",
+   "low": 1250,
+   "center": 1500,
+   "high": 1750,
+   "reference_value": null,
+   "kind": "CPP"
+  },
+  {
+   "id": "X2",
+   "name": "MCC",
+   "unit": "%w/w",
+   "low": 30,
+   "center": 40,
+   "high": 50,
+   "reference_value": 40,
+   "kind": "CMA"
+  },
+  {
+   "id": "X3",
+   "name": "CCS",
+   "unit": "%w/w",
+   "low": 1,
+   "center": 3,
+   "high": 5,
+   "reference_value": 3,
+   "kind": "CMA"
+  }
+ ],
+ "range_evidence": {
+  "prior_study_status": "REPORTED_NO_RAW_DATA",
+  "source_type": "PUBLISHED_ARTICLE",
+  "source_locator": "Methods 2.2.2",
+  "raw_data_available": false,
+  "independently_verified": false,
+  "usage_scope": "LITERATURE_REPLAY_ONLY"
+ },
+ "responses_table": "Table 2 · Table 4",
+ "responses": [
+  {
+   "id": "hardness_kgf",
+   "name": "Hardness",
+   "unit": "kgf",
+   "operator": "BETWEEN",
+   "lower": 4,
+   "upper": 6,
+   "is_cqa": true
+  },
+  {
+   "id": "dt_s",
+   "name": "Disintegration time",
+   "unit": "s",
+   "operator": "LE",
+   "upper": 30,
+   "is_cqa": true
+  },
+  {
+   "id": "friability_pct",
+   "name": "Friability",
+   "unit": "%",
+   "operator": "LE",
+   "upper": 1.0,
+   "is_cqa": false
+  }
+ ],
+ "runs_table": "Table 9",
+ "runs": [
+  {
+   "std_order": 17,
+   "run_order": 1,
+   "force_psi": 1500.0,
+   "mcc_pct": 40.0,
+   "ccs_pct": 3.0,
+   "hardness_kgf": {
+    "mean": 4.97,
+    "sd": 0.32,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 12.16,
+    "sd": 0.23,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.31,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 11,
+   "run_order": 2,
+   "force_psi": 1500.0,
+   "mcc_pct": 30.0,
+   "ccs_pct": 5.0,
+   "hardness_kgf": {
+    "mean": 4.96,
+    "sd": 1.04,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 16.43,
+    "sd": 0.95,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.19,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 9,
+   "run_order": 3,
+   "force_psi": 1500.0,
+   "mcc_pct": 30.0,
+   "ccs_pct": 1.0,
+   "hardness_kgf": {
+    "mean": 5.42,
+    "sd": 0.52,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 14.62,
+    "sd": 1.31,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.41,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 2,
+   "run_order": 4,
+   "force_psi": 1750.0,
+   "mcc_pct": 30.0,
+   "ccs_pct": 3.0,
+   "hardness_kgf": {
+    "mean": 6.9,
+    "sd": 0.45,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 18.13,
+    "sd": 0.95,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.42,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 14,
+   "run_order": 5,
+   "force_psi": 1500.0,
+   "mcc_pct": 40.0,
+   "ccs_pct": 3.0,
+   "hardness_kgf": {
+    "mean": 6.02,
+    "sd": 0.71,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 15.22,
+    "sd": 0.36,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.3,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 1,
+   "run_order": 6,
+   "force_psi": 1250.0,
+   "mcc_pct": 30.0,
+   "ccs_pct": 3.0,
+   "hardness_kgf": {
+    "mean": 4.43,
+    "sd": 0.29,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 17.42,
+    "sd": 0.64,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.37,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 6,
+   "run_order": 7,
+   "force_psi": 1750.0,
+   "mcc_pct": 40.0,
+   "ccs_pct": 1.0,
+   "hardness_kgf": {
+    "mean": 6.56,
+    "sd": 0.81,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 18.6,
+    "sd": 1.24,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.29,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 13,
+   "run_order": 8,
+   "force_psi": 1500.0,
+   "mcc_pct": 40.0,
+   "ccs_pct": 3.0,
+   "hardness_kgf": {
+    "mean": 6.13,
+    "sd": 0.45,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 15.9,
+    "sd": 0.71,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.2,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 4,
+   "run_order": 9,
+   "force_psi": 1750.0,
+   "mcc_pct": 50.0,
+   "ccs_pct": 3.0,
+   "hardness_kgf": {
+    "mean": 7.26,
+    "sd": 0.84,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 18.87,
+    "sd": 1.19,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.19,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 7,
+   "run_order": 10,
+   "force_psi": 1250.0,
+   "mcc_pct": 40.0,
+   "ccs_pct": 5.0,
+   "hardness_kgf": {
+    "mean": 5.16,
+    "sd": 0.42,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 19.06,
+    "sd": 0.53,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.29,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 8,
+   "run_order": 11,
+   "force_psi": 1750.0,
+   "mcc_pct": 40.0,
+   "ccs_pct": 5.0,
+   "hardness_kgf": {
+    "mean": 8.03,
+    "sd": 0.66,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 24.12,
+    "sd": 0.68,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.13,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 10,
+   "run_order": 12,
+   "force_psi": 1500.0,
+   "mcc_pct": 50.0,
+   "ccs_pct": 1.0,
+   "hardness_kgf": {
+    "mean": 6.35,
+    "sd": 0.97,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 21.33,
+    "sd": 0.83,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.18,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 15,
+   "run_order": 13,
+   "force_psi": 1500.0,
+   "mcc_pct": 40.0,
+   "ccs_pct": 3.0,
+   "hardness_kgf": {
+    "mean": 6.12,
+    "sd": 0.8,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 17.54,
+    "sd": 0.97,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.2,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 3,
+   "run_order": 14,
+   "force_psi": 1250.0,
+   "mcc_pct": 50.0,
+   "ccs_pct": 3.0,
+   "hardness_kgf": {
+    "mean": 5.31,
+    "sd": 0.61,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 17.52,
+    "sd": 0.53,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.14,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 5,
+   "run_order": 15,
+   "force_psi": 1250.0,
+   "mcc_pct": 40.0,
+   "ccs_pct": 1.0,
+   "hardness_kgf": {
+    "mean": 5.83,
+    "sd": 0.73,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 17.2,
+    "sd": 0.6,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.13,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 16,
+   "run_order": 16,
+   "force_psi": 1500.0,
+   "mcc_pct": 40.0,
+   "ccs_pct": 3.0,
+   "hardness_kgf": {
+    "mean": 5.97,
+    "sd": 0.58,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 17.27,
+    "sd": 0.64,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.25,
+    "n_tablets": 13
+   }
+  },
+  {
+   "std_order": 12,
+   "run_order": 17,
+   "force_psi": 1500.0,
+   "mcc_pct": 50.0,
+   "ccs_pct": 5.0,
+   "hardness_kgf": {
+    "mean": 7.26,
+    "sd": 0.59,
+    "n": 10
+   },
+   "dt_s": {
+    "mean": 22.21,
+    "sd": 0.91,
+    "n": 6
+   },
+   "friability_pct": {
+    "value": 0.15,
+    "n_tablets": 13
+   }
+  }
+ ],
+ "published_models_table": "Table 10 · Table 11",
+ "published_models": {
+  "hardness_kgf": {
+   "coded": "Y1 = 6.04 + 1.00X1 + 0.56X2 + 0.16X3",
+   "actual_as_printed": "Y1 = −2.44 + 0.004X1 + 0.06 + 0.08X1X2",
+   "anova_terms": [
+    "X1",
+    "X2",
+    "X3"
+   ],
+   "model_p": 0.0005,
+   "lof_p": 0.4043,
+   "residual_df": 13,
+   "pure_error_df": 4
+  },
+  "dt_s": {
+   "anova_terms": [
+    "X1",
+    "X2",
+    "X3",
+    "X1:X2",
+    "X1:X3",
+    "X2:X3",
+    "X1^2",
+    "X2^2",
+    "X3^2"
+   ],
+   "model_p": 0.2463,
+   "lof_p": 0.3254,
+   "residual_df": 7,
+   "pure_error_df": 4,
+   "coded": "Y2 = 15.62 + 1.07X1 + 1.67X2 + 1.26X3 + 0.16X1X2 + 0.92X1X3 − 0.23X2X3 + 1.73X1² + 0.63X2² + 2.39X3²",
+   "transcription_note": "Europe PMC XML에서 계수열(15.62 1.07 1.67 1.26 0.16 0.92 0.23 1.73 0.63 2.39)과 부호·항열(+X1 +X2 +X3 +X1X2 +X1X3 −X2X3 +X1² +X2² +X3²)이 분리 조판돼 있어 순서대로 합쳤다. 원문 PDF 대조 전."
+  },
+  "friability_pct": {
+   "coded": "Y3 = 0.24 + 0.01X1 − 0.09X2 − 0.03X3 − (5.05×10⁻¹⁷)X1X2 − 0.08X1X3 + 0.05X2X3",
+   "anova_terms": [
+    "X1",
+    "X2",
+    "X3",
+    "X1:X2",
+    "X1:X3",
+    "X2:X3"
+   ],
+   "model_p": 0.0112,
+   "lof_p": 0.3727,
+   "residual_df": 10,
+   "pure_error_df": 4
+  }
+ },
+ "optimum_table": "Table 12",
+ "optimum": {
+  "force_psi": 1400,
+  "mcc_pct": 35,
+  "ccs_pct": 1
+ },
+ "verification": {
+  "note": "독립 3 lot(논문 Table 12). 각 lot 값은 평균(경도 n=10, DT n=6, 마손도 13정).",
+  "hardness_kgf": {
+   "predicted": 5.2,
+   "lots": [
+    4.97,
+    4.68,
+    4.69
+   ],
+   "ci95": [
+    4.62,
+    5.78
+   ]
+  },
+  "dt_s": {
+   "predicted": 16.21,
+   "lots": [
+    15.15,
+    13.37,
+    15.16
+   ],
+   "ci95": [
+    12.37,
+    20.06
+   ]
+  },
+  "friability_pct": {
+   "predicted": 0.31,
+   "lots": [
+    0.25,
+    0.26,
+    0.34
+   ],
+   "ci95": [
+    0.23,
+    0.39
+   ]
+  }
+ }
+}
