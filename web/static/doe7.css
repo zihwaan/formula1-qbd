@@ -92,3 +92,39 @@
 .d7w-bar select { width: 100%; flex: 1 1 220px; }
 .d7w-sec, .d7w-sec > summary, .d7w-ask { min-width: 0; }
 .d7-decision, .d7w-msg, .d7w-head, .d7w-lab, .d7w-ask p { overflow-wrap: anywhere; }
+
+/* ── 반응 곡면 격자(surface3d.js) — 논문 Figure 형식: 반응별 검은 제목 막대 + 수준별 열 ───────── */
+.rsg-box { min-width: 0; }
+.rsg { margin: 0; display: grid; gap: 0; border: 1px solid var(--ink-1); min-width: 0; }
+.rsg-tools { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
+.rsg-tools button { border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-1); border-radius: 999px; padding: 4px 12px; font-size: 12px; cursor: pointer; }
+.rsg-tools button.on { background: var(--ink-1); color: var(--page); border-color: var(--ink-1); }
+.rsg-bar { background: #000; color: #fff; text-align: center; font-weight: 800; font-size: 15px; padding: 7px 10px; display: grid; gap: 1px; }
+.rsg-bar small { font-weight: 500; font-size: 11px; opacity: .8; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.rsg-row { display: grid; grid-template-columns: repeat(var(--rsg-cols, 3), minmax(0, 1fr)); }
+.rsg-cell { border-right: 1px solid var(--grid); min-width: 0; display: grid; }
+.rsg-cell:last-child { border-right: 0; }
+.rsg-plot { min-height: 360px; width: 100%; min-width: 0; }
+.rsg-lab { text-align: center; font-size: 12.5px; font-weight: 700; padding: 2px 0 8px; }
+.rsg-2d { width: 100%; height: auto; display: block; }
+.rsg figcaption { font-size: 12.5px; padding: 8px 10px; border-top: 1px solid var(--border); line-height: 1.6; }
+.rsg-key { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; color: var(--ink-muted); font-size: 11.5px; }
+.rsg-key i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1px solid #8b0000; margin-right: 3px; vertical-align: -1px; }
+.rsg-key i.up { background: #8b0000; }
+.rsg-key i.dn { background: #f7caca; }
+.rsg-redraw { border: 1px solid var(--ink-1); background: var(--surface-1); color: var(--ink-1); border-radius: 999px; padding: 7px 14px; font-weight: 700; cursor: pointer; }
+@media (max-width: 900px) {
+  .rsg-row { grid-template-columns: minmax(0, 1fr); }
+  .rsg-cell { border-right: 0; border-bottom: 1px solid var(--grid); }
+}
+.d7w-import { font-size: 12.5px; }
+.d7w-import > summary { cursor: pointer; font-weight: 700; }
+.d7w-import textarea, .d7w-ds textarea { width: 100%; box-sizing: border-box; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: var(--page); color: var(--ink-1); }
+.d7w-import button { margin-top: 6px; border: 1px solid var(--ink-1); border-radius: 999px; padding: 6px 12px; background: var(--surface-1); color: var(--ink-1); font-weight: 700; cursor: pointer; }
+.d7w-file { border: 1px solid var(--ink-1); border-radius: 999px; padding: 8px 14px; font-weight: 700; font-size: 13px; cursor: pointer; }
+.d7w-file input { display: none; }
+#d7w-ds-out.bad { color: var(--status-critical); }
+#d7w-ds[hidden] { display: none !important; }
+.rsg-slice { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; margin-left: auto; }
+.rsg-slice select { font-size: 12px; border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; background: var(--page); color: var(--ink-1); max-width: 100%; }
+.rsg-tools:empty { display: none; }

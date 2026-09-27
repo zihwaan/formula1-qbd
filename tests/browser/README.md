@@ -47,7 +47,9 @@ CHROME=<chrome 실행 파일 경로> node tests/browser/scenarios.mjs http://loc
 
 - `doe7wizard.mjs` — 실험개발 마법사로 CBD 문헌 재현 study를 클릭만으로 끝까지 간다(데스크톱·390px). 채우기는 폼만
   채우는지, 채우기 전 승인이 판정과 함께 막히는지, 기준 처방값이 center로 들어가지 않는지, 사유 없는 플래그 승인이 거부되는지,
-  플래그 승인 뒤 REGION_EMPTY(DR018) → RB18 LB012 → 재검토로 FMEA에 돌아가는지, 3D(또는 2D 대체) 곡면, 모든 단계 넘침 0.
+  반응 3 × CCS 3수준 곡면 격자와 모형 전환, 플래그 승인 뒤 REGION_EMPTY(DR018) → RB18 LB012 → 재검토로 FMEA에 돌아가는지, 3D(또는 2D 대체) 곡면, 모든 단계 넘침 0.
+- `doe7dataset.mjs` — '데이터셋으로 시작'에 실데이터(CBD를 공통 형식으로 옮긴 `/datasets/cbd_odt`)를 붙여 넣고 형식 오류 목록 →
+  실행 행렬 가져오기 → 결과 CSV 붙여넣기(시험법 버전·독립성 열이 없으면 RB12가 막음) → 모델·곡면 격자 9칸.
 - `doe7.mjs` — 같은 탭의 검증 비교 하위 탭(CBD 재현 요약 · 범위 gate 계산기).
 - `doe7candidate.mjs` — **LLM 1회**: ① 설계 실행이 끝난 뒤 통과 후보의 "v7 실험개발로 시작" → 신규 API study, RB01이
   설비·배치 규모·등급을 요청하는지.

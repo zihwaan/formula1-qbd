@@ -1416,7 +1416,8 @@ def doe7_service():
 
 
 class Doe7StudyCreate(BaseModel):
-    source: str = Field(..., pattern="^(candidate|cbd_replay)$")
+    source: str = Field(..., pattern="^(candidate|cbd_replay|dataset)$")
+    dataset: Optional[Dict[str, Any]] = None
     run_id: Optional[str] = None
     candidate_id: Optional[str] = None
     candidate_version: int = 1
@@ -1425,12 +1426,18 @@ class Doe7StudyCreate(BaseModel):
 @app.post("/api/doe-v7/studies")
 async def doe7_create_study(req: Doe7StudyCreate, idempotency_key: Optional[str] = Header(None),
                             actor_id: str = Header("researcher")) -> Dict[str, Any]:
-    """① 통과 후보 또는 CBD 문헌 재현 → 불변 handoff + 샌드박스 study. 후보가 자동으로 넘어오지 않는다 — 연구자가 고른다."""
-    from formula.doe import demo as doe_demo
+    """① 통과 후보 · DoE 데이터셋(run 단위 실험 데이터) · CBD 문헌 재현(데이터셋의 한 사례) → 불변 handoff + 샌드박스 study.
+    후보가 자동으로 넘어오지 않는다 — 연구자가 고른다."""
+    from formula.doe import dataset as doe_dataset
     from formula.doe import handoff as doe_handoff
     svc = doe7_service()
-    if req.source == "cbd_replay":
-        h, study_type, demo = doe_handoff.from_fixture(doe_demo.fixture(), actor_id), "LITERATURE_REPLAY", "cbd_odt"
+    ds = None
+    if req.source in ("cbd_replay", "dataset"):
+        try:
+            ds = doe_dataset.validate(svc.pkg, doe_dataset.cbd() if req.source == "cbd_replay" else (req.dataset or {}))
+        except doe_dataset.DatasetError as exc:
+            raise HTTPException(422, {"message": "데이터셋 형식 오류", "errors": exc.errors})
+        h, study_type, demo = doe_dataset.handoff(ds, actor_id), ds["study_type"], "dataset"
     else:
         execution = RUNS.get(req.run_id or "")
         if execution is None or not execution.final:
@@ -1449,7 +1456,7 @@ async def doe7_create_study(req: Doe7StudyCreate, idempotency_key: Optional[str]
         study_type, demo = "NEW_API", None
     try:
         return _jsonable_state(await asyncio.to_thread(svc.create, h, study_type=study_type, actor=actor_id,
-                                                       idempotency_key=idempotency_key, demo=demo))
+                                                       idempotency_key=idempotency_key, demo=demo, dataset=ds))
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
 
@@ -1490,13 +1497,57 @@ async def doe7_study_action(study_id: str, action: str, body: StudyActionRequest
 
 @app.get("/api/doe-v7/studies/{study_id}/fill/{action}")
 async def doe7_study_fill(study_id: str, action: str) -> Dict[str, Any]:
-    """문헌 재현 study의 폼 채우기 값(논문 표). 제출하지 않는다. 신규 API study는 채울 데이터가 없다(204 대신 null)."""
-    from formula.doe import demo as doe_demo
+    """데이터셋 study의 폼 채우기 값. 제출하지 않는다. 데이터셋이 없는 study(① 후보)는 채울 값이 없다(null)."""
+    from formula.doe import dataset as doe_dataset
     try:
         st = doe7_service().view(study_id)["study"]
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
-    return {"payload": _jsonable(doe_demo.fill(st, action))}
+    return {"payload": _jsonable(doe_dataset.fill(st, action))}
+
+
+class Doe7Csv(BaseModel):
+    csv: str = Field(..., max_length=200_000)
+
+
+@app.post("/api/doe-v7/studies/{study_id}/results-csv")
+async def doe7_results_csv(study_id: str, body: Doe7Csv) -> Dict[str, Any]:
+    """run 단위 결과 CSV → 결과 폼 값(run_id 또는 요인 실제값으로 계획 run에 짝짓기). 제출하지 않는다."""
+    try:
+        return _jsonable(doe7_service().parse_results_csv(study_id, body.csv))
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
+@app.get("/api/doe-v7/datasets/schema")
+def doe7_dataset_schema() -> Dict[str, Any]:
+    from formula.doe import dataset as doe_dataset
+    return {"doc": doe_dataset.SCHEMA_DOC, "fmea_factor_keys": doe_dataset.fmea_factor_keys(_doe7()),
+            "operators": list(doe_dataset.OPERATORS), "result_evidence": list(doe_dataset.RESULT_EVIDENCE),
+            "range_evidence": list(doe_dataset.RANGE_EVIDENCE),
+            "cqa_ids": sorted({r["cqa_template_id"] for r in _doe7().rows("RB02")})}
+
+
+@app.get("/api/doe-v7/datasets/cbd_odt")
+def doe7_dataset_cbd() -> Dict[str, Any]:
+    """실제 데이터로 채운 데이터셋 예 — Monton 2026(PMC13519653) 표를 공통 형식으로 옮긴 것."""
+    from formula.doe import dataset as doe_dataset
+    return doe_dataset.cbd()
+
+
+class Doe7DatasetBody(BaseModel):
+    dataset: Dict[str, Any]
+
+
+@app.post("/api/doe-v7/datasets/validate")
+def doe7_dataset_validate(body: Doe7DatasetBody) -> Dict[str, Any]:
+    from formula.doe import dataset as doe_dataset
+    try:
+        ds = doe_dataset.validate(_doe7(), body.dataset)
+    except doe_dataset.DatasetError as exc:
+        return {"ok": False, "errors": exc.errors}
+    return {"ok": True, "summary": {"title": ds["title"], "factors": len(ds["factors"]), "responses": len(ds["responses"]),
+                                    "runs": len(ds["runs"]), "study_type": ds["study_type"]}}
 
 
 @app.get("/api/doe-v7/studies/{study_id}/trace")
@@ -1505,6 +1556,24 @@ async def doe7_study_trace(study_id: str) -> Dict[str, Any]:
         return doe7_service().trace(study_id)
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
+
+
+@app.get("/api/doe-v7/studies/{study_id}/surfaces")
+async def doe7_study_surfaces(study_id: str, source: str = "selected", steps: int = 25, slice: Optional[str] = None) -> Dict[str, Any]:
+    if source not in ("selected", "published"):
+        raise HTTPException(422, "source는 selected|published")
+    try:
+        return await asyncio.to_thread(doe7_service().surfaces, study_id, source, max(11, min(int(steps), 41)), slice)
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
+@app.get("/api/doe-v7/cbd-replay/surfaces")
+def doe7_replay_surfaces(source: str = "selected", steps: int = 25) -> Dict[str, Any]:
+    from formula.doe.replay import surfaces
+    if source not in ("selected", "published"):
+        raise HTTPException(422, "source는 selected|published")
+    return _jsonable(surfaces(_doe7(), source=source, steps=max(11, min(int(steps), 41))))
 
 
 @app.get("/api/doe-v7/studies/{study_id}/surface")

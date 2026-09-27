@@ -19,7 +19,7 @@ for (const [name, vp] of [['desktop', { width: 1440, height: 900 }], ['phone', {
   const status = () => p.locator('#d7w-ask h3 .d7-badge').first().textContent();
   const waitStatus = async (s) => { await p.waitForFunction((x) => document.querySelector('#d7w-ask h3 .d7-badge')?.textContent === x, s, { timeout: 30000 }).catch(() => {}); return status(); };
   const click = async (action) => { await p.click(`#d7w-ask [data-act="${action}"]`); await p.waitForFunction(() => ![...document.querySelectorAll('#d7w-ask button')].some((x) => x.disabled), null, { timeout: 30000 }); };
-  const fill = async () => { await p.click('#d7w-fill'); await p.waitForFunction(() => /채웠습니다/.test(document.getElementById('d7w-msg').textContent), null, { timeout: 15000 }); };
+  const fill = async () => { await p.click('#d7w-fill'); await p.waitForFunction(() => /채웠습니다/.test(document.getElementById('d7w-msg').textContent), null, { timeout: 15000 }); await p.evaluate(() => { document.getElementById('d7w-msg').textContent = ''; }); };
   const overflow = () => p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   let maxOver = 0;
   const step = async () => { maxOver = Math.max(maxOver, await overflow()); };
@@ -60,11 +60,14 @@ for (const [name, vp] of [['desktop', { width: 1440, height: 900 }], ['phone', {
   ck('결과 제출 → RESULT_QUALITY_REVIEW(RQ006 미확인)', (await waitStatus('RESULT_QUALITY_REVIEW')) === 'RESULT_QUALITY_REVIEW' && (await p.locator('#d7w-ask').textContent()).includes('RQ006'));
   await click('results_confirm');
   ck('대조 확인 → MODEL_FIT(플래그 승인 대기)', (await waitStatus('MODEL_FIT')) === 'MODEL_FIT');
-  await p.waitForSelector('#d7w-surf .d7-map', { timeout: 20000 }).catch(() => {});
-  ck('2D 곡면 단면', (await p.locator('#d7w-surf .d7-map').count()) >= 1);
-  await p.waitForFunction(() => document.querySelector('#d7w-3d .main-svg, #d7w-3d canvas') || /불러오지 못해/.test(document.getElementById('d7w-3d')?.textContent || ''), null, { timeout: 60000 }).catch(() => {});
-  const three = await p.evaluate(() => (document.querySelector('#d7w-3d canvas, #d7w-3d .main-svg') ? '3D' : document.getElementById('d7w-3d')?.textContent || ''));
-  ck('3D 곡면(Plotly) 또는 2D 대체 안내', three === '3D' || /2D 단면만/.test(three), three.slice(0, 60));
+  await p.waitForFunction(() => document.querySelectorAll('#d7w-rsg .rsg-plot .main-svg, #d7w-rsg .rsg-2d').length >= 9, null, { timeout: 90000 }).catch(() => {});
+  ck('반응 3 × CCS 3수준 곡면 격자(논문 Figure 형식)', (await p.locator('#d7w-rsg .rsg-bar').count()) === 3 && (await p.locator('#d7w-rsg .rsg-plot').count()) === 9);
+  ck('9칸 모두 그려짐(3D 또는 2D 대체)', (await p.locator('#d7w-rsg .rsg-plot .main-svg, #d7w-rsg .rsg-2d').count()) >= 9);
+  const labs = (await p.locator('#d7w-rsg .rsg-lab').allTextContents()).slice(0, 3).join('|');
+  ck('열 라벨 (a)(b)(c) CCS 1·3·5', /\(a\).*1.*\|\(b\).*3.*\|\(c\).*5/.test(labs), labs);
+  await p.click('#d7w-rsg .rsg-tools [data-src="published"]');
+  await p.waitForFunction(() => /X1\^2/.test(document.querySelector('#d7w-rsg')?.textContent || '') && document.querySelectorAll('#d7w-rsg .rsg-plot .main-svg, #d7w-rsg .rsg-2d').length >= 9, null, { timeout: 90000 }).catch(() => {});
+  ck('보고 항 구성 재적합으로 전환(DT 2차 항)', /X1\^2/.test(await p.locator('#d7w-rsg').textContent()));
   await click('model_accept_flags');
   ck('사유 없이 플래그 승인 불가', (await status()) === 'MODEL_FIT' && /사유/.test(await p.locator('#d7w-msg').textContent()));
   await fill();

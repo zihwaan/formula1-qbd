@@ -74,6 +74,8 @@
           <td class="mono d7-small">${esc(m.published.coded || m.published.coded_as_printed || "")}<div class="d7-muted">모형 p = ${esc(m.published.model_p)}</div></td></tr>`).join("")}
         </tbody></table></div>
         ${r.audit.length ? `<h4>출판 보고 감사</h4><ul class="d7-list">${r.audit.map((a) => `<li>${badge(a.kind === "PUBLISHED_REPORT_INCONSISTENCY" ? "bad" : "", a.kind)} ${esc(RESP_KO[a.response] || a.response)} — ${esc(a.detail)}${a.reason_code_registered === false ? ` <span class="d7-muted">(M07 미등록 — 코드 대신 감사 기록, 카탈로그 보강 후보)</span>` : ""}</li>`).join("")}</ul>` : ""}
+        <h4>반응 곡면 — 논문 Figure 1과 같은 배치(반응 × CCS 1·3·5%)</h4>
+        <div id="d7-rsg" class="rsg-box"></div>
       </section>
 
       <section class="d7-card">
@@ -83,7 +85,21 @@
       </section>`;
     const acc = $("d7-accept");
     if (acc) acc.addEventListener("click", () => { accepted = true; replay().catch(showErr); });
+    surfaces(rsgSource).catch(showErr);
     if (!r.waiting_flag_approval) { bindSlice(); await slice(); }
+  }
+
+  // 반응 곡면 격자(surface3d.js) — 자동 선택 모형 ↔ 논문 항 구성 재적합 전환
+  let rsgSource = "published";   // 이 보기는 논문 Figure 1 재현 비교 — 기본은 논문 항 구성, 전환하면 자동 선택 모형
+  async function surfaces(src) {
+    rsgSource = src;
+    const box = $("d7-rsg");
+    if (!box || !window.F1Surfaces) return;
+    box.innerHTML = `<p class="d7-muted">반응 곡면 계산 중…</p>`;
+    const d = await get(`/api/doe-v7/cbd-replay/surfaces?source=${src}`);
+    if (!$("d7-rsg")) return;
+    await window.F1Surfaces.render($("d7-rsg"), d, { sources: true, onSource: (x) => surfaces(x).catch(showErr),
+      title: src === "published" ? "논문 ANOVA 항 구성(Table 10·11)으로 Table 9 원자료를 재적합한 곡면" : "재현이 자동 선택한 모형의 곡면" });
   }
 
   function regionHtml(r) {

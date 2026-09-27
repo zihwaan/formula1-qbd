@@ -2,19 +2,18 @@
    서버 /api/doe-v7/studies/* 가 상태기계다. 이 파일은 지금 상태의 질문 카드(폼 + 행동 버튼)와 단계별 결과만 그린다.
    - 행동 버튼 = 서버 행동 하나. 승인 지점(RB00)은 버튼에 표시한다. 막히면 서버 판정(rule ID)을 그대로 보여 준다.
    - "입력 채우기"는 문헌 재현 study에서만, 논문 표 값으로 폼만 채운다. 제출은 연구자가 누른다.
-   - 곡면은 Plotly(strict 번들)를 처음 열 때만 jsdelivr에서 불러오고, 실패하면 2D 단면만 그린다. */
+   - 반응 곡면은 surface3d.js(반응 × 세 번째 요인 수준 3D 격자, 논문 Figure 형식). */
 (() => {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const api = (p) => ((window.__BASE__ || "") + p);
   const fx = (x, d = 3) => (x == null || Number.isNaN(Number(x)) ? "—" : Number(x).toFixed(d).replace(/\.?0+$/, (m) => (m.startsWith(".") ? "" : m)));
-  const PLOTLY = "https://cdn.jsdelivr.net/npm/plotly.js-strict-dist-min@2.35.2/plotly-strict.min.js";
   const LABEL = {
     handoff_data: "빠진 값 저장", handoff_confirm: "후보 확인", cqa_edit: "CQA 저장", cqa_approve: "CQA 승인",
     fmea_edit: "FMEA 저장", fmea_approve: "FMEA 승인", factor_select: "요인 확정", range_submit: "범위 제출", range_approve: "범위 승인",
     feasibility_plan_approve: "feasibility 계획 승인", feasibility_results_submit: "feasibility 결과 제출", revise: "재검토 시작",
     design_import: "설계 행렬 가져오기", plan_approve: "실험표·프로토콜 승인", plan_reject: "실험표 반려", results_submit: "결과 제출",
-    results_confirm: "원자료와 대조 확인", results_revise: "다시 입력", model_accept_flags: "플래그 승인", vplan_lock: "확인 계획 잠금",
+    results_confirm: "원자료와 대조 확인", plan_import: "실행 행렬 가져오기", results_revise: "다시 입력", model_accept_flags: "플래그 승인", vplan_lock: "확인 계획 잠금",
     verification_submit: "확인 결과 제출", final_approve: "최종 승인",
   };
   const POINT_KO = { CQA_SELECTION: "CQA 선택", FMEA_REVIEW: "FMEA 검토", FACTOR_AND_RANGE_SELECTION: "요인·범위", FEASIBILITY_PLAN: "feasibility 계획",
@@ -39,8 +38,7 @@
   let draft = {};           // 행동 → 채우기 값
   let dirty = false;
   let busy = false;
-  let surf = { response: null, x3: 0 };
-  let plotlyP = null;
+  let surf = { source: null, slice: null };
   let skipRestore = false;   // 후보에서 새 study를 여는 중이면 지난 study를 다시 불러오지 않는다
 
   // ── 통신 ──────────────────────────────────────────────────────────────
@@ -49,7 +47,7 @@
     const d = await r.json().catch(() => ({}));
     if (!r.ok) {
       const det = d.detail;
-      const e = new Error(typeof det === "string" ? det : det?.message || `${path} ${r.status}`);
+      const e = new Error(typeof det === "string" ? det : (det?.message || `${path} ${r.status}`) + (det?.errors ? ` — ${det.errors.join(" / ")}` : ""));
       e.status = r.status;
       throw e;
     }
@@ -66,7 +64,7 @@
 
   async function load(sid) {
     cur = await req(`/api/doe-v7/studies/${encodeURIComponent(sid)}`);
-    draft = {}; dirty = false;
+    draft = {}; dirty = false; surf.source = null; surf.slice = null;
     try { localStorage.setItem("f1:d7study", sid); } catch (e) { /* 무시 */ }
     render();
     refreshList();
@@ -75,7 +73,7 @@
   async function create(body) {
     note("study를 만드는 중…");
     cur = await req("/api/doe-v7/studies", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key() }, body: JSON.stringify(body) });
-    draft = {}; dirty = false;
+    draft = {}; dirty = false; surf.source = null; surf.slice = null;
     try { localStorage.setItem("f1:d7study", cur.study.study_id); } catch (e) { /* 무시 */ }
     note("");
     render();
@@ -104,7 +102,15 @@
         dirty = false;
         if (cur.action_result?.blocked?.length && save !== "handoff_data") { finish(save); return; }
       }
-      const payload = action === form || ["plan_reject", "final_approve"].includes(action) ? collect(action) : {};
+      let payload = action === form || ["plan_reject", "final_approve"].includes(action) ? collect(action) : {};
+      if (action === "plan_import") {
+        payload = collect("plan_import");
+        if (!payload.runs.length && cur.study.dataset) {
+          const r = await req(`/api/doe-v7/studies/${encodeURIComponent(cur.study.study_id)}/fill/plan_import`);
+          payload = { runs: r.payload.runs, source: r.payload.source };
+        }
+        if (!payload.runs.length) throw new Error("가져올 실행 행렬이 없습니다 — CSV(첫 줄 = 요인 ID)를 붙여 넣으세요.");
+      }
       cur = await act(action, payload);
       finish(action);
     } catch (e) {
@@ -136,6 +142,53 @@
     dirty = true;
     renderAsk();
     note(r.payload.note ? `채웠습니다 — ${r.payload.note} 확인 후 버튼을 누르세요.` : "채웠습니다 — 확인 후 버튼을 누르세요.");
+  }
+
+  async function csvFill() {
+    const text = ($("d7w-csv")?.value || "").trim();
+    if (!text) { note("CSV를 붙여 넣으세요.", true); return; }
+    const r = await req(`/api/doe-v7/studies/${encodeURIComponent(cur.study.study_id)}/results-csv`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csv: text }) });
+    const prev = draft.results_submit?.rows || [];
+    const merged = Object.fromEntries(prev.map((x) => [x.run_id, x]));
+    r.rows.forEach((x) => { merged[x.run_id] = { ...(merged[x.run_id] || {}), ...x, values: { ...(merged[x.run_id]?.values || {}), ...x.values } }; });
+    draft.results_submit = { rows: Object.values(merged) };
+    dirty = true;
+    renderAsk();
+    note(`${r.note} 표를 확인하고 결과 제출을 누르세요.`, !!(r.unmatched_csv_rows?.length));
+  }
+
+  // ── 데이터셋으로 시작 — run 단위 실험 데이터(JSON 공통 형식) ───────────────────────────
+  function datasetPanel() {
+    const box = $("d7w-ds");
+    if (!box.hidden) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = `<p class="d7-muted">run 단위 실험 데이터를 가진 DoE를 공통 형식(JSON)으로 넣으면 같은 6단계 study가 됩니다 — 요인(1–3, FMEA 후보 요인 key) ·
+      반응(1–4, CQA ID·판정 기준) · run(요인 실제값 · 반응값) · 출처는 필수, 처방·공정·설비·보고 모형·확인점은 선택입니다. 빠진 값은 만들지 않고 단계별 규칙이 요청합니다.
+      <a href="${api("/api/doe-v7/datasets/schema")}" target="_blank" rel="noopener">형식 설명</a> ·
+      <a href="${api("/api/doe-v7/datasets/cbd_odt")}" target="_blank" rel="noopener">실데이터 예(Monton 2026 CBD)</a></p>
+      <textarea id="d7w-ds-text" rows="8" spellcheck="false" placeholder='{"title": …, "source": {"citation": …}, "factors": […], "responses": […], "runs": […]}'></textarea>
+      <div class="d7w-acts"><label class="ghost d7w-file">JSON 파일 <input type="file" id="d7w-ds-file" accept=".json,application/json"></label>
+        <button type="button" class="ghost" id="d7w-ds-check">형식 검사</button><button type="button" class="primary" id="d7w-ds-go">이 데이터셋으로 study 시작</button></div>
+      <div id="d7w-ds-out" class="d7-muted"></div>`;
+    const parse = () => { try { return JSON.parse($("d7w-ds-text").value); } catch (e) { throw new Error(`JSON을 읽지 못했습니다: ${e.message}`); } };
+    const show = (html, bad) => { const o = $("d7w-ds-out"); o.innerHTML = html; o.classList.toggle("bad", !!bad); };
+    $("d7w-ds-file").addEventListener("change", async (e) => { const f = e.target.files[0]; if (f) $("d7w-ds-text").value = await f.text(); });
+    $("d7w-ds-check").addEventListener("click", async () => {
+      try {
+        const r = await req("/api/doe-v7/datasets/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataset: parse() }) });
+        show(r.ok ? `형식 통과 — ${esc(r.summary.title)} · 요인 ${r.summary.factors} · 반응 ${r.summary.responses} · run ${r.summary.runs} · ${esc(r.summary.study_type)}`
+          : `<b>형식 오류</b><ul class="d7-list">${r.errors.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`, !r.ok);
+      } catch (e) { show(esc(e.message), true); }
+    });
+    $("d7w-ds-go").addEventListener("click", async () => {
+      try {
+        await create({ source: "dataset", dataset: parse() });
+        box.hidden = true;
+      } catch (e) {
+        show(esc(e.message), true);
+      }
+    });
   }
 
   async function refreshList() {
@@ -251,7 +304,10 @@
         <label>샘플링 계획 <textarea data-f="sampling_plan" rows="2">${esc(d.sampling_plan ?? st.protocol?.sampling_plan ?? "")}</textarea></label>
         <label>중단 기준 <textarea data-f="stop_criteria" rows="2">${esc(d.stop_criteria ?? st.protocol?.stop_criteria ?? "")}</textarea></label>
         ${st.run_sheet?.balance_material != null ? `<label>balance 성분 ${sel("balance_material", ings, bal)}</label>` : ""}
-        <label>반려 사유(반려할 때만) ${inp("reason", "")}</label></div>`;
+        <label>반려 사유(반려할 때만) ${inp("reason", "")}</label></div>
+        <details class="d7w-import"${st.dataset ? " open" : ""}><summary>이미 실행한 설계 행렬 쓰기(선행 batch · 외부 원자료 · 문헌)</summary>
+          <p class="d7-muted">${st.dataset ? "데이터셋의 실행 행렬을 쓰려면 비워 두고 <b>실행 행렬 가져오기</b>를 누르세요. " : ""}CSV 첫 줄은 요인 ID(${esc(Object.keys(st.factors).sort().join(", "))}), 한 줄이 한 run(실제값)입니다. 같은 Validator로 다시 검사하고, 설계점이 표준 설계와 같으면 그 지지 영역을 씁니다.</p>
+          <textarea data-f="import_csv" rows="4" placeholder="${esc(Object.keys(st.factors).sort().join(","))}"></textarea></details>`;
     },
     results_submit(st, d) {
       const plan = st.plans[st.active_plan];
@@ -266,7 +322,10 @@
           <td>${sel("evidence_status", RESULT_EV, r.evidence_status || "MEASURED_IN_STUDY")}</td>
           ${keys.map((k) => `<td>${num(`v:${k}`, r.values?.[k])}</td>`).join("")}</tr>`;
       });
-      return `<p class="d7-muted">run 순서대로 · batch마다 새 ID. 같은 blend를 다른 run으로 세면 가짜 반복입니다(RQ009).</p>
+      return `<details class="d7w-import"><summary>CSV로 붙여 넣기(엑셀에서 복사해도 됩니다)</summary>
+          <p class="d7-muted">머리행: <code>run_id</code> 또는 요인 열(${esc(Object.keys(st.factors).sort().map((f) => `${f}/${st.factors[f].name}`).join(", "))}) + 반응 열(${keys.map(esc).join(", ")}) + 선택 열 batch_id · blend_id · test_method_version · replicate_independence · evidence_status. run_id가 없으면 요인 실제값으로 계획 run에 짝짓습니다. 표만 채우고 제출하지 않습니다.</p>
+          <textarea id="d7w-csv" rows="5"></textarea><button type="button" class="ghost" id="d7w-csv-go">CSV를 표에 채우기</button></details>
+        <p class="d7-muted">run 순서대로 · batch마다 새 ID. 같은 blend를 다른 run으로 세면 가짜 반복입니다(RQ009).</p>
         ${tbl(["run", "설정(실제값)", "batch", "blend", "시험법 버전", "독립성", "근거 등급", ...keys.map(esc)], rows)}`;
     },
     model_accept_flags(st, d) {
@@ -336,8 +395,10 @@
     },
     factor_select(root) {
       const trs = [...root.querySelectorAll("tr[data-key]")];
+      const pref = (draft.factor_select?.selected || []).map((x) => x.key);      // 채운 순서(데이터셋 요인 순서)를 유지 → X1·X2·X3이 데이터셋과 같다
+      const rank = (k) => (pref.includes(k) ? pref.indexOf(k) : 99);
       return {
-        selected: trs.filter((tr) => val(tr, "pick")).map((tr) => ({ key: tr.dataset.key, name: val(tr, "name") || tr.dataset.key, kind: val(tr, "kind"),
+        selected: trs.filter((tr) => val(tr, "pick")).sort((a, b) => rank(a.dataset.key) - rank(b.dataset.key)).map((tr) => ({ key: tr.dataset.key, name: val(tr, "name") || tr.dataset.key, kind: val(tr, "kind"),
           material_id: val(tr, "material_id") || null })),
         fixed: trs.filter((tr) => !val(tr, "pick") && tr.querySelector('[data-f="fixed_value"]')).map((tr) => ({
           key: tr.dataset.key, fixed_value: val(tr, "fixed_value") || null, fixed_rationale: val(tr, "fixed_rationale") || null })),
@@ -365,6 +426,12 @@
       return { sampling_plan: val(root, "sampling_plan"), stop_criteria: val(root, "stop_criteria"), balance_material: val(root, "balance_material") || undefined };
     },
     plan_reject(root) { return { reason: val(root, "reason") }; },
+    plan_import(root) {
+      const lines = (val(root, "import_csv") || "").split(/\n/).map((l) => l.trim()).filter(Boolean);
+      if (!lines.length) return { runs: [] };
+      const head = lines.shift().split(/[,\t]/).map((x) => x.trim());
+      return { source: "연구자 입력 CSV", runs: lines.map((l) => { const c = l.split(/[,\t]/); return { actual: Object.fromEntries(head.map((h, i) => [h, Number(c[i])])) }; }) };
+    },
     results_submit(root) {
       return { rows: [...root.querySelectorAll("tr[data-run]")].map((tr) => {
         const values = {};
@@ -436,13 +503,15 @@
       ${lb && form !== "revise" ? `<div class="d7w-lab"><b>RB18 ${esc(lb.pattern_id)}</b> ${esc(lb.observed_pattern)} → 판별시험 ${esc(lb.tests.map((t) => t.display_name).join(", "))}</div>` : ""}
       ${p.flagged?.length ? `<div class="d7-muted">플래그: ${esc(p.flagged.join(", "))}</div>` : ""}
       ${form && FORMS[form] ? `<div id="d7w-form" class="d7w-form">${FORMS[form](s, draft[form] || {})}</div>` : ""}
-      <div class="d7w-acts">${s.demo && form ? `<button type="button" class="ghost" id="d7w-fill">입력 채우기(논문 값)</button>` : ""}${acts}</div>
+      <div class="d7w-acts">${s.demo && form ? `<button type="button" class="ghost" id="d7w-fill">입력 채우기(데이터셋 값)</button>` : ""}${acts}</div>
       <p class="d7-muted d7-small">${esc(cur.banner || "")} — 규칙은 모두 DRAFT(전문가 검토 전)이며 이 study는 샌드박스입니다.</p>`;
     $("d7w-ask").querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", () => doAction(b.dataset.act)));
     const fb = $("d7w-fill");
     if (fb) fb.addEventListener("click", () => fill().catch((e) => note(e.message, true)));
     const fm = $("d7w-form");
     if (fm) fm.addEventListener("input", () => { dirty = true; });
+    const cg = $("d7w-csv-go");
+    if (cg) cg.addEventListener("click", () => csvFill().catch((e) => note(e.message, true)));
   }
 
   function section(title, inner, open = false) {
@@ -511,7 +580,7 @@
           <td>${m.selected?.lack_of_fit?.p == null ? "계산 불가" : fx(m.selected.lack_of_fit.p, 3)}</td>
           <td>${badge(/INADEQUATE/.test(m.status) ? "bad" : /FLAGS/.test(m.status) ? "warn" : "ok", m.status)}${(m.gate?.flags || []).map((x) => `<div class="d7-muted">${esc(x.rule_id)} ${esc(x.detail)}</div>`).join("")}</td></tr>`))
         + decisions(s.evaluations.model) + (s.flags_accepted ? `<p class="d7-small">플래그 수용: ${esc(s.flags_accepted.by)} — ${esc(s.flags_accepted.rationale)}</p>` : "")
-        + `<div id="d7w-surf" class="d7w-surf"></div>`, true));
+        + `<div id="d7w-rsg" class="rsg-box"></div><div id="d7w-joint" class="d7w-surf"></div>`, true));
     }
     if (s.region) {
       const r = s.region;
@@ -537,70 +606,34 @@
       <ul class="d7-list">${s.timeline.map((t) => `<li><code>${esc(t.from)}</code> → <code>${esc(t.to)}</code> ${esc(t.reason)} ${t.rule ? `<span class="d7-muted">${esc(t.rule)}</span>` : ""}</li>`).join("")}</ul>
       ${s.labloop.history.length ? `<p class="d7-small">재검토: ${s.labloop.history.map((x) => `${esc(x.pattern_id || "")} ${esc(x.reason)} (시험 ${esc(x.chosen_tests.join(", ") || "없음")})`).join(" · ")}</p>` : ""}`));
     $("d7w-body").innerHTML = out.join("");
-    if ($("d7w-surf")) drawSurface().catch((e) => { $("d7w-surf").innerHTML = `<p class="d7-muted">곡면을 그리지 못했습니다: ${esc(e.message)}</p>`; });
+    if ($("d7w-rsg")) drawSurface().catch((e) => { if ($("d7w-rsg")) $("d7w-rsg").innerHTML = `<p class="d7-muted">곡면을 그리지 못했습니다: ${esc(e.message)}</p>`; });
   }
 
-  // ── 곡면 ──────────────────────────────────────────────────────────────
-  function loadPlotly() {
-    if (window.Plotly) return Promise.resolve(window.Plotly);
-    if (!plotlyP) {
-      plotlyP = new Promise((res, rej) => {
-        const sc = document.createElement("script");
-        sc.src = PLOTLY; sc.async = true;
-        sc.onload = () => (window.Plotly ? res(window.Plotly) : rej(new Error("Plotly 없음")));
-        sc.onerror = () => { plotlyP = null; rej(new Error("Plotly를 불러오지 못했습니다")); };
-        document.head.appendChild(sc);
-      });
-    }
-    return plotlyP;
-  }
-
-  async function drawSurface() {
+  // ── 곡면 — 반응 × 세 번째 요인 수준 3D 격자(surface3d.js) + 공동 통과확률 단면 ─────────────
+  async function drawSurface(src, slice) {
     const s = cur.study;
-    const box = $("d7w-surf");
-    const q = new URLSearchParams({ x3: String(surf.x3), steps: "31" });
-    if (surf.response) q.set("response", surf.response);
-    const d = await req(`/api/doe-v7/studies/${encodeURIComponent(s.study_id)}/surface?${q}`);
-    surf.response = d.response;
-    const ids = d.factors;
-    const ax = (i) => d.axes[ids[i]];
-    box.innerHTML = `<div class="d7-slicebar"><b>반응 곡면</b>
-      <select id="d7w-resp">${d.responses.map((r) => `<option value="${esc(r)}" ${r === d.response ? "selected" : ""}>${esc(s.cqas[r]?.name || r)}</option>`).join("")}</select>
-      ${d.x3_factor ? `<label>${esc(factorName(s, d.x3_factor))} 고정 <input id="d7w-x3" type="range" min="-1" max="1" step="0.5" value="${d.x3}"> <b>${fx(d.x3_actual)} ${esc(s.factors[d.x3_factor].unit || "")}</b> (coded ${fx(d.x3, 2)})</label>` : ""}
-      <span class="d7-muted mono">${esc(d.formula)}</span></div>
-      <div id="d7w-3d" class="d7w-3d"><p class="d7-muted">3D 곡면 불러오는 중…</p></div>
-      <div class="d7w-2d">${ids.length >= 2 ? heat(d, "mean", "예측 평균") + (d.joint ? heat(d, "joint", `공동 통과확률 (≥ ${fx(d.p_min, 2)} 테두리)`) : "") : ""}</div>`;
-    $("d7w-resp").addEventListener("change", (e) => { surf.response = e.target.value; drawSurface().catch(() => {}); });
-    const x3 = $("d7w-x3");
-    if (x3) x3.addEventListener("change", (e) => { surf.x3 = Number(e.target.value); drawSurface().catch(() => {}); });
-    if (ids.length < 2) { $("d7w-3d").innerHTML = ""; return; }
-    try {
-      const P = await loadPlotly();
-      const css = getComputedStyle(document.documentElement);
-      const ink = css.getPropertyValue("--ink-1").trim() || "#222";
-      const warn = css.getPropertyValue("--status-warn").trim() || "#b7791f";
-      const z = d.mean.map((row, i) => row.map((v, j) => (d.domain[i][j] ? v : null)));
-      const X = ax(0).actual, Y = ax(1).actual;
-      const traces = [{ type: "surface", x: Y, y: X, z, colorscale: "Greys", showscale: false, opacity: 0.92, name: "예측 평균",
-        contours: { z: { show: true, usecolormap: false, color: ink, width: 1 } } }];
-      const spec = d.spec || {};
-      for (const lim of [spec.lower, spec.upper]) {
-        if (lim == null) continue;
-        traces.push({ type: "surface", x: Y, y: X, z: X.map(() => Y.map(() => lim)), showscale: false, opacity: 0.28,
-          colorscale: [[0, warn], [1, warn]], name: `규격 ${lim}`, hoverinfo: "name" });
-      }
-      const pts = d.points.filter((p) => p.y != null);
-      if (pts.length) traces.push({ type: "scatter3d", mode: "markers", x: pts.map((p) => p.actual[ids[1]]), y: pts.map((p) => p.actual[ids[0]]),
-        z: pts.map((p) => p.y), marker: { size: 4, color: ink }, name: "실험점" });
-      const t = (a) => `${a.name} (${a.unit || ""})`;
-      await P.react("d7w-3d", traces, {
-        margin: { l: 0, r: 0, t: 10, b: 0 }, height: 380, paper_bgcolor: "rgba(0,0,0,0)", showlegend: false, font: { color: ink, size: 11 },
-        scene: { xaxis: { title: t(ax(1)) }, yaxis: { title: t(ax(0)) }, zaxis: { title: `${s.cqas[d.response]?.name || d.response} (${spec.unit || ""})` },
-          camera: { eye: { x: 1.6, y: -1.6, z: 0.9 } } },
-      }, { displaylogo: false, responsive: true, modeBarButtonsToRemove: ["toImage"] });
-    } catch (e) {
-      $("d7w-3d").innerHTML = `<p class="d7-muted">3D 곡면을 불러오지 못해 2D 단면만 보여 줍니다(${esc(e.message)}).</p>`;
+    surf.source = src || surf.source || "selected";
+    if (slice) surf.slice = slice;
+    const box = $("d7w-rsg");
+    if (!box) return;
+    box.innerHTML = `<p class="d7-muted">반응 곡면 계산 중…</p>`;
+    const d = await req(`/api/doe-v7/studies/${encodeURIComponent(s.study_id)}/surfaces?source=${surf.source}${surf.slice ? `&slice=${encodeURIComponent(surf.slice)}` : ""}`);
+    if (!$("d7w-rsg")) return;
+    await window.F1Surfaces.render($("d7w-rsg"), d, {
+      sources: d.published_available, onSource: (x) => drawSurface(x).catch((e) => note(e.message, true)),
+      onSlice: (x) => drawSurface(null, x).catch((e) => note(e.message, true)),
+      title: `반응 곡면 — ${d.source === "published" ? "보고된 모형 항 구성으로 같은 원자료를 재적합" : "자동 선택 모형"}`,
+    });
+    const jb = $("d7w-joint");
+    const allFit = Object.values(s.models).every((m) => m.selected);
+    if (!jb || !allFit || Object.keys(s.models).length < 2) return;
+    const levels = Object.keys(s.factors).length === 3 ? [-1, 0, 1] : [0];
+    const maps = [];
+    for (const lv of levels) {
+      const g = await req(`/api/doe-v7/studies/${encodeURIComponent(s.study_id)}/surface?x3=${lv}&steps=31`);
+      if (g.joint) maps.push(heat(g, "joint", `공동 통과확률${g.x3_factor ? ` · ${factorName(s, g.x3_factor)} ${fx(g.x3_actual)}${s.factors[g.x3_factor].unit || ""}` : ""} (≥ ${fx(g.p_min, 2)} 테두리)`));
     }
+    if ($("d7w-joint")) $("d7w-joint").innerHTML = maps.length ? `<h4>공동 통과확률 단면 — 모든 반응 규격을 동시에 만족할 확률(잠근 기준)</h4><div class="d7w-2d">${maps.join("")}</div>` : "";
   }
 
   function heat(d, kind, title) {
@@ -637,11 +670,14 @@
     if (!box || box.dataset.ready) return;
     box.dataset.ready = "1";
     box.innerHTML = `<div class="d7w-bar"><button type="button" id="d7w-cbd">CBD 문헌 재현으로 시작</button>
+        <button type="button" id="d7w-dsbtn">데이터셋으로 시작</button>
         <select id="d7w-list" aria-label="열린 study"></select>
-        <span class="d7-muted">신규 API는 ① 통과 후보 카드의 <b>v7 실험개발로 시작</b>으로 엽니다.</span></div>
+        <span class="d7-muted">① 통과 후보 카드의 <b>v7 실험개발로 시작</b> · run 단위 실험 데이터가 있으면 <b>데이터셋으로 시작</b>.</span></div>
+      <section id="d7w-ds" class="d7-card d7w-ds" hidden></section>
       <div id="d7w-msg" class="d7w-msg" role="status" aria-live="polite" hidden></div>
       <div id="d7w-main"></div>`;
     $("d7w-cbd").addEventListener("click", () => create({ source: "cbd_replay" }).catch((e) => note(e.message, true)));
+    $("d7w-dsbtn").addEventListener("click", datasetPanel);
     $("d7w-list").addEventListener("change", (e) => { if (e.target.value) load(e.target.value).catch((x) => note(x.message, true)); });
     render();
     refreshList();
