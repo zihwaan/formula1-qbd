@@ -1,0 +1,14 @@
+# 실험개발 DoE v7.0 모듈 설정 — database/07_doe/v7_0/INSTALLATION.md §8.
+# 경로는 여기 한 곳에서만 읽는다(코드에 하드코딩 금지). 승인 절차(§12) 전에는 enabled=false · VALIDATION_ONLY.
+module_version: 7.0.0
+enabled: false
+runtime_mode: VALIDATION_ONLY          # VALIDATION_ONLY | ENFORCING(승인 release만)
+rulebook_root: database/07_doe/v7_0
+package_manifest: database/07_doe/v7_0/manifest.yaml
+development_policy: database/07_doe/v7_0/config/development_policy.yaml
+allow_draft_enforcement: false
+legacy_07_doe_enabled: true            # v6.1 개발 스튜디오 경로는 그대로 동작
+confirmation_test_master: database/07_doe/v7_0/masters/06_confirmation_test_master.csv
+# RB14가 참조하는 통계 상수(const.*)는 v7 패키지에 없어 v6.1 파일에서 읽는다(미이관 자산 — INSTALLATION §6.2)
+statistical_constants: database/07_doe/planning/statistical_policy_constants.csv
+display_banner: DRAFT / RESEARCH USE ONLY / NOT A GMP INSTRUCTION
