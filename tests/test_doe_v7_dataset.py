@@ -130,3 +130,28 @@ def test_cbd_is_one_dataset_instance(svc):
     ds = DS.validate(svc.pkg, DS.cbd())
     assert len(ds["runs"]) == 17 and {r["cqa_id"] for r in ds["responses"]} == {"CQA_BREAKING_FORCE", "CQA_DISINTEGRATION", "CQA_FRIABILITY"}
     assert ds["verification"]["points"][0]["role"] == "SETPOINT"     # 논문 확인점은 SETPOINT 하나뿐 — VR001이 막는다(그대로 둔다)
+
+
+def test_one_factor_dataset_line_surfaces(svc):
+    """요인 1개 DoE(1요인 2차 7 run) — 같은 흐름을 지나 곡면 대신 곡선 데이터가 나온다. 합성 값은 테스트 전용."""
+    rng = np.random.default_rng(5)
+    base = synthetic()
+    base["factors"] = [base["factors"][0]]
+    base["responses"] = [base["responses"][0]]
+    base["reported_models"] = {"bf": {"terms": ["F", "F^2"]}}
+    base["runs"] = []
+    for n, a in enumerate([-1, -1, 0, 0, 0, 1, 1], 1):
+        base["runs"].append({"label": f"S{n}", "batch_id": f"S{n}", "blend_id": f"SB{n}", "factors": {"F": 10000 + 3000 * a},
+                             "responses": {"bf": round(70 + 9 * a - 3 * a * a + rng.normal(0, 0.5), 3)}})
+    sid, go = walk_to_plan(svc, base)
+    s = go("range_approve", {})["study"]
+    assert s["status"] == "DOE_PLAN_REVIEW" and s["plans"][-1]["design_type"] == "ONE_FACTOR_QUADRATIC"
+    r = go("plan_approve")
+    assert r["study"]["status"] == "WAITING_FOR_RESULTS", r["action_result"]
+    go("results_submit"); s = go("results_confirm", {})["study"]
+    if s["status"] == "MODEL_FIT":
+        s = go("model_accept_flags")["study"]
+    assert s["status"] in ("PROVISIONAL_DESIGN_SPACE", "MODEL_INADEQUATE")
+    d = svc.surfaces(sid)
+    assert d["kind"] == "LINE" and len(d["responses"][0]["line"]["x"]) == 25 and len(d["responses"][0]["points"]) == 7
+    assert svc.surfaces(sid, "published")["responses"][0]["formula"] == "1 + X1 + X1^2"

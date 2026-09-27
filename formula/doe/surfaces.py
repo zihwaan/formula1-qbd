@@ -47,10 +47,21 @@ def build(factors: Sequence[FactorSpec], models: Dict[str, Dict[str, Any]], resp
             m = models.get(r["id"])
             if not m:
                 continue
-            mean = predict(m, {a: g})["mean"]
-            pts = [{"a": D.to_actual(run["coded"][a], fs[a]), "y": run["y"].get(r["id"])} for run in runs]
-            out.append({**r, "line": {"x": [D.to_actual(float(c), fs[a]) for c in g], "y": mean.tolist()}, "points": pts})
-        return {"kind": "LINE", "factors": fac_out, "responses": out}
+            pr = predict(m, {a: g})
+            mean = pr["mean"]
+            pts = []
+            sel = [run for run in runs if run["y"].get(r["id"]) is not None]
+            if sel:
+                yh = predict(m, {a: np.array([run["coded"][a] for run in sel], dtype=float)})["mean"]
+                pts = [{"a": D.to_actual(run["coded"][a], fs[a]), "y": float(run["y"][r["id"]]), "pred": float(h),
+                        "above": bool(run["y"][r["id"]] >= h)} for run, h in zip(sel, yh)]
+            vals = list(mean) + [p["y"] for p in pts]
+            lo, hi = float(min(vals)), float(max(vals))
+            span = (hi - lo) or 1.0
+            out.append({**r, "line": {"x": [D.to_actual(float(c), fs[a]) for c in g], "y": mean.tolist()}, "points": pts,
+                        "zrange": [lo - 0.08 * span, hi + 0.08 * span]})
+        return {"kind": "LINE", "factors": fac_out, "responses": out, "slice_factor": None,
+                "note": "요인이 1개라 곡면 대신 예측 곡선과 실험점(잔차 세로줄)을 그린다."}
     a, b = ids[0], ids[1]
     c_id = ids[2] if len(ids) == 3 else None
     levels = [-1.0, 0.0, 1.0] if c_id else [None]

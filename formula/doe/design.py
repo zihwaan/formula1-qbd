@@ -77,8 +77,17 @@ def validate(plan: Dict[str, Any], factors: Sequence[FactorSpec]) -> Dict[str, A
     X = model_matrix(terms, coded)
     rank = matrix_rank(X, 1e-10)
     add("full_quadratic_estimable", rank == len(terms), f"rank {rank}/{len(terms)}")
-    pts = [tuple(r["coded"][i] for i in ids) for r in runs if not r["is_center"]]
-    add("no_duplicate_noncenter_runs", len(pts) == len(set(pts)), f"{len(pts) - len(set(pts))}개 중복")
+    pts = [tuple(round(float(r["coded"][i]), 9) for i in ids) for r in runs if not r["is_center"]]
+    designed: Dict[tuple, int] = {}
+    if plan["design_type"] in EXPECTED_RUNS:           # 설계가 정한 반복(1요인 low·high 각 2)은 중복이 아니다
+        for row in coded_matrix(plan["design_type"], len(ids)):
+            key = tuple(round(float(v), 9) for v in row)
+            if any(key):
+                designed[key] = designed.get(key, 0) + 1
+    extra = sum(max(0, pts.count(p) - designed.get(p, 1)) for p in set(pts))
+    add("no_duplicate_noncenter_runs", extra == 0, f"설계 밖 중복 {extra}개")
+    ids_ok = len({r["run_id"] for r in runs}) == len(runs)
+    add("unique_run_ids", ids_ok, "run ID 중복 없음" if ids_ok else "run ID 중복")
     n_c = plan["center_points"]
     add("center_replicates", n_c >= 3, f"중심점 {n_c}개 → pure error df {max(n_c - 1, 0)}")
     inb = all(min(f.low, f.high) - 1e-9 <= r["actual"][f.factor_id] <= max(f.low, f.high) + 1e-9 for r in runs for f in factors)

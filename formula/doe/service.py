@@ -609,8 +609,10 @@ class DoeStudyService:
             out.append(self._decide("RB10", "DV010"))
         if fail("coded_actual_round_trip"):
             out.append(self._decide("RB10", "DV015"))
-        if fail("run_count") or fail("no_duplicate_noncenter_runs"):
-            out.append(self._decide("RB10", "DV016"))
+        if fail("run_count") or fail("unique_run_ids"):
+            out.append(self._decide("RB10", "DV016"))          # run 기록의 중복·누락(차단)
+        if fail("no_duplicate_noncenter_runs"):
+            out.append(self._decide("RB10", "DV012"))          # 설계 밖에서 겹친 설계점(경고)
         if fail("randomized"):
             out.append(self._decide("RB10", "DV017"))
         return out
