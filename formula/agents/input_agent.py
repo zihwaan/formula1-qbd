@@ -44,12 +44,10 @@ class RunDraft(BaseModel):
 
 class AgentOutput(BaseModel):
     reply: str = Field(description="사용자에게 할 말(한국어 2~4문장). 숫자를 새로 만들지 않는다")
-    intent: Literal["start_run", "submit_measurements", "studio_action", "develop_candidate",
+    intent: Literal["start_run", "submit_measurements", "develop_candidate",
                     "explain", "clarify", "none"] = "none"
     run: Optional[RunDraft] = None
     measurements: Dict[str, Union[float, str, bool]] = Field(default_factory=dict)
-    studio_action: str = ""
-    studio_payload: Dict[str, Any] = Field(default_factory=dict)
     candidate_id: str = ""
     asks: List[str] = Field(default_factory=list)
 
@@ -66,29 +64,12 @@ SYSTEM = """당신은 Formula 1 제형 설계 시스템의 입력 에이전트�
 - intent 고르기:
   start_run — 새 설계 요청(약 이름/SMILES·대상·제형·반드시 넣을 부형제·용량·이미 아는 실측값)
   submit_measurements — 데이터 요청에 대한 측정값(키는 아래 '받을 수 있는 측정 키'에서만)
-  studio_action — 개발 스튜디오 행동(아래 '지금 가능한 스튜디오 행동'에서만, payload는 그 행동의 형식)
-  develop_candidate — 특정 후보를 개발 스튜디오로 넘기기(candidate_id)
+  develop_candidate — 룰북을 통과한 특정 후보로 2단계(Design Space 도출)를 시작하기(candidate_id)
   explain — 지금 상태·판정 이유 설명
   clarify — 정보가 부족해 되묻기
 - target_population: adult / pediatric / geriatric.
-- 스튜디오에서 사용자가 "모른다/없다/미보고"라고 하면 그것도 입력이다: 값을 묻지 말고 studio_action으로
-  해당 항목을 status "UNKNOWN"과 reason(사용자 말 요약)으로 기록한다(예: required_data의 fixed_parameters).
 - asks에는 예시 값(숫자)을 들지 않는다.
 - reply는 짧고 구체적으로. 무엇을 제안했는지, 확인 버튼을 눌러야 실행된다는 것을 알린다."""
-
-STUDIO_FORMATS = {
-    "required_data": '{"batch_scale": "문자열 또는 UNKNOWN — 사유", "fixed_parameters": [{"name": "compression_force", "status": "UNKNOWN"|"SET", "value": 숫자, "reason": "..."}], "grades": [{"name": "성분명", "grade": "..."}]}',
-    "cqa_edit": '{"edits": [{"cqa_id": "CQA_…", "changes": {"analysis_role": "DOE_RESPONSE|MONITOR_ONLY|NOT_APPLICABLE", "acceptance_operator": "LE|GE|BETWEEN", "lower": 숫자, "upper": 숫자, "summary_definition": "…"}, "evidence_ref": "…", "reason": "…"}]}',
-    "cqa_approve": "{}", "fmea_approve": "{}", "plan_approve": "{}", "model_approve": "{}",
-    "vplan_lock": "{}", "region_approve": "{}",
-    "factor_data": '{"factors": {"filler_ratio|blend_time|disintegrant_pct|…": {"low": 숫자, "high": 숫자, "source_ref": "…"}}}',
-    "factor_approve": '{"prior_evidence_approved": true|false, "reason": "…"}',
-    "model_reduce": '{"cqa_id": "CQA_…", "terms": ["1","a","b","c"], "reason": "…"}',
-    "model_accept": '{"cqa_id": "CQA_…", "reason": "…"}',
-    "finalize": '{"limitations": "…"}',
-    "directive_approve": '{"directive": "DOE_AUGMENT|FACTOR_RANGE_REVISION|METHOD_PROCESS_CONTROL|CANDIDATE_REVISION", "reason": "…"}',
-}
-
 
 # ── 숫자 가드 — 제안의 모든 숫자는 사용자 글에 있어야 한다 ─────────────────────
 def numbers_in(text: str) -> List[float]:
@@ -184,27 +165,6 @@ def rule_parse(message: str, ctx: Dict[str, Any], catalog: Dict[str, Dict[str, A
     # 측정값: "라벨/키 (은|는|=|:) 숫자" — 받을 수 있는 키만
     out.measurements.update(read_measurements(text, catalog))
 
-    tab = ctx.get("tab")
-    study = ctx.get("study") or {}
-    if tab == "studio" and study:
-        actions = study.get("actions") or []
-        if "required_data" in actions:
-            payload: Dict[str, Any] = {"fixed_parameters": []}
-            if re.search(r"압축력.{0,12}(모름|몰라|모르|unknown|미보고|없)", low):
-                payload["fixed_parameters"].append({"name": "compression_force", "status": "UNKNOWN",
-                                                     "reason": "연구자 대화: 값 모름"})
-            m = re.search(r"(?:배치\s*규모|배치\s*크기)\s*(?:은|는|=|:)?\s*([^\s,.]+정|UNKNOWN|미보고|모름)", text)
-            if m:
-                payload["batch_scale"] = m.group(1) if m.group(1) not in ("모름",) else "UNKNOWN — 연구자 대화: 모름"
-            if payload["fixed_parameters"] or payload.get("batch_scale"):
-                out.intent, out.studio_action, out.studio_payload = "studio_action", "required_data", payload
-        approve = next((a for a in actions if a.endswith("_approve") or a in ("vplan_lock",)), None)
-        if out.intent == "none" and approve and re.search(r"(승인|잠가|잠금|확정|approve)", low):
-            out.intent, out.studio_action = "studio_action", approve
-        if out.intent == "none" and re.search(r"(왜|설명|무슨|뭐가|막혀|막힌)", low):
-            out.intent = "explain"
-        return out
-
     run = ctx.get("run") or {}
     if run and out.measurements and not re.search(DESIGN_WORDS, low):
         out.intent = "submit_measurements"
@@ -254,14 +214,6 @@ def context_text(ctx: Dict[str, Any]) -> str:
                 f"{g['name']}(Tier {g['tier']}) → {', '.join(g['result_keys'])}" for g in run["request_groups"]))
         if run.get("backtrack"):
             lines.append(f"마지막 되돌림: {run['backtrack'].get('transition_id')} → {run['backtrack'].get('return_phase')}")
-    study = ctx.get("study") or {}
-    if study:
-        lines.append(f"개발 스튜디오: {study.get('title')} · 상태 {study.get('status')} — {study.get('prompt_title')}")
-        if study.get("blocking"):
-            lines.append("막힌 규칙: " + "; ".join(study["blocking"][:5]))
-        if study.get("actions"):
-            lines.append("지금 가능한 스튜디오 행동: " + ", ".join(
-                f"{a} {STUDIO_FORMATS.get(a, '{}')}" for a in study["actions"] if a in STUDIO_FORMATS))
     keys = ctx.get("measurement_keys") or []
     if keys:
         lines.append("받을 수 있는 측정 키: " + ", ".join(keys[:60]))
@@ -299,7 +251,7 @@ def run_turn(message: str, history: List[Dict[str, str]], ctx: Dict[str, Any],
     # 규칙 기반 해석은 바닥이다 — LLM이 되묻기만 했는데 글에서 행동이 명확히 읽히면 그 행동을 제안한다.
     if out.intent in ("clarify", "none", "explain"):
         floor = rule_parse(message, ctx, catalog)
-        if floor.intent in ("studio_action", "submit_measurements"):
+        if floor.intent == "submit_measurements":
             floor.reply = ""
             return floor, "llm+rules"
     return out, "llm"
@@ -343,7 +295,8 @@ def _canon_key(key: str, catalog: Dict[str, Dict[str, Any]]) -> Optional[str]:
 # ── 맥락 스냅숏 (서버가 만든다 — 클라이언트가 보낸 상태를 믿지 않는다) ─────────────
 def snapshot(tab: str, run: Optional[Dict[str, Any]], study: Optional[Dict[str, Any]],
              catalog: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
-    ctx: Dict[str, Any] = {"tab": tab if tab in ("discovery", "studio") else "discovery"}
+    """맥락 = 1단계 설계 실행 요약 + 받을 수 있는 측정 키. (tab·study는 호환용 인자 — 2단계는 화면의 단계 카드가 진행한다.)"""
+    ctx: Dict[str, Any] = {"tab": "discovery"}
     if run:
         ranked = {r.get("candidate_id"): r for r in run.get("ranked", [])}
         ctx["run"] = {
@@ -359,20 +312,6 @@ def snapshot(tab: str, run: Optional[Dict[str, Any]], study: Optional[Dict[str, 
             "constraints": run.get("constraints") or {},
             "strategies": run.get("strategies") or [],
         }
-    if study:
-        prompt = study.get("prompt") or {}
-        blocking = []
-        for key, ev in (study.get("evaluations") or {}).items():
-            if ev.get("current") is False:
-                continue   # 지나간 단계의 판정은 지금 막는 규칙이 아니다
-            for v in ev.get("verdicts", []):
-                if v.get("effect") in ("BLOCK", "INVALIDATE", "REQUEST_DATA") and v.get("status") in ("FIRES", "MISSING"):
-                    blocking.append(f"{v.get('rule_id')}: {v.get('message')}")
-        ctx["study"] = {"study_id": study.get("study_id"), "status": study.get("status"),
-                        "state_version": study.get("state_version"),
-                        "title": (study.get("candidate") or {}).get("api_name") or study.get("candidate_ref"),
-                        "prompt_title": prompt.get("title"), "ask": prompt.get("ask"),
-                        "actions": prompt.get("actions") or [], "blocking": list(dict.fromkeys(blocking))[:8]}
     ctx["measurement_keys"] = [k for k, m in catalog.items() if not m.get("alias_of")]
     return ctx
 
@@ -414,7 +353,6 @@ def build_response(out: AgentOutput, source: str, message: str, history: List[Di
     asks = list(out.asks)
     notes: List[str] = []
     run = ctx.get("run") or {}
-    study = ctx.get("study") or {}
 
     if out.intent in ("clarify", "none") and out.run and (out.run.api_name or out.run.smiles):
         out.intent = "start_run"
@@ -482,22 +420,12 @@ def build_response(out: AgentOutput, source: str, message: str, history: List[Di
             proposals.append({"kind": "submit_measurements", "ready": True, "run_id": run.get("run_id"),
                               "title": "측정값 제출 → 재계산", "measurements": clean})
 
-    elif out.intent == "studio_action" and study:
-        action = out.studio_action
-        if action not in (study.get("actions") or []):
-            notes.append(f"'{action}'은 지금 상태({study.get('status')})에서 할 수 있는 행동이 아닙니다.")
-        else:
-            payload = strip_ungrounded(out.studio_payload or {}, pool, dropped, action)
-            proposals.append({"kind": "studio_action", "ready": True, "study_id": study.get("study_id"),
-                              "state_version": study.get("state_version"), "action": action,
-                              "title": f"개발 스튜디오: {action}", "payload": payload})
-
     elif out.intent == "develop_candidate" and run:
         if out.candidate_id in (run.get("passed") or []):
             proposals.append({"kind": "develop_candidate", "ready": True, "run_id": run.get("run_id"),
                               "candidate_id": out.candidate_id, "title": f"{out.candidate_id}로 개발 착수"})
         else:
-            notes.append("룰북을 통과한 후보만 개발 스튜디오로 넘길 수 있습니다.")
+            notes.append("룰북을 통과한 후보만 2단계로 넘길 수 있습니다.")
 
     reply = out.reply.strip()
     if out.intent == "explain" or (not reply and not proposals and not asks):
@@ -525,13 +453,7 @@ def build_response(out: AgentOutput, source: str, message: str, history: List[Di
 
 def explain(ctx: Dict[str, Any]) -> str:
     """지금 상태를 맥락에서만 설명한다(새 사실을 만들지 않는다)."""
-    study = ctx.get("study") or {}
     run = ctx.get("run") or {}
-    if ctx.get("tab") == "studio" and study:
-        text = f"지금은 '{study.get('prompt_title')}' 단계입니다. {study.get('ask') or ''}"
-        if study.get("blocking"):
-            text += " 막고 있는 규칙: " + "; ".join(study["blocking"][:3]) + "."
-        return text
     if run:
         status = run.get("status")
         parts = {
@@ -557,20 +479,8 @@ def explain(ctx: Dict[str, Any]) -> str:
 
 def nudge(ctx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """상태가 바뀌었을 때 먼저 건네는 말 + 바로 누를 수 있는 제안(판정은 하지 않는다)."""
-    study = ctx.get("study") or {}
     run = ctx.get("run") or {}
     proposals: List[Dict[str, Any]] = []
-    if ctx.get("tab") == "studio" and study:
-        text = explain(ctx)
-        quick = [a for a in study.get("actions") or [] if a in ("cqa_approve", "fmea_approve", "plan_approve",
-                                                                  "model_approve", "region_approve", "vplan_lock")]
-        for a in quick[:1]:
-            proposals.append({"kind": "studio_action", "ready": True, "study_id": study.get("study_id"),
-                              "state_version": study.get("state_version"), "action": a, "payload": {},
-                              "title": f"개발 스튜디오: {a}", "confirm_note": "승인은 연구자의 판단입니다 — 화면의 내용을 확인한 뒤 누르세요."})
-        if "required_data" in (study.get("actions") or []):
-            text += " 모르는 값은 '압축력은 모름'처럼 말해 주시면 UNKNOWN 기록으로 정리하겠습니다."
-        return {"reply": text, "proposals": proposals, "asks": [], "notes": [], "source": "context"}
     if run:
         text = explain(ctx)
         if run.get("status") in ("passed", "passed_unranked") and run.get("passed"):

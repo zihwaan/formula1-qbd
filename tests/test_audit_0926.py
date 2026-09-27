@@ -98,46 +98,6 @@ def test_code_names_are_not_replaced_but_typos_are():
     assert not is_spelling_variant("VX-770", "Ivacaftor")
 
 
-def test_study_from_a_discovery_handoff_reproduces_the_demo_region(tmp_path, monkeypatch):
-    """시연 카드 1 '시연 전 확인': 가이드 시연용이 아니라 후보 탐색이 만든 새 Handoff로도 CSV 업로드·재계산이 된다.
-    분산정 제형이 Handoff까지 넘어와야 분산시간 CQA가 생기고, 저함량 신호(RTE008)가 혼합 FMEA 행에 붙는다."""
-    monkeypatch.setenv("FORMULA1_LLM_PROVIDER", "none")
-    from formula.development import handoff as ho
-    from formula.development.service import DevelopmentService
-    from formula.development.store import StudyStore
-    svc = DevelopmentService(ROOT, StudyStore(tmp_path / "d.db"))
-    S = ho.LORNOXICAM_SCRIPT
-    csv_text = (ROOT / "tests/fixtures/lornoxicam_table3.csv").read_text(encoding="utf-8")
-    recipe = {"candidate_id": "cand-0-CONV_DC", "api_name": "Lornoxicam", "process": "direct_compression", "version": 1,
-              "ingredients": [{"name": "Lornoxicam", "role": "api", "amount_mg": 8},
-                              {"name": "Microcrystalline cellulose", "role": "diluent", "amount_mg": 166.06},
-                              {"name": "Mannitol", "role": "diluent", "amount_mg": 55.35},
-                              {"name": "Crospovidone", "role": "superdisintegrant", "amount_mg": 15.58},
-                              {"name": "Sodium lauryl sulfate", "role": "lubricant", "amount_mg": 5}]}
-    h = ho.from_recipe(svc.rb, recipe, run_id="r", spec={"properties": {}, "dosage_form": "dispersible_tablet"},
-                       verdicts=[{"rule_id": "RTE008", "status": "soft_flag"}], actor="t")
-    sid = svc.create(h, mode="demo")["study_id"]
-    rd = {**S["required_data"], "equipment_id": "EQ_LX_MIXER;EQ_LX_PRESS",
-          "fixed_parameters": S["required_data"]["fixed_parameters"] + [
-              {"name": "blend_time", "value": 10, "reason": "Almotairi 2022 Table 9"},
-              {"name": "lubrication_time", "value": 3, "reason": "Almotairi 2022 §3.2.4"}]}
-    for action, payload in [("required_data", rd), ("cqa_edit", {"edits": S["cqa_edits"]}), ("cqa_approve", {}),
-                            ("fmea_edit", {"edits": S["fmea_edits"]}), ("fmea_approve", {}),
-                            ("factor_data", {"factors": S["factor_inputs"]}), ("factor_approve", S["factor_approval"]),
-                            ("plan_approve", {}), ("results_submit", {"csv": csv_text, "column_map": S["column_map"]}),
-                            ("results_confirm", {"accept": True}), ("model_reduce", S["model_reduction"]),
-                            ("model_accept", S["model_accept"])]:
-        st = svc.act(sid, action, payload)
-        if action == "fmea_approve":
-            signals = {r["row_id"] for r in st["fmea"]["rows"] if r.get("upstream_signals")}
-            assert {"FM003", "FM016"} <= signals
-    st = svc.act(sid, "model_approve", {})
-    s = st["region"]["summary"]
-    assert s["grid_points_in_domain"] == 7501 and abs(s["feasible_fraction"] - 0.476) < 0.01
-    assert s["setpoint"]["actual"] == {"F_filler_ratio": pytest.approx(2.7), "F_blend_time": pytest.approx(12.5),
-                                       "F_disintegrant_pct": pytest.approx(6.8)}
-
-
 def test_dispersible_tablet_is_understood_by_intake():
     from formula.agents.intake import _fallback
     assert _fallback("성인용 로르녹시캄 8 mg 분산정을 설계해 줘").dosage_form == "dispersible_tablet"

@@ -1,35 +1,32 @@
-"""FastAPI 서버 — 에이전트 실행을 SSE로 중계한다.
+"""FastAPI 서버 — 1단계(후보 탐색)는 SSE로 중계하고, 2단계(Design Space 도출)는 단계별 승인 study로 둔다.
 
-엔드포인트
+1단계 — 후보 탐색
   GET  /api/inputs                실험 데이터 입력 카탈로그 (무엇을 넣으면 무엇이 열리는가)
   POST /api/runs                  설계 실행 시작 → run_id (실측값 선택 입력 가능)
   GET  /api/runs/{id}/stream      TraceEvent SSE 스트림 (UI의 유일한 입력)
   GET  /api/runs/{id}/replay      저장된 이벤트 재생 — 오프라인 시연 안전장치
   GET  /api/runs/{id}             실행 요약
-  POST /api/chem/preview          SMILES/API명 → descriptor·구조플래그·2D SVG (RDKit 단독 데모)
+  POST /api/runs/{id}/measurements 데이터 요청에 측정값 제출 → 결정론 계층만 재계산
+  POST /api/runs/{id}/decline     데이터 요청 건너뛰기(후보는 provisional 유지)
+  POST /api/runs/{id}/attachments 측정 원본 첨부(추적용 — 판정에는 쓰지 않음) · …/{aid} 받기 · …/{aid}/interpret 해석 초안
+  POST /api/chem/preview          SMILES/API명 → descriptor·구조플래그·2D SVG
   GET  /api/chem/smarts           룰북이 쓰는 구조 패턴 목록 + 발동 규칙
   POST /api/chem/smarts           SMILES × SMARTS 직접 매칭 + 강조 구조
   GET  /api/rules/{rule_id}       규칙 원본 CSV 행 + 출처 (근거 드릴다운)
-  GET  /api/runs/{id}/evidence    후보별 근거 충족 판정 + 확인시험 프로토콜 (실험 전 루프)
-  POST /api/runs/{id}/confirmation 확인시험 결과 입력 → 근거 재평가 (실험 전 루프)
-  POST /api/runs/{id}/approve     연구자 승인 → 실행 가능 공정 프로토콜로 전환
-  POST /api/runs/{id}/wetlab      자연어 배치 결과 → 판독·판정·다음 실험 지시 (실험 후 루프)
   GET  /api/meta                  룰북·심사관·LLM 가용성 등 시스템 상태
   POST /api/agent/turn            입력 에이전트 — 말 → 제안 카드(실행은 사용자가 확인)
   POST /api/agent/nudge           입력 에이전트 — 상태 변화에 맞춘 다음 행동 제안
 
-ExperimentalDevelopmentGraph (명세 v6.1 — 후보 선택 이후의 뒷부분)
-  POST /api/candidates/{id}/development-studies   연구자가 고른 candidate_id@version → 불변 Handoff + study
-  POST /api/development-studies/demo/lornoxicam   §19 데모 study (결과는 사전 적재하지 않는다)
-  GET  /api/development-studies                   최근 study 목록
-  GET  /api/development-studies/{id}              state + 지금 연구자에게 묻는 것(prompt)
-  POST /api/development-studies/{id}/actions/{a}  연구자 행동 (Idempotency-Key·Expected-State-Version·Actor-ID 헤더)
-  GET  /api/development-studies/{id}/trace        §18 lineage 식별자 + 이벤트·결정 원장
-  GET  /api/development-studies/{id}/region-slice 공동확률 영역 단면 (시각화)
-
-**루프가 둘이라 입력도 둘이다.** `/confirmation`은 실행 *전* 확인시험 결과라서 입력·근거
-계층으로 돌아가고, `/wetlab`은 배치를 만든 *뒤*의 결과라서 설계·프로토콜 개정으로 간다.
-한 입력창에 섞으면 결과가 어디로 되먹임되는지가 사라진다.
+2단계 — Design Space 도출 (formula/stage2/, docs/stage2/DESIGN.md)
+  POST /api/stage2/studies                      통과 후보(run_id·candidate_id) 또는 CBD 논문 Table 1 → study
+  GET  /api/stage2/studies                      최근 study 목록
+  GET  /api/stage2/studies/{id}                 12단계 상태·데이터·검사(+ 논문 비교값)
+  POST /api/stage2/studies/{id}/actions/{a}     run · draft · use_reference · save · approve · reopen · attach_images
+                                                (Idempotency-Key · Expected-State-Version · Actor-ID 헤더)
+  GET  /api/stage2/studies/{id}/surfaces        선택 회귀식의 반응 곡면 격자(?slice=요인 번호)
+  GET  /api/stage2/studies/{id}/trace           승인·이벤트·결정 원장
+  GET  /api/stage2/studies/{id}/risk-report.pdf 위험평가 보고서(8단계 승인 뒤)
+  GET  /api/stage2/studies/{id}/report.pdf      최종 보고서(12단계 뒤)
 """
 
 from __future__ import annotations
@@ -64,9 +61,7 @@ from formula.contracts import (
 )
 from formula.feedback.interpreter import WetLabInterpreter
 from formula.feedback.labloop import direct_next, read_notes
-from formula.development import handoff as dev_handoff
-from formula.development.service import DevelopmentService, StudyError
-from formula.development.store import VersionConflict
+from formula.stage2.store import StudyError, VersionConflict
 from formula.lifecycle import LifecycleService, WorkflowStatus
 from formula.orchestrator.events import event_to_sse
 from formula.orchestrator.runner import Run
@@ -96,14 +91,6 @@ _registry: Optional[RulebookRegistry] = None
 _evidence_gate: Optional[EvidenceGate] = None
 _experimental_inputs: Optional[ExperimentalInputs] = None
 _lifecycle: Optional[LifecycleService] = None
-_development: Optional[DevelopmentService] = None
-
-
-def development() -> DevelopmentService:
-    global _development
-    if _development is None:
-        _development = DevelopmentService(ROOT)
-    return _development
 
 
 def registry() -> RulebookRegistry:
@@ -455,18 +442,6 @@ async def submit_measurements(run_id: str, payload: MeasurementsRequest) -> Dict
         raise HTTPException(409, f"아직 설계가 끝나지 않았습니다: {exc}")
 
 
-# ---------------------------------------------------------------------------
-# ExperimentalDevelopmentGraph — 후보 선택 이후 (명세 v6.1)
-#
-# 후보 탐색 그래프와 state를 공유하지 않는다. 연결은 불변 Handoff 하나뿐이다(§1.1).
-# 후보 1위가 자동으로 넘어오지 않는다 — 연구자가 카드에서 `이 후보로 개발 착수`를 눌러야 한다.
-# ---------------------------------------------------------------------------
-class StudyCreateRequest(BaseModel):
-    run_id: str
-    candidate_version: int = 1
-    mode: str = "demo"
-
-
 class StudyActionRequest(BaseModel):
     payload: Dict[str, Any] = Field(default_factory=dict)
 
@@ -476,100 +451,9 @@ def _study_error(exc: Exception) -> HTTPException:
         return HTTPException(409, {"message": "다른 곳에서 먼저 바뀌었습니다 — 새로 고친 뒤 다시 시도하세요.",
                                    "expected": exc.expected, "actual": exc.actual})
     if isinstance(exc, StudyError):
-        return HTTPException(exc.status, {"message": str(exc), "verdicts": exc.verdicts})
+        return HTTPException(exc.status, {"message": str(exc)})
     raise exc
 
-
-@app.post("/api/candidates/{candidate_id}/development-studies")
-async def create_study(candidate_id: str, payload: StudyCreateRequest, request: Request,
-                       idempotency_key: Optional[str] = Header(None),
-                       actor_id: str = Header("researcher"),
-                       x_f1_llm: Optional[str] = Header(None)) -> Dict[str, Any]:
-    execution = RUNS.get(payload.run_id)
-    if execution is None or not execution.final:
-        raise HTTPException(404, "설계 실행이 없거나 아직 끝나지 않았습니다.")
-    result = next((r for r in execution.final.get("results", []) if r["candidate_id"] == candidate_id), None)
-    if result is None:
-        raise HTTPException(404, f"후보 {candidate_id} 없음")
-    spec = execution.final.get("spec")
-    spec_d = spec.model_dump(mode="json") if hasattr(spec, "model_dump") else (spec or {})
-    recipe = result["recipe"].model_dump(mode="json")
-    recipe["version"] = payload.candidate_version
-    verdicts = [v.model_dump(mode="json") for v in result["verdicts"] if v.rule_id]
-    svc = development()
-    h = dev_handoff.from_recipe(svc.rb, recipe, run_id=payload.run_id, spec=spec_d,
-                                verdicts=[v for v in verdicts if v.get("status") != "pass"], actor=actor_id)
-    try:
-        return await asyncio.to_thread(_with_llm, llm_choice(request, x_f1_llm), svc.create, h,
-                                       mode=payload.mode, actor=actor_id, idempotency_key=idempotency_key)
-    except Exception as exc:   # noqa: BLE001
-        raise _study_error(exc)
-
-
-@app.post("/api/development-studies/demo/lornoxicam")
-async def create_demo_study(request: Request, mode: str = "demo", idempotency_key: Optional[str] = Header(None),
-                            actor_id: str = Header("researcher"),
-                            x_f1_llm: Optional[str] = Header(None)) -> Dict[str, Any]:
-    svc = development()
-    h = dev_handoff.lornoxicam_demo(svc.rb, actor_id)
-    choice = llm_choice(request, x_f1_llm)
-    try:
-        return await asyncio.to_thread(_with_llm, choice, svc.create, h, mode=mode, actor=actor_id,
-                                       idempotency_key=idempotency_key, demo_script="lornoxicam")
-    except Exception as exc:   # noqa: BLE001
-        raise _study_error(exc)
-
-
-@app.get("/api/development-studies")
-async def list_studies() -> Dict[str, Any]:
-    return {"studies": development().store.list()}
-
-
-@app.get("/api/development-studies/{study_id}")
-async def get_study(study_id: str) -> Dict[str, Any]:
-    try:
-        return development().view(study_id)
-    except Exception as exc:   # noqa: BLE001
-        raise _study_error(exc)
-
-
-@app.post("/api/development-studies/{study_id}/actions/{action}")
-async def study_action(study_id: str, action: str, body: StudyActionRequest, request: Request,
-                       idempotency_key: Optional[str] = Header(None),
-                       expected_state_version: Optional[int] = Header(None),
-                       actor_id: str = Header("researcher"),
-                       x_f1_llm: Optional[str] = Header(None)) -> Dict[str, Any]:
-    choice = llm_choice(request, x_f1_llm)
-    try:
-        return await asyncio.to_thread(_with_llm, choice, development().act, study_id, action, body.payload,
-                                       actor=actor_id,
-                                       idempotency_key=idempotency_key, expected_version=expected_state_version)
-    except Exception as exc:   # noqa: BLE001
-        raise _study_error(exc)
-
-
-@app.get("/api/development-studies/{study_id}/trace")
-async def study_trace(study_id: str) -> Dict[str, Any]:
-    try:
-        return development().trace(study_id)
-    except Exception as exc:   # noqa: BLE001
-        raise _study_error(exc)
-
-
-@app.get("/api/development-studies/{study_id}/region-slice")
-async def study_region_slice(study_id: str, fixed: str = "c", index: int = 10) -> Dict[str, Any]:
-    try:
-        return development().region_slice(study_id, fixed, index)
-    except Exception as exc:   # noqa: BLE001
-        raise _study_error(exc)
-
-
-@app.get("/api/development-studies/demo/lornoxicam/csv")
-async def demo_csv() -> Dict[str, Any]:
-    """데모 업로드 파일 — §15 fixture와 같은 파일. 연구자가 이 내용을 결과 제출로 올린다."""
-    path = ROOT / "tests" / "fixtures" / "lornoxicam_table3.csv"
-    return {"filename": path.name, "csv": path.read_text(encoding="utf-8"),
-            "source": "Almotairi et al., Pharmaceuticals 2022, 15, 1463 — Table 3 (CC BY)"}
 
 # ---------------------------------------------------------------------------
 # 측정 원본 첨부 — XRPD 패턴·DSC 곡선·크로마토그램·현미경 사진을 증거로 보관한다(측정값 입력 개선 요청서 과제 2).
@@ -689,13 +573,7 @@ def agent_catalog() -> Dict[str, Dict[str, Any]]:
 def _agent_context(payload: AgentRequest) -> Dict[str, Any]:
     run = RUNS.get(payload.run_id or "")
     run_summary = run.summary() if run is not None and run.final else None
-    study = None
-    if payload.study_id:
-        try:
-            study = development().view(payload.study_id)
-        except Exception:   # noqa: BLE001 — 없는 study는 맥락에서 뺀다
-            study = None
-    return input_agent.snapshot(payload.tab, run_summary, study, agent_catalog())
+    return input_agent.snapshot("discovery", run_summary, None, agent_catalog())
 
 
 def _pubchem_lookup(name: str) -> Dict[str, Any]:
@@ -1033,12 +911,6 @@ async def get_rule(rule_id: str) -> Dict[str, Any]:
                 "layer": "contract", "strategy": "request_contract", "polarity": "fail_when",
                 "row": {"rule_id": "MDD000", "notes": "이 물질은 허가 라벨의 1일 최대 용량 행이 없어 규칙을 적용하지 않았다(표시만)."},
                 "sources_doc": None}
-    # 07_doe (ExperimentalDevelopmentGraph) 규칙
-    rule = development().rb.by_id.get(rule_id)
-    if rule:
-        return {"rule_id": rule_id, "rulebook_id": rule.rulebook_id, "file": f"database/07_doe/{rule.file}",
-                "layer": "07_doe", "strategy": "ast_whitelist_v1",
-                "polarity": "fail_when", "row": rule.row, "sources_doc": "database/07_doe/masters/statistical_sources.csv"}
     raise HTTPException(404, f"규칙 {rule_id} 없음")
 
 
@@ -1286,159 +1158,52 @@ async def index() -> HTMLResponse:
     return HTMLResponse(html, headers={"Cache-Control": "no-cache, must-revalidate"})
 
 
-# ── DoE v7.0 ─────────────────────────────────────────────────────────────────
-# config/doe_module.yaml enabled=false(production 집행 꺼짐). 아래 읽기 전용 계산(package·cbd-replay·range-check)과
-# 샌드박스 study(/api/doe-v7/studies/*) — 모든 규칙이 DRAFT라 study는 SANDBOX로만 만든다(docs/doe_v7.0/IMPLEMENTATION_DESIGN.md).
-def _doe7():
-    from formula.doe.package import package as _pkg
-    return _pkg()
+# ── 2단계 — Design Space 도출(프로토타입 → QTPP → CQA → 위험평가·정리 → DoE 변수 → 실험 설계 → 회귀식 → 곡면 → ANOVA) ─────
+# 1단계 통과 후보 카드의 [이 후보로 개발 착수]가 연다. 단계마다 LLM 초안·논문 값·연구자 편집 → 승인. formula/stage2/ · 화면 web/static/stage2.js
+_S2_SERVICE = None
 
 
-def _jsonable(x):
-    import numpy as _np
-    if isinstance(x, dict):
-        return {str(k): _jsonable(v) for k, v in x.items() if k not in ("cov", "leverage", "cooks_d", "fitted", "residuals")}
-    if isinstance(x, (list, tuple)):
-        return [_jsonable(v) for v in x]
-    if isinstance(x, (_np.floating, float)):
-        v = float(x)
-        return None if v != v or v in (float("inf"), float("-inf")) else v
-    if isinstance(x, (_np.integer,)):
-        return int(x)
-    if isinstance(x, _np.bool_):
-        return bool(x)
-    return x
+def stage2():
+    global _S2_SERVICE
+    if _S2_SERVICE is None:
+        from formula.stage2.service import Stage2Service
+        _S2_SERVICE = Stage2Service()
+    return _S2_SERVICE
 
 
-@app.get("/api/doe-v7/package")
-def doe7_package() -> Dict[str, Any]:
-    return _doe7().summary()
+def _prototype_from_candidate(recipe: Dict[str, Any], spec: Dict[str, Any]) -> Dict[str, Any]:
+    ings = recipe.get("ingredients") or []
+    total = sum(float(i.get("amount_mg") or 0) for i in ings) or None
+    out = []
+    for i in ings:
+        pct = i.get("percent")
+        if pct is None and total and i.get("amount_mg") is not None:
+            pct = round(100 * float(i["amount_mg"]) / total, 3)
+        role = i.get("role") or "excipient"
+        out.append({"name": i["name"], "mg": i.get("amount_mg"), "pct": pct, "function": role, "role": "api" if role == "api" else role})
+    api = next((i for i in ings if i.get("role") == "api"), {})
+    return {"api": recipe.get("api_name") or api.get("name"), "dosage_form": spec.get("dosage_form") or "tablet", "route": "oral",
+            "process": recipe.get("process") or "", "strength_mg": api.get("amount_mg"), "unit_weight_mg": total,
+            "process_steps": list(recipe.get("process_steps") or []), "ingredients": out,
+            "source": {"candidate_ref": f"{recipe.get('candidate_id')}", "strategy": recipe.get("strategy")}}
 
 
-@app.get("/api/doe-v7/cbd-replay")
-def doe7_cbd_replay(accept_flags: bool = False) -> Dict[str, Any]:
-    from formula.doe.replay import run_replay
-    r = run_replay(_doe7(), accept_flags=accept_flags)
-    import json as _json
-    from formula.doe.replay import FIXTURE
-    fx = _json.loads(FIXTURE.read_text(encoding="utf-8"))
-    r["fixture"] = {k: fx[k] for k in ("runs", "factors", "responses", "verification", "optimum", "range_evidence", "prototype")}
-    return _jsonable(r)
-
-
-@app.get("/api/doe-v7/cbd-replay/slice")
-def doe7_slice(x3: float = 0.0, steps: int = 41) -> Dict[str, Any]:
-    """반응별 예측 평균·통과확률과 공동 통과확률 격자(X1×X2, X3 고정). 영역 밖은 domain=false(외삽 — 색칠하지 않음)."""
-    import numpy as _np
-    from formula.doe import region as RG
-    from formula.doe.models import predict
-    steps = max(11, min(int(steps), 61))
-    x3 = float(max(-1.0, min(1.0, x3)))
-    g = _np.linspace(-1, 1, steps)
-    X1, X2 = _np.meshgrid(g, g, indexing="ij")
-    pts = {"X1": X1.ravel(), "X2": X2.ravel(), "X3": _np.full(X1.size, x3)}
-    dom = RG.in_domain("BBD", _np.column_stack([pts["X1"], pts["X2"], pts["X3"]]))
-    import json as _json
-    from formula.doe.replay import FIXTURE, _raw_models
-    raw = _raw_models(_doe7())
-    fxd = _json.loads(FIXTURE.read_text(encoding="utf-8"))
-    out, joint = {}, _np.ones(X1.size)
-    for resp in fxd["responses"]:
-        m = raw[resp["id"]]
-        pr = predict(m, pts)
-        p = RG.pass_prob(resp, pr["mean"], pr["se_pred"], m["df_resid"])
-        joint *= p
-        out[resp["id"]] = {"mean": pr["mean"].reshape(steps, steps).tolist(), "p": p.reshape(steps, steps).tolist(),
-                           "mean_pass": RG.mean_pass(resp, pr["mean"]).reshape(steps, steps).tolist()}
-    return _jsonable({"x3": x3, "steps": steps, "grid": g.tolist(), "domain": dom.reshape(steps, steps).tolist(),
-                      "responses": out, "joint": joint.reshape(steps, steps).tolist(),
-                      "p_min": float(_doe7().constants.get("joint_pass_probability", 0.9))})
-
-
-class Doe7Factor(BaseModel):
-    factor_id: str = Field(..., max_length=12)
-    name: str = Field("", max_length=40)
-    unit: Optional[str] = Field(None, max_length=16)
-    low: Optional[float] = None
-    center: Optional[float] = None
-    high: Optional[float] = None
-    kind: str = Field("CMA", pattern="^(CMA|CPP|CATEGORICAL|MIXTURE_COMPONENT|HARD_TO_CHANGE)$")
-    quantity_kind: Optional[str] = Field(None, max_length=24)
-    reference_value: Optional[float] = None
-    evidence: str = Field("UNVERIFIED_PROPOSAL", pattern="^(MEASURED_PRIOR_BATCH|FEASIBILITY_CONFIRMED|VERIFIED_EXTERNAL_DATA|REPORTED_NO_RAW_DATA|EXPERT_PROPOSAL|UNVERIFIED_PROPOSAL)$")
-    applicability_confirmed: bool = False
-
-
-class Doe7RangeRequest(BaseModel):
-    mode: str = Field("NEW_API", pattern="^(NEW_API|LITERATURE_REPLAY)$")
-    factors: List[Doe7Factor] = Field(..., min_length=1, max_length=4)
-    feasibility_results: Optional[Dict[str, Dict[str, Optional[bool]]]] = None
-
-
-@app.post("/api/doe-v7/range-check")
-def doe7_range_check(req: Doe7RangeRequest) -> Dict[str, Any]:
-    """신규 API 범위 샌드박스 — 범위근거 gate → (필요하면) 2k+1 계획 → 결과를 넣으면 라우팅. 상태 저장 없음."""
-    from formula.doe import design as D
-    from formula.doe import gates as G
-    from formula.doe.contracts import FactorSpec
-    pkg = _doe7()
-    fs = [FactorSpec(f.factor_id, f.name or f.factor_id, f.unit, f.low, f.center, f.high, kind=f.kind, quantity_kind=f.quantity_kind,
-                     reference_value=f.reference_value, evidence_status={"low": f.evidence, "center": f.evidence, "high": f.evidence},
-                     applicability_confirmed=f.applicability_confirmed) for f in req.factors]
-    gate = G.range_evidence(pkg, fs, req.mode)
-    out: Dict[str, Any] = {"range_gate": gate, "banner": pkg.config.display_banner}
-    route = gate["route"]["next_state"]
-    if route in ("NEEDS_FEASIBILITY",) and len(fs) <= 3:
-        plan = G.feasibility_plan(pkg, fs)
-        out["feasibility_plan"] = plan
-        if req.feasibility_results:
-            out["feasibility_result"] = G.feasibility_evaluate(pkg, plan, req.feasibility_results)
-            route = out["feasibility_result"]["route"]["next_state"]
-    if route == "DOE_RANGE_READY":
-        d = G.select_design(pkg, fs)
-        out["design_decision"] = d.as_dict()
-        dt = G.DESIGN_OF_CODE.get(d.result_code)
-        if dt:
-            plan = D.generate(dt, fs, seed=int(pkg.rulebooks["RB15"].get("random_seed", 20260926)))
-            out["doe_plan"] = {k: plan[k] for k in ("design_type", "random_seed", "center_points", "runs", "validation", "matrix_hash")}
-    return _jsonable(out)
-
-
-_DOE7_SERVICE = None
-
-
-def doe7_service():
-    global _DOE7_SERVICE
-    if _DOE7_SERVICE is None:
-        from formula.doe.service import DoeStudyService
-        _DOE7_SERVICE = DoeStudyService(_doe7())
-    return _DOE7_SERVICE
-
-
-class Doe7StudyCreate(BaseModel):
-    source: str = Field(..., pattern="^(candidate|cbd_replay|dataset)$")
-    dataset: Optional[Dict[str, Any]] = None
+class Stage2Create(BaseModel):
+    source: str = Field(..., pattern="^(candidate|cbd_paper)$")
     run_id: Optional[str] = None
     candidate_id: Optional[str] = None
-    candidate_version: int = 1
 
 
-@app.post("/api/doe-v7/studies")
-async def doe7_create_study(req: Doe7StudyCreate, idempotency_key: Optional[str] = Header(None),
-                            actor_id: str = Header("researcher")) -> Dict[str, Any]:
-    """① 통과 후보 · DoE 데이터셋(run 단위 실험 데이터) · CBD 문헌 재현(데이터셋의 한 사례) → 불변 handoff + 샌드박스 study.
-    후보가 자동으로 넘어오지 않는다 — 연구자가 고른다."""
-    from formula.doe import dataset as doe_dataset
-    from formula.doe import handoff as doe_handoff
-    svc = doe7_service()
-    ds = None
-    if req.source in ("cbd_replay", "dataset"):
-        try:
-            ds = doe_dataset.validate(svc.pkg, doe_dataset.cbd() if req.source == "cbd_replay" else (req.dataset or {}))
-        except doe_dataset.DatasetError as exc:
-            raise HTTPException(422, {"message": "데이터셋 형식 오류", "errors": exc.errors})
-        h, study_type, demo = doe_dataset.handoff(ds, actor_id), ds["study_type"], "dataset"
-    else:
+@app.post("/api/stage2/studies")
+async def stage2_create(req: Stage2Create, idempotency_key: Optional[str] = Header(None), actor_id: str = Header("researcher")) -> Dict[str, Any]:
+    """1단계 결과물(제형 프로토타입)을 받아 2단계 study를 연다 — 통과 후보 또는 논문 Table 1(CBD ODT, 논문 값 비교 가능)."""
+    from formula.stage2 import reference as REF
+    svc = stage2()
+    try:
+        if req.source == "cbd_paper":
+            return await asyncio.to_thread(svc.create, REF.prototype(), title="CBD 구강붕해정 (Monton 2026 Table 1)",
+                                           source={"citation": REF.citation(), "locator": "Table 1"}, reference=True, actor=actor_id,
+                                           idempotency_key=idempotency_key, origin={"kind": "cbd_paper"})
         execution = RUNS.get(req.run_id or "")
         if execution is None or not execution.final:
             raise HTTPException(404, "설계 실행이 없거나 아직 끝나지 않았습니다.")
@@ -1446,142 +1211,93 @@ async def doe7_create_study(req: Doe7StudyCreate, idempotency_key: Optional[str]
         if result is None:
             raise HTTPException(404, f"후보 {req.candidate_id} 없음")
         if any(getattr(v.status, "value", v.status) == "hard_fail" for v in result["verdicts"]):
-            raise HTTPException(409, "룰북 반려(HARD_FAIL) 후보로는 실험개발을 시작할 수 없습니다.")
+            raise HTTPException(409, "룰북 반려(HARD_FAIL) 후보로는 개발을 시작할 수 없습니다.")
         spec = execution.final.get("spec")
         spec_d = spec.model_dump(mode="json") if hasattr(spec, "model_dump") else (spec or {})
         recipe = result["recipe"].model_dump(mode="json")
-        recipe["version"] = req.candidate_version
-        verdicts = [d for d in (v.model_dump(mode="json") for v in result["verdicts"] if v.rule_id) if d.get("status") != "pass"]
-        h = doe_handoff.from_candidate(recipe, spec_d, verdicts, run_id=req.run_id, actor=actor_id)
-        study_type, demo = "NEW_API", None
-    try:
-        return _jsonable_state(await asyncio.to_thread(svc.create, h, study_type=study_type, actor=actor_id,
-                                                       idempotency_key=idempotency_key, demo=demo, dataset=ds))
+        proto = _prototype_from_candidate(recipe, spec_d)
+        title = f"{proto['api']} · {recipe.get('strategy') or ''} ({req.candidate_id})"
+        return await asyncio.to_thread(svc.create, proto, title=title, source=proto["source"], reference=False, actor=actor_id,
+                                       idempotency_key=idempotency_key, origin={"kind": "candidate", "run_id": req.run_id})
+    except HTTPException:
+        raise
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
 
 
-def _jsonable_state(x):
-    """study 상태는 공분산을 포함해 그대로 — 화면 곡면은 서버 /surface가 계산하므로 여기서는 크기만 줄인다."""
-    if isinstance(x, dict):
-        return {k: _jsonable_state(v) for k, v in x.items() if k not in ("cov",)}
-    if isinstance(x, list):
-        return [_jsonable_state(v) for v in x]
-    return x
+@app.get("/api/stage2/studies")
+async def stage2_list() -> Dict[str, Any]:
+    return {"studies": stage2().list()}
 
 
-@app.get("/api/doe-v7/studies")
-async def doe7_list_studies() -> Dict[str, Any]:
-    return {"studies": doe7_service().list()}
-
-
-@app.get("/api/doe-v7/studies/{study_id}")
-async def doe7_get_study(study_id: str) -> Dict[str, Any]:
+@app.get("/api/stage2/studies/{study_id}")
+async def stage2_get(study_id: str) -> Dict[str, Any]:
     try:
-        return _jsonable_state(doe7_service().view(study_id))
+        return stage2().view(study_id)
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
 
 
-@app.post("/api/doe-v7/studies/{study_id}/actions/{action}")
-async def doe7_study_action(study_id: str, action: str, body: StudyActionRequest,
-                            idempotency_key: Optional[str] = Header(None),
-                            expected_state_version: Optional[int] = Header(None),
-                            actor_id: str = Header("researcher")) -> Dict[str, Any]:
+@app.post("/api/stage2/studies/{study_id}/actions/{action}")
+async def stage2_action(study_id: str, action: str, body: StudyActionRequest, request: Request,
+                        idempotency_key: Optional[str] = Header(None), expected_state_version: Optional[int] = Header(None),
+                        actor_id: str = Header("researcher"), x_f1_llm: Optional[str] = Header(None)) -> Dict[str, Any]:
     try:
-        return _jsonable_state(await asyncio.to_thread(doe7_service().act, study_id, action, body.payload, actor=actor_id,
-                                                       idempotency_key=idempotency_key, expected_version=expected_state_version))
+        if action == "draft":
+            return await asyncio.to_thread(_with_llm, llm_choice(request, x_f1_llm), stage2().act, study_id, action, body.payload,
+                                           actor=actor_id, idempotency_key=idempotency_key, expected_version=expected_state_version)
+        return await asyncio.to_thread(stage2().act, study_id, action, body.payload, actor=actor_id,
+                                       idempotency_key=idempotency_key, expected_version=expected_state_version)
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
 
 
-@app.get("/api/doe-v7/studies/{study_id}/fill/{action}")
-async def doe7_study_fill(study_id: str, action: str) -> Dict[str, Any]:
-    """데이터셋 study의 폼 채우기 값. 제출하지 않는다. 데이터셋이 없는 study(① 후보)는 채울 값이 없다(null)."""
-    from formula.doe import dataset as doe_dataset
+@app.get("/api/stage2/studies/{study_id}/surfaces")
+async def stage2_surfaces(study_id: str, slice: Optional[int] = None) -> Dict[str, Any]:
     try:
-        st = doe7_service().view(study_id)["study"]
-    except Exception as exc:   # noqa: BLE001
-        raise _study_error(exc)
-    return {"payload": _jsonable(doe_dataset.fill(st, action))}
-
-
-class Doe7Csv(BaseModel):
-    csv: str = Field(..., max_length=200_000)
-
-
-@app.post("/api/doe-v7/studies/{study_id}/results-csv")
-async def doe7_results_csv(study_id: str, body: Doe7Csv) -> Dict[str, Any]:
-    """run 단위 결과 CSV → 결과 폼 값(run_id 또는 요인 실제값으로 계획 run에 짝짓기). 제출하지 않는다."""
-    try:
-        return _jsonable(doe7_service().parse_results_csv(study_id, body.csv))
+        return await asyncio.to_thread(stage2().surfaces, study_id, slice)
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
 
 
-@app.get("/api/doe-v7/datasets/schema")
-def doe7_dataset_schema() -> Dict[str, Any]:
-    from formula.doe import dataset as doe_dataset
-    return {"doc": doe_dataset.SCHEMA_DOC, "fmea_factor_keys": doe_dataset.fmea_factor_keys(_doe7()),
-            "operators": list(doe_dataset.OPERATORS), "result_evidence": list(doe_dataset.RESULT_EVIDENCE),
-            "range_evidence": list(doe_dataset.RANGE_EVIDENCE),
-            "cqa_ids": sorted({r["cqa_template_id"] for r in _doe7().rows("RB02")})}
-
-
-@app.get("/api/doe-v7/datasets/cbd_odt")
-def doe7_dataset_cbd() -> Dict[str, Any]:
-    """실제 데이터로 채운 데이터셋 예 — Monton 2026(PMC13519653) 표를 공통 형식으로 옮긴 것."""
-    from formula.doe import dataset as doe_dataset
-    return doe_dataset.cbd()
-
-
-class Doe7DatasetBody(BaseModel):
-    dataset: Dict[str, Any]
-
-
-@app.post("/api/doe-v7/datasets/validate")
-def doe7_dataset_validate(body: Doe7DatasetBody) -> Dict[str, Any]:
-    from formula.doe import dataset as doe_dataset
+@app.get("/api/stage2/studies/{study_id}/trace")
+async def stage2_trace(study_id: str) -> Dict[str, Any]:
     try:
-        ds = doe_dataset.validate(_doe7(), body.dataset)
-    except doe_dataset.DatasetError as exc:
-        return {"ok": False, "errors": exc.errors}
-    return {"ok": True, "summary": {"title": ds["title"], "factors": len(ds["factors"]), "responses": len(ds["responses"]),
-                                    "runs": len(ds["runs"]), "study_type": ds["study_type"]}}
-
-
-@app.get("/api/doe-v7/studies/{study_id}/trace")
-async def doe7_study_trace(study_id: str) -> Dict[str, Any]:
-    try:
-        return doe7_service().trace(study_id)
+        return stage2().trace(study_id)
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
 
 
-@app.get("/api/doe-v7/studies/{study_id}/surfaces")
-async def doe7_study_surfaces(study_id: str, source: str = "selected", steps: int = 25, slice: Optional[str] = None) -> Dict[str, Any]:
-    if source not in ("selected", "published"):
-        raise HTTPException(422, "source는 selected|published")
+def _pdf_response(pdf: bytes, name: str):
+    from fastapi.responses import Response
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"', "Cache-Control": "no-store"})
+
+
+@app.get("/api/stage2/studies/{study_id}/risk-report.pdf")
+async def stage2_risk_report(study_id: str):
+    """8단계 산출물 — 프로토타입부터 위험평가·DoE 변수까지(제형 DoE의 출발점)."""
+    from formula.stage2 import report
     try:
-        return await asyncio.to_thread(doe7_service().surfaces, study_id, source, max(11, min(int(steps), 41)), slice)
+        st = stage2().raw(study_id)
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
+    if st["steps"]["recommend"]["status"] != "approved":
+        raise HTTPException(409, "8단계(DoE 변수 선택)까지 승인해야 위험평가 보고서를 만들 수 있습니다.")
+    return _pdf_response(await asyncio.to_thread(report.risk_report, st), f"risk_assessment_{study_id}.pdf")
 
 
-@app.get("/api/doe-v7/cbd-replay/surfaces")
-def doe7_replay_surfaces(source: str = "selected", steps: int = 25) -> Dict[str, Any]:
-    from formula.doe.replay import surfaces
-    if source not in ("selected", "published"):
-        raise HTTPException(422, "source는 selected|published")
-    return _jsonable(surfaces(_doe7(), source=source, steps=max(11, min(int(steps), 41))))
-
-
-@app.get("/api/doe-v7/studies/{study_id}/surface")
-async def doe7_study_surface(study_id: str, response: Optional[str] = None, x3: float = 0.0, steps: int = 31) -> Dict[str, Any]:
+@app.get("/api/stage2/studies/{study_id}/report.pdf")
+async def stage2_final_report(study_id: str):
+    """12단계 산출물 — 위험평가 + 실험 설계 · 회귀식 · 반응 곡면 · ANOVA."""
+    from formula.stage2 import report
     try:
-        return doe7_service().surface(study_id, response, max(-1.0, min(1.0, x3)), max(11, min(int(steps), 51)))
+        st = stage2().raw(study_id)
+        imgs = stage2().images(study_id)
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
+    if st["status"] != "done":
+        raise HTTPException(409, "12단계(ANOVA)까지 확인해야 최종 보고서를 만들 수 있습니다.")
+    return _pdf_response(await asyncio.to_thread(report.final_report, st, imgs), f"design_space_{study_id}.pdf")
 
 
 @app.get("/favicon.ico", include_in_schema=False)

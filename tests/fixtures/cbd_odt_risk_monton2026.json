@@ -1,0 +1,828 @@
+{
+ "_note": "Monton C. et al. Scientifica 2026:3553253 (doi:10.1155/sci5/3553253, PMC13519653) Table 1·3·4·5·6·7·8 — 원문 PDF(사용자 제공)와 표 이미지를 대조해 그대로 옮겼다. 각주 번호([19] 등)는 원문 표기 그대로.",
+ "citation": "Monton C. et al. Quality by Design–Driven Formulation Development of Cannabidiol Orally Disintegrating Tablets. Scientifica. 2026;2026:3553253.",
+ "doi": "10.1155/sci5/3553253",
+ "pmcid": "PMC13519653",
+ "prototype": {
+  "table": "Table 1",
+  "api": "CBD",
+  "dosage_form": "ODT",
+  "route": "oral",
+  "process": "direct_compression",
+  "strength_mg": 10,
+  "unit_weight_mg": 250,
+  "ingredients": [
+   {
+    "name": "CBD",
+    "mg": 10,
+    "pct": 4,
+    "function": "Active pharmaceutical ingredient",
+    "role": "api"
+   },
+   {
+    "name": "Spray-dried mannitol",
+    "mg": 127,
+    "pct": 50.8,
+    "function": "Filler",
+    "role": "filler"
+   },
+   {
+    "name": "MCC",
+    "mg": 100,
+    "pct": 40,
+    "function": "Filler/binder",
+    "role": "filler_binder"
+   },
+   {
+    "name": "CCS",
+    "mg": 7.5,
+    "pct": 3,
+    "function": "Superdisintegrant",
+    "role": "disintegrant"
+   },
+   {
+    "name": "Fumed silica",
+    "mg": 2.5,
+    "pct": 1,
+    "function": "Glidant",
+    "role": "glidant"
+   },
+   {
+    "name": "Sucralose",
+    "mg": 0.5,
+    "pct": 0.2,
+    "function": "Sweetening agent",
+    "role": "sweetener"
+   },
+   {
+    "name": "MgSt",
+    "mg": 2.5,
+    "pct": 1,
+    "function": "Lubricant",
+    "role": "lubricant"
+   }
+  ]
+ },
+ "qtpp": {
+  "table": "Table 3",
+  "items": [
+   {
+    "element": "Dosage form/dosage design",
+    "target": "ODTs",
+    "justification": "To develop a new dosage form of CBD"
+   },
+   {
+    "element": "Route of administration",
+    "target": "Oral",
+    "justification": "Consistent with commercial products such as Epidiolex (CBD oral solution) and Xativa (CBD wafer tablet)."
+   },
+   {
+    "element": "Dosage strength",
+    "target": "10 mg of CBD",
+    "justification": "In accordance with the literature [19, 20], this dosage strength is classified as a low dose of CBD, which has been reported to be effective in the treatment of anxiety [25–30]. The selected dose in the present study was primarily intended for early-stage formulation development and proof-of-concept evaluation. The higher doses of CBD may be required for adult patients, depending on the clinical indication, whereas the selected low dose may also apply to pediatric applications."
+   },
+   {
+    "element": "Pharmacokinetics",
+    "target": "Cmax: 389.17 ± 153.23 ng/mL; AUC: 1542.19 ± 488.04 ng/mL·h; Elimination half-life: 2–5 days (repeated oral administration); Bioavailability (oral): ~6%; Tmax: 0–4 h; Increased Cmax with food and lipid-based formulations; 7-COOH-CBD is a major metabolite; 7-OH-CBD is an active metabolite",
+    "justification": "Bioequivalence to the commercial product. Refer to the publications [31–33]."
+   },
+   {
+    "element": "Stability",
+    "target": "A minimum shelf-life of 24 months at room temperature.",
+    "justification": "Equivalent to or superior to commercial products."
+   },
+   {
+    "element": "Product quality attributes",
+    "sub_element": "Physical attributes",
+    "target": "White color, circular, flat beveled edge, plain on both sides",
+    "justification": ""
+   },
+   {
+    "element": "Product quality attributes",
+    "sub_element": "Identification",
+    "target": "Meet the requirements of European Pharmacopoeia (EP) 11.5 (infrared absorption spectrophotometry and specific optical rotation) and USP (HPLC) [34]",
+    "justification": ""
+   },
+   {
+    "element": "Product quality attributes",
+    "sub_element": "Assay",
+    "target": "CBD content is 90%–110% of the stated amount.",
+    "justification": ""
+   },
+   {
+    "element": "Product quality attributes",
+    "sub_element": "Uniformity of dosage unit",
+    "target": "AV of content uniformity not exceeding 15.0: USP <905> uniformity of dosage units [35]",
+    "justification": ""
+   },
+   {
+    "element": "Product quality attributes",
+    "sub_element": "Disintegration",
+    "target": "Not more than 30 s according to US FDA [36].",
+    "justification": ""
+   },
+   {
+    "element": "Product quality attributes",
+    "sub_element": "Dissolution",
+    "target": "Currently, there is no established Q value for the dissolution testing of CBD ODTs. However, 1% SLS solution was employed as the dissolution medium to enable discrimination of drug dissolution, given that CBD is a poorly water-soluble compound [37].",
+    "justification": ""
+   },
+   {
+    "element": "Product quality attributes",
+    "sub_element": "Degradation products",
+    "target": "CBD is thermolabile and highly susceptible to oxidation, photodegradation, and alkaline hydrolysis [23, 38, 39].",
+    "justification": ""
+   },
+   {
+    "element": "Product quality attributes",
+    "sub_element": "Microbial limits",
+    "target": "Meet the requirements of USP: <61> Microbiological Examination of Nonsterile Products: Microbial Enumeration Tests [35]",
+    "justification": ""
+   },
+   {
+    "element": "Product quality attributes",
+    "sub_element": "Heavy metals",
+    "target": "Meet the requirements of USP: <232> Elemental Impurities-Limits [35]",
+    "justification": ""
+   },
+   {
+    "element": "Product quality attributes",
+    "sub_element": "Residual solvents",
+    "target": "Meet the requirements of USP: <467> Residual Solvents [35]",
+    "justification": ""
+   },
+   {
+    "element": "Container closure system",
+    "target": "Stored in an airtight container such as an aluminum/aluminum blister. Pack sizes contained 10 tablets.",
+    "justification": "The ODT formulation contained MCC, a hygroscopic excipient [40]; therefore, the packaging should protect the product from environmental moisture."
+   }
+  ]
+ },
+ "cqa": {
+  "table": "Table 4",
+  "risk_scope_locator": "Results 3.3",
+  "items": [
+   {
+    "category": "Physical attributes",
+    "attribute": "Appearance",
+    "target": "White color, circular, flat beveled edge, plain on both sides",
+    "is_cqa": false,
+    "justification": "Appearance, odor, size, and score configuration do not affect safety and efficacy, but size can influence patient acceptability.",
+    "in_risk_assessment": false,
+    "short": "Appearance"
+   },
+   {
+    "category": "Physical attributes",
+    "attribute": "Odor",
+    "target": "There is no odor in this formulation",
+    "is_cqa": false,
+    "justification": "Appearance, odor, size, and score configuration do not affect safety and efficacy, but size can influence patient acceptability.",
+    "in_risk_assessment": false,
+    "short": "Odor"
+   },
+   {
+    "category": "Physical attributes",
+    "attribute": "Size",
+    "target": "Diameter approximately 9.7 mm",
+    "is_cqa": false,
+    "justification": "Appearance, odor, size, and score configuration do not affect safety and efficacy, but size can influence patient acceptability.",
+    "in_risk_assessment": false,
+    "short": "Size"
+   },
+   {
+    "category": "Physical attributes",
+    "attribute": "Score configuration",
+    "target": "Unscored",
+    "is_cqa": false,
+    "justification": "Appearance, odor, size, and score configuration do not affect safety and efficacy, but size can influence patient acceptability.",
+    "in_risk_assessment": false,
+    "short": "Score configuration"
+   },
+   {
+    "category": "Physical attributes",
+    "attribute": "Friability",
+    "target": "Not more than 1.0%",
+    "is_cqa": false,
+    "justification": "The friability is controlled at a maximum of 1.0%, ensuring that it does not influence the assay results.",
+    "in_risk_assessment": false,
+    "short": "Friability"
+   },
+   {
+    "category": "Physical attributes",
+    "attribute": "Hardness",
+    "target": "4–6 kgf",
+    "is_cqa": true,
+    "justification": "Tablet hardness influences the disintegration process of the tablets, which in turn impacts their dissolution. Consequently, this can affect the overall efficacy of the medication.",
+    "in_risk_assessment": true,
+    "short": "Hardness"
+   },
+   {
+    "category": "",
+    "attribute": "Identification",
+    "target": "Conform to EP or USP",
+    "is_cqa": true,
+    "justification": "Identification is essential for ensuring both the safety and efficacy of the product. This CQA will be assessed upon receipt of the raw materials to ensure that the appropriate pharmaceutical substance is used throughout the manufacturing process.",
+    "in_risk_assessment": false,
+    "exclusion_reason": "원료 입고 시 평가(Table 4 근거)",
+    "short": "Identification"
+   },
+   {
+    "category": "",
+    "attribute": "Assay",
+    "target": "90%–110% of CBD",
+    "is_cqa": true,
+    "justification": "The assay is critical for ensuring both the safety and efficacy of the product. However, given that this formulation represents a low-dose strength, the assay outcome is more likely to impact efficacy rather than safety.",
+    "in_risk_assessment": true,
+    "short": "Assay"
+   },
+   {
+    "category": "",
+    "attribute": "Uniformity of dosage unit (content uniformity)",
+    "target": "Conform to USP <905> Uniformity of Dosage Units",
+    "is_cqa": true,
+    "justification": "Content uniformity is a critical quality attribute to ensure both safety and efficacy. However, in the case of this low-dose strength, variability in content is more likely to affect efficacy than safety.",
+    "in_risk_assessment": true,
+    "short": "Content uniformity"
+   },
+   {
+    "category": "",
+    "attribute": "Disintegration",
+    "target": "Not more than 30 s (conform to US FDA definition)",
+    "is_cqa": true,
+    "justification": "Disintegration influences dissolution, which in turn affects bioavailability, potentially impacting both safety and efficacy. Nevertheless, for this low-dose formulation, variations in content are more likely to impact efficacy rather than safety.",
+    "in_risk_assessment": true,
+    "short": "Disintegration"
+   },
+   {
+    "category": "",
+    "attribute": "Dissolution",
+    "target": "No standard criteria value for this product",
+    "is_cqa": true,
+    "justification": "Dissolution influences bioavailability, which can subsequently affect both safety and efficacy. Nevertheless, for this low-dose formulation, variations in content are more likely to impact efficacy rather than safety.",
+    "in_risk_assessment": true,
+    "short": "Dissolution"
+   },
+   {
+    "category": "",
+    "attribute": "Degradation product",
+    "target": "Limit of CBD impurity J conforms to EP",
+    "is_cqa": true,
+    "justification": "The presence of degradation products and impurities may compromise the safety and efficacy of the formulation.",
+    "in_risk_assessment": true,
+    "short": "Degradation products"
+   },
+   {
+    "category": "",
+    "attribute": "Microbial limits",
+    "target": "Conform to USP <61> Microbiological Examination of Nonsterile Products: Microbial Enumeration Tests",
+    "is_cqa": true,
+    "justification": "Microbial contamination may lead to safety concerns in the final product.",
+    "in_risk_assessment": false,
+    "exclusion_reason": "R&D 단계라 이번 초기 위험평가에서는 평가하지 않음(Results 3.3)",
+    "short": "Microbial limits"
+   },
+   {
+    "category": "",
+    "attribute": "Heavy metals",
+    "target": "Conform to <232> Elemental Impurities-Limits",
+    "is_cqa": true,
+    "justification": "Heavy metals may lead to safety concerns in the final product.",
+    "in_risk_assessment": false,
+    "exclusion_reason": "R&D 단계라 이번 초기 위험평가에서는 평가하지 않음(Results 3.3)",
+    "short": "Heavy metals"
+   },
+   {
+    "category": "",
+    "attribute": "Residual solvents",
+    "target": "Conform to USP <467> Residual Solvents",
+    "is_cqa": true,
+    "justification": "Residual solvents may lead to safety concerns in the final product.",
+    "in_risk_assessment": false,
+    "exclusion_reason": "R&D 단계라 이번 초기 위험평가에서는 평가하지 않음(Results 3.3)",
+    "short": "Residual solvents"
+   }
+  ],
+  "risk_order": [
+   "Assay",
+   "Content uniformity",
+   "Hardness",
+   "Disintegration",
+   "Dissolution",
+   "Degradation products"
+  ]
+ },
+ "rm_matrix": {
+  "table": "Table 5",
+  "cqas": [
+   "Assay",
+   "Content uniformity",
+   "Hardness",
+   "Disintegration",
+   "Dissolution",
+   "Degradation products"
+  ],
+  "variables": [
+   "Particle size distribution",
+   "Flow properties",
+   "Hygroscopicity",
+   "Moisture content",
+   "Solubility",
+   "Residual solvents",
+   "Chemical stability"
+  ],
+  "levels": [
+   [
+    "High",
+    "High",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "High"
+   ],
+   [
+    "High",
+    "High",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "High"
+   ],
+   [
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low"
+   ],
+   [
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low"
+   ],
+   [
+    "High",
+    "Low",
+    "Low",
+    "Low",
+    "Medium",
+    "Low",
+    "Medium"
+   ],
+   [
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "High"
+   ]
+  ]
+ },
+ "rm_just": {
+  "table": "Table 6",
+  "items": [
+   {
+    "variable": "Particle size distribution",
+    "cqas": [
+     "Assay",
+     "Content uniformity"
+    ],
+    "level": "High",
+    "text": "Particle size distribution influences the homogeneity of the powder mixture, particularly because CBD is used at a low dose. Variability in particle size may lead to content nonuniformity and impact the assay. The risk is high."
+   },
+   {
+    "variable": "Particle size distribution",
+    "cqas": [
+     "Hardness",
+     "Disintegration"
+    ],
+    "level": "Low",
+    "text": "Particle size distribution does not impact hardness and disintegration. The risk is low."
+   },
+   {
+    "variable": "Particle size distribution",
+    "cqas": [
+     "Dissolution"
+    ],
+    "level": "High",
+    "text": "Particle size distribution affects the homogeneity of drug dissolution, as variations in particle size can influence the surface area available for dissolution and the rate at which the drug dissolves. The risk is high."
+   },
+   {
+    "variable": "Particle size distribution",
+    "cqas": [
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "Particle size distribution does not impact degradation product formation. The risk is low."
+   },
+   {
+    "variable": "Flow properties",
+    "cqas": [
+     "Assay",
+     "Content uniformity"
+    ],
+    "level": "High",
+    "text": "The flow properties of CBD directly impact assay and content uniformity, as CBD exhibits poor flowability and is used at a low dose. Inadequate flow characteristics can lead to drug content inconsistency during the manufacturing process. The risk is high."
+   },
+   {
+    "variable": "Flow properties",
+    "cqas": [
+     "Hardness",
+     "Disintegration",
+     "Dissolution",
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "Flow properties do not significantly impact tablet hardness, disintegration, dissolution, or degradation product formation. The risk is low."
+   },
+   {
+    "variable": "Hygroscopicity",
+    "cqas": [
+     "Assay",
+     "Content uniformity",
+     "Hardness",
+     "Disintegration",
+     "Dissolution",
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "CBD is a nonhygroscopic substance. Consequently, it does not significantly impact critical quality attributes such as assay, content uniformity, hardness, disintegration, dissolution, or degradation product formation. The risk is low."
+   },
+   {
+    "variable": "Moisture content",
+    "cqas": [
+     "Assay",
+     "Content uniformity",
+     "Hardness",
+     "Disintegration",
+     "Dissolution",
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "The moisture content of CBD was controlled within specified limits. Consequently, it does not exert a significant impact on critical quality attributes such as assay, content uniformity, hardness, disintegration, dissolution, or degradation product formation. The risk is low."
+   },
+   {
+    "variable": "Solubility",
+    "cqas": [
+     "Assay",
+     "Content uniformity"
+    ],
+    "level": "Low",
+    "text": "Solubility does not impact assay and content uniformity, as the selected solvent ensures the complete dissolution of CBD. The risk is low."
+   },
+   {
+    "variable": "Solubility",
+    "cqas": [
+     "Hardness",
+     "Disintegration"
+    ],
+    "level": "Low",
+    "text": "Solubility does not impact hardness and disintegration. The risk is low."
+   },
+   {
+    "variable": "Solubility",
+    "cqas": [
+     "Dissolution"
+    ],
+    "level": "Medium",
+    "text": "Solubility directly affects dissolution; however, the selection of an appropriate dissolution medium is essential to ensure sink conditions during testing. The risk is medium."
+   },
+   {
+    "variable": "Solubility",
+    "cqas": [
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "Solubility does not impact degradation product formation. The risk is low."
+   },
+   {
+    "variable": "Residual solvents",
+    "cqas": [
+     "Assay",
+     "Content uniformity",
+     "Hardness",
+     "Disintegration",
+     "Dissolution",
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "Residual solvents are typically controlled within stringent limits and are present at low levels. Consequently, they do not exert a significant impact on critical quality attributes such as assay, content uniformity, hardness, disintegration, dissolution, or degradation product formation. The risk is low."
+   },
+   {
+    "variable": "Chemical stability",
+    "cqas": [
+     "Assay",
+     "Content uniformity"
+    ],
+    "level": "High",
+    "text": "Chemical stability directly influences the amount of CBD present in the formulation; therefore, it impacts both assay and content uniformity. The risk is high."
+   },
+   {
+    "variable": "Chemical stability",
+    "cqas": [
+     "Hardness",
+     "Disintegration"
+    ],
+    "level": "Low",
+    "text": "Chemical stability does not impact hardness and disintegration. The risk is low."
+   },
+   {
+    "variable": "Chemical stability",
+    "cqas": [
+     "Dissolution"
+    ],
+    "level": "Medium",
+    "text": "Chemical stability influences the amount of CBD present in the dissolution medium. The risk is medium."
+   },
+   {
+    "variable": "Chemical stability",
+    "cqas": [
+     "Degradation products"
+    ],
+    "level": "High",
+    "text": "Chemical stability is directly related to degradation product formation. The risk is high."
+   }
+  ]
+ },
+ "fp_matrix": {
+  "table": "Table 7",
+  "cqas": [
+   "Assay",
+   "Content uniformity",
+   "Hardness",
+   "Disintegration",
+   "Dissolution",
+   "Degradation products"
+  ],
+  "variables": [
+   "Spray-dried mannitol",
+   "MCC",
+   "CCS",
+   "Fumed silica",
+   "Sucralose",
+   "MgSt",
+   "Compression force"
+  ],
+  "kinds": [
+   "formulation",
+   "formulation",
+   "formulation",
+   "formulation",
+   "formulation",
+   "formulation",
+   "process"
+  ],
+  "levels": [
+   [
+    "Low",
+    "Medium",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low"
+   ],
+   [
+    "Low",
+    "High",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low"
+   ],
+   [
+    "High",
+    "High",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "High"
+   ],
+   [
+    "Low",
+    "High",
+    "High",
+    "Low",
+    "Low",
+    "Low",
+    "High"
+   ],
+   [
+    "Low",
+    "High",
+    "High",
+    "Low",
+    "Low",
+    "Low",
+    "High"
+   ],
+   [
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low",
+    "Low"
+   ]
+  ]
+ },
+ "fp_just": {
+  "table": "Table 8",
+  "items": [
+   {
+    "variable": "Spray-dried mannitol",
+    "cqas": [
+     "Assay",
+     "Content uniformity"
+    ],
+    "level": "Low",
+    "text": "Spray-dried mannitol does not affect the assay and content uniformity. The risk is low."
+   },
+   {
+    "variable": "Spray-dried mannitol",
+    "cqas": [
+     "Hardness"
+    ],
+    "level": "High",
+    "text": "Mannitol alone does not provide sufficient tablet hardness for ODTs. The risk is high."
+   },
+   {
+    "variable": "Spray-dried mannitol",
+    "cqas": [
+     "Disintegration",
+     "Dissolution"
+    ],
+    "level": "Low",
+    "text": "Spray-dried mannitol exhibits rapid disintegration and dissolution upon contact with water. The risk is low."
+   },
+   {
+    "variable": "Spray-dried mannitol",
+    "cqas": [
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "There are no documented instances, suggesting that mannitol facilitates the degradation of CBD. Additionally, mannitol is utilized as an ingredient in the commercial formulation of CBD wafer tablets. The risk is low."
+   },
+   {
+    "variable": "MCC",
+    "cqas": [
+     "Assay"
+    ],
+    "level": "Medium",
+    "text": "MCC exhibits poor flowability, which may negatively impact the assay as a result of inconsistent powder flow. The risk is medium."
+   },
+   {
+    "variable": "MCC",
+    "cqas": [
+     "Content uniformity"
+    ],
+    "level": "High",
+    "text": "MCC exhibits poor flowability, which may adversely affect content uniformity due to inconsistent powder flow. Since content uniformity is assessed on individual tablets, MCC has a greater impact on content uniformity than on assay results. The risk is high."
+   },
+   {
+    "variable": "MCC",
+    "cqas": [
+     "Hardness",
+     "Disintegration",
+     "Dissolution"
+    ],
+    "level": "High",
+    "text": "MCC acts as a binder that can increase tablet hardness, which is also associated with disintegration and dissolution behavior. The risk is high."
+   },
+   {
+    "variable": "MCC",
+    "cqas": [
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "There are no documented instances, suggesting that MCC facilitates the degradation of CBD. Additionally, MCC is utilized as an ingredient in the commercial formulation of CBD wafer tablets. The risk is low."
+   },
+   {
+    "variable": "CCS",
+    "cqas": [
+     "Assay",
+     "Content uniformity",
+     "Hardness"
+    ],
+    "level": "Low",
+    "text": "As CCS is used in a low quantity, it does not impact assay, content uniformity, or hardness. The risk is low."
+   },
+   {
+    "variable": "CCS",
+    "cqas": [
+     "Disintegration",
+     "Dissolution"
+    ],
+    "level": "High",
+    "text": "CCS is a superdisintegrant that directly influences tablet disintegration, which consequently affects dissolution. The risk is high."
+   },
+   {
+    "variable": "CCS",
+    "cqas": [
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "There are no documented instances, suggesting that CCS facilitates the degradation of CBD. Additionally, CCS is utilized as an ingredient in the commercial formulation of CBD wafer tablets. The risk is low."
+   },
+   {
+    "variable": "Fumed silica",
+    "cqas": [
+     "Assay",
+     "Content uniformity",
+     "Hardness",
+     "Disintegration",
+     "Dissolution"
+    ],
+    "level": "Low",
+    "text": "Fumed silica is used as a glidant but in a small quantity; therefore, it does not impact assay, content uniformity, hardness, disintegration, or dissolution. The risk is low."
+   },
+   {
+    "variable": "Fumed silica",
+    "cqas": [
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "There are no documented instances, suggesting that fumed silica facilitates the degradation of CBD. Additionally, fumed silica is utilized as an ingredient in the commercial formulation of CBD wafer tablets. The risk is low."
+   },
+   {
+    "variable": "Sucralose",
+    "cqas": [
+     "Assay",
+     "Content uniformity",
+     "Hardness",
+     "Disintegration",
+     "Dissolution"
+    ],
+    "level": "Low",
+    "text": "Sucralose is used in a small quantity and does not impact assay, content uniformity, hardness, disintegration, or dissolution. The risk is low."
+   },
+   {
+    "variable": "Sucralose",
+    "cqas": [
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "There are no documented instances, suggesting that sucralose facilitates the degradation of CBD. Additionally, sucralose is utilized as an ingredient in the commercial formulation of CBD wafer tablets. The risk is low."
+   },
+   {
+    "variable": "MgSt",
+    "cqas": [
+     "Assay",
+     "Content uniformity",
+     "Hardness",
+     "Disintegration",
+     "Dissolution"
+    ],
+    "level": "Low",
+    "text": "MgSt is used in a small quantity. It does not impact assay, content uniformity, hardness, disintegration, or dissolution. The risk is low."
+   },
+   {
+    "variable": "MgSt",
+    "cqas": [
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "There are no documented instances, suggesting that MgSt facilitates the degradation of CBD. Additionally, MgSt is utilized as an ingredient in the commercial formulation of CBD wafer tablets. The risk is low."
+   },
+   {
+    "variable": "Compression force",
+    "cqas": [
+     "Assay",
+     "Content uniformity"
+    ],
+    "level": "Low",
+    "text": "Compression force does not impact assay or content uniformity. The risk is low."
+   },
+   {
+    "variable": "Compression force",
+    "cqas": [
+     "Hardness",
+     "Disintegration",
+     "Dissolution"
+    ],
+    "level": "High",
+    "text": "Compression force directly affects tablet hardness, which is consequently associated with tablet disintegration and dissolution behavior. The risk is high."
+   },
+   {
+    "variable": "Compression force",
+    "cqas": [
+     "Degradation products"
+    ],
+    "level": "Low",
+    "text": "Compression force is not related to the formation of degradation products. The risk is low."
+   }
+  ]
+ }
+}

@@ -79,16 +79,6 @@ def test_only_passed_candidates_can_be_developed():
     assert nudge["proposals"][0]["candidate_id"] == "cand-0-CONV_DC"
 
 
-def test_studio_action_must_be_allowed_now():
-    study = {"study_id": "s1", "status": "WAITING_CQA_APPROVAL", "state_version": 3, "evaluations": {},
-             "prompt": {"title": "CQA", "ask": "", "actions": ["cqa_edit", "cqa_approve"]}}
-    ctx = ia.snapshot("studio", None, study, CATALOG)
-    bad = ia.AgentOutput(reply="", intent="studio_action", studio_action="region_approve")
-    assert _respond(bad, "영역 승인", ctx=ctx)["proposals"] == []
-    ok = ia.AgentOutput(reply="", intent="studio_action", studio_action="cqa_approve")
-    assert _respond(ok, "CQA 승인", ctx=ctx)["proposals"][0]["action"] == "cqa_approve"
-
-
 def test_rule_parser_reads_only_what_was_written():
     ctx = ia.snapshot("discovery", None, None, CATALOG)
     out = ia.rule_parse("소아용 이부프로펜 100mg 현탁액 설계해 줘", ctx, CATALOG)
@@ -97,15 +87,6 @@ def test_rule_parser_reads_only_what_was_written():
     assert out.intent == "submit_measurements" and out.measurements == {"tm_c": 76.0}
     res = ia.build_response(out, "rules", "녹는점 76", [], _run_ctx(), CATALOG, INPUTS)
     assert res["proposals"][0]["measurements"] == {"tm_c": 76.0}
-
-
-def test_studio_unknown_compression_force_in_rules_mode():
-    study = {"study_id": "s1", "status": "WAITING_REQUIRED_DATA", "state_version": 1, "evaluations": {},
-             "prompt": {"title": "진입 자료", "ask": "", "actions": ["required_data"]}}
-    ctx = ia.snapshot("studio", None, study, CATALOG)
-    out = ia.rule_parse("압축력은 몰라요", ctx, CATALOG)
-    assert out.studio_action == "required_data"
-    assert out.studio_payload["fixed_parameters"][0]["status"] == "UNKNOWN"
 
 
 def test_daily_token_limit_is_named_and_fails_fast(monkeypatch):

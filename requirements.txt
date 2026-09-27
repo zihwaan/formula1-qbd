@@ -13,3 +13,4 @@ pytest
 pypdf
 scipy
 python-multipart
+fpdf2        # 2단계 위험평가 보고서 PDF(순수 파이썬 · 나눔고딕 OFL 동봉)

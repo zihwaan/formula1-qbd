@@ -179,19 +179,6 @@ def test_uncited_judge_score_is_void(monkeypatch):
     assert out is None
 
 
-# ── P1-7 PI 하한 ─────────────────────────────────────────────────────────
-def test_prediction_interval_is_truncated_at_zero():
-    import numpy as np
-    from formula.qbd import doe
-    from formula.qbd.analysis import Fit
-    from formula.qbd.design_space import predict_point
-    coded = {"a": np.array([-1, 1, -1, 1, 0, 0, 0.0]), "b": np.array([-1, -1, 1, 1, 0, 0, 0.0])}
-    y = np.array([0.5, 1.2, 0.3, 2.0, 0.4, 0.6, 0.2])
-    fit = Fit(doe.linear_terms(["a", "b"]), coded, y)
-    out = predict_point({"AV": fit}, {"a": -1.0, "b": 1.0}, 0.99)["AV"]
-    assert out["pi_lower"] >= 0 and (out["pi_lower_raw"] < 0) == out["pi_truncated"]
-
-
 # ── P0-3 측정값 제출 의도 ────────────────────────────────────────────────
 def test_measurement_sentence_from_the_demo_becomes_a_submit_card():
     from formula.agents import input_agent as ia

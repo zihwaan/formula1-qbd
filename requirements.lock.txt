@@ -60,3 +60,6 @@ zstandard==0.25.0
 pypdf==6.1.3
 scipy==1.18.1
 python-multipart==0.0.32
+defusedxml==0.7.1
+fonttools==4.66.0
+fpdf2==2.8.8
