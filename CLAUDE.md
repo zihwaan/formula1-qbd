@@ -23,7 +23,7 @@ The README.md (Korean) is the authoritative design doc — update it in the same
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 266 tests — run this first when changing the core
+.venv/bin/pytest                                  # 270 tests — run this first when changing the core
 python database/07_doe/v7_0/scripts/validate_package.py database/07_doe/v7_0   # v7.0 패키지 정적 검증(RESULT: PASS)
 python scripts/audit_conditions.py                # every CSV/manifest condition names a variable something actually sets (exit 1 on a dead name)
 python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.json   # 07_doe static check (errors=0)
@@ -833,10 +833,22 @@ Source: `docs/doe_v7.0/formula1-experimental-development-architecture-v7.0.md` (
   advanced** (a blocked approve is not an approval). Rule `next_state` values still carry v6.1 names — `contracts.resolve_state`
   / `RULE_STATE_ALIAS` maps them (STAY = blocked here); unmapped → `UNMAPPED_NEXT_STATE` in the ledger, study not moved.
   Store = v6.1 `StudyStore` at `FORMULA1_DOE7_DB` (default `/tmp/formula1/doe7.db` — lost on pod restart).
-  Helpers: `handoff.py` (from_candidate / from_fixture, fingerprint, `REFERENCE_PROTOTYPE`), `cqa.py` (RB02 + v6.1 cqa_templates),
+  Helpers: `handoff.py` (from_candidate, fingerprint, `REFERENCE_PROTOTYPE`), `cqa.py` (RB02 + v6.1 cqa_templates),
   `fmea.py` (RB04 draft, RB05 policy), `protocol.py` (run sheet; %w/w factors balanced by the largest non-factor filler → RS002 if
-  negative), `labloop.py` (M06 adapter + RB18 by `reason_code`), `demo.py` (CBD form fill — **matches factors by FMEA key, never by
-  position**: the UI sorts candidates, and positional matching put psi into the MCC factor → RS002 on every run).
+  negative), `labloop.py` (M06 adapter + RB18 by `reason_code`).
+- **DoE dataset engine** (`formula/doe/dataset.py`, user request 2026-09-27: "not CBD-only — any DoE with run-level data"). One JSON
+  schema (`SCHEMA_DOC`; `GET /api/doe-v7/datasets/schema`): source (required — no unsourced data), factors 1–3 whose `key` must be an
+  RB04 FMEA candidate factor, responses 1–4 with `cqa_id`, runs with factor actual values + response values, optional formulation,
+  `reported_models` (term lists — refit on the same raw data, coefficients are never copied), verification points. `validate` does
+  structure only and returns **all** errors; rules still judge. A dataset study stores `st["dataset"]`; `fill(st, action)` fills forms from
+  it (None for studies without one — no invented values). **CBD is just `dataset.from_cbd_fixture`** (`/datasets/cbd_odt` serves it as
+  the real-data example); `demo.py` and `handoff.from_fixture` are gone. Factors are matched **by FMEA key, never by position** (the UI
+  sorts candidates; positional matching once put psi into the MCC factor → RS002 on every run). If the executed matrix differs from the
+  generated standard design (other center count, order…), `plan_import` (DOE_PLAN_REVIEW) replaces the draft with it — same Validator,
+  `design_type=IMPORTED`, `design_family` = `design.classify` (BBD/FCCD point set → that domain policy), old plan kept with `replaced`,
+  timeline `DOE_PLAN_REPLACED`. Results for **any** study can be pasted as CSV (`POST …/results-csv`): matched by `run_id` or factor actual
+  values; columns may be CQA IDs/names but values land under the study's response key; missing `test_method_version` /
+  `replicate_independence` columns are then blocked by RB12 (RQ003/RQ008) — correct, not a bug.
 - **Data gaps decided in IMPLEMENTATION_DESIGN §8** — keep these, they're the rulebook being honest: M05 `VERIFICATION` is DENY for
   every status → `VERIFICATION_BATCH` (outside M05) allowed only when VR003/VR013/VR019/RQ009 independence holds; `MEASURED_IN_STUDY`
   = alias of `MEASURED_PRIOR_BATCH` (MODEL_FIT only with a locked plan); M04 `force` has N·kgf only — **kN is RE009** (don't add a
@@ -844,15 +856,24 @@ Source: `docs/doe_v7.0/formula1-experimental-development-architecture-v7.0.md` (
   `acceptance_operator=None`.
 - **UI**: tab `#tab-v7` / `#view-v7`, deep link `?v7`. Sub-tabs: **실험개발 study** (`web/static/doe7wizard.js`, default) ·
   CBD 재현 요약 / 범위 gate 계산기 (`doe7.js`, stateless). The wizard renders `FORMS[form action]` per status and `COLLECT[action]`
-  reads it; "저장 후 승인" posts the paired edit first (`SAVE_BEFORE`). Fill = `GET …/fill/{action}` → form only. 3D surface =
-  `plotly.js-strict-dist-min` from jsdelivr (strict bundle because the hub CSP has no `unsafe-eval`), loaded on first draw; 2D SVG
-  heat maps always. `.d7-card`/wizard grids pin `grid-template-columns: minmax(0,1fr)` — without it a long `<select>` option or a
+  reads it; "저장 후 승인" posts the paired edit first (`SAVE_BEFORE`). Fill = `GET …/fill/{action}` → form only.
+  **Response surfaces = `web/static/surface3d.js`** (`F1Surfaces.render`), laid out like the paper's Figure 1 (user supplied the image):
+  black bar per response, one 3D cell per level of the slice factor ((a)(b)(c)), rainbow Design-Expert ramp with mesh lines, grey floor
+  with projected contour lines (marching squares **joined into polylines and lifted 0.6 % above the floor** — unjoined segments or lines at
+  exactly floor height render dotted via z-fighting), observed points with residual stems (dark red above / pink below the surface),
+  dashed design-support outline (outside = extrapolation; the surface is drawn over the full square like the paper). Data from
+  `formula/doe/surfaces.py` via `GET …/surfaces?source=selected|published&slice=` (and `/cbd-replay/surfaces`). Axis order follows the
+  dataset's factor order, slice factor selectable. Long axis titles are shortened (3D titles clip at the canvas edge). Plotly =
+  `plotly.js-strict-dist-min` from jsdelivr (strict bundle: hub CSP has no `unsafe-eval`); only one grid keeps WebGL contexts (~16 per
+  page) — the other becomes a "다시 그리기" button; 2D SVG fallback if Plotly fails. The joint-probability 2D slices stay below the grid. `.d7-card`/wizard grids pin `grid-template-columns: minmax(0,1fr)` — without it a long `<select>` option or a
   details table pushed the phone page 145 px wide. ① candidate cards have **v7 실험개발로 시작** next to the v6.1 button
   (`F1Doe7Wizard.startFromCandidate`) — it only works after the run finishes (`execution.final`), same as v6.1.
 - Tests: `tests/test_doe_v7_service.py` (CBD walk → REGION_EMPTY/LB012, new-API walk with synthetic test-only data through
   feasibility boundary failure → FCCD → VR015/VR003/VR013 blocks → VERIFIED, HITL 409s, idempotency, version conflict, key-based fill);
-  browser `tests/browser/doe7wizard.mjs` (CBD by clicks, desktop + 390 px, no LLM), `doe7candidate.mjs` (one real LLM run →
+  `tests/test_doe_v7_dataset.py` (validation errors, second test-only dataset → plan_import → region, CSV matching, CBD as instance);
+  browser `tests/browser/doe7wizard.mjs` (CBD by clicks incl. 3×3 surface grid + source toggle, desktop + 390 px, no LLM),
+  `doe7dataset.mjs` (paste real CBD dataset JSON → plan_import → CSV paste → RB12 block → full CSV → model grid), `doe7candidate.mjs` (one real LLM run →
   candidate → v7 study → RB01 asks for equipment/scale/grade), `doe7.mjs` (comparison sub-tabs).
 - `database/07_doe/V6_TO_V7_MIGRATION_MATRIX.csv` — per v6.1 file status from rule-ID comparison (not guessed); pinned by
   `test_migration_matrix_covers_every_legacy_file`. `scripts/validate_07_doe.py` skips it. Not done: archive of v6.1 (gated on
-  expert review), LLM hypotheses in lab-loop, CSV paste for results.
+  expert review), LLM hypotheses in lab-loop.

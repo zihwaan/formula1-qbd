@@ -545,7 +545,7 @@ RDKit 계산값 + 사용자 실측값 → 파생값 계산 (derived_quantities.c
 
 다음 판 실험개발 명세(v7.0)의 룰북·참조 마스터(`database/07_doe/v7_0/`: 룰북 18 · 마스터 7 · 확인시험 90 · reason code 167)와 결정론 core(`formula/doe/`)가 들어 있다. 규칙은 모두 전문가 검토 전(DRAFT)이라 **production에서 집행하는 규칙은 0개**이고(`config/doe_module.yaml`: `enabled=false`), study는 **샌드박스**로만 만든다 — 규칙이 study를 라우팅하지만 모든 판정·화면에 `DRAFT / RESEARCH USE ONLY / NOT A GMP INSTRUCTION`이 붙는다.
 
-화면의 **DoE v7.0 실험개발** 탭은 6단계 마법사다(후보·CQA → FMEA·요인 → 범위·feasibility → 실험표 → 결과·모델 → 영역·확인). 단계마다 가운데 질문 카드가 지금 할 일과 폼을 보여 주고, 연구자가 입력하고 승인해야 다음 단계로 넘어간다. 승인 지점은 9개(CQA 선택 · FMEA 검토 · 요인·범위 · feasibility 계획 · DoE 계획 · 실행 프로토콜 · 플래그 모델 수용 · 확인 계획 · 확인 영역)이고, 상태에 맞지 않는 행동은 서버가 거부한다. 규칙이 막으면 어느 규칙(rule ID)이 왜 막았는지가 카드에 뜬다. 시작은 ① 후보 카드의 **v7 실험개발로 시작**(신규 API — 후보에 없는 설비·배치 규모·주성분 등급을 먼저 채우라고 요청한다) 또는 **CBD 문헌 재현으로 시작**이다. 문헌 재현 study의 **입력 채우기**는 논문 표 값으로 폼만 채우고, 제출은 연구자가 누른다. 반응 곡면은 3D(Plotly)와 2D 단면으로 그린다. 실패하면 RB18 패턴이 판별시험 후보(M06)를 보여 주고, 연구자가 사유와 시험을 골라 FMEA 검토부터 다시 시작한다. v7.0이 바꾸는 핵심은 다음과 같다.
+화면의 **DoE v7.0 실험개발** 탭은 6단계 마법사다(후보·CQA → FMEA·요인 → 범위·feasibility → 실험표 → 결과·모델 → 영역·확인). 단계마다 가운데 질문 카드가 지금 할 일과 폼을 보여 주고, 연구자가 입력하고 승인해야 다음 단계로 넘어간다. 승인 지점은 9개(CQA 선택 · FMEA 검토 · 요인·범위 · feasibility 계획 · DoE 계획 · 실행 프로토콜 · 플래그 모델 수용 · 확인 계획 · 확인 영역)이고, 상태에 맞지 않는 행동은 서버가 거부한다. 규칙이 막으면 어느 규칙(rule ID)이 왜 막았는지가 카드에 뜬다. 시작은 세 가지다 — ① 후보 카드의 **v7 실험개발로 시작**(신규 API — 후보에 없는 설비·배치 규모·주성분 등급을 먼저 채우라고 요청한다), **데이터셋으로 시작**(run 단위 실험 데이터를 가진 어떤 DoE든 공통 JSON 형식으로: 출처·요인 1–3·반응 1–4·run별 요인값과 반응값, 선택으로 처방·보고 모형·확인점), **CBD 문헌 재현으로 시작**(같은 형식의 실데이터 예). 데이터셋 study의 **입력 채우기**는 데이터셋 값으로 폼만 채우고, 제출은 연구자가 누른다. 실제로 실행한 행렬이 표준 설계와 다르면 실험표 단계에서 **실행 행렬 가져오기**로 바꾸고(같은 검사를 다시 거친다), 결과는 어느 study든 CSV(엑셀 복사 가능)로 붙여 넣으면 run_id나 요인값으로 짝지어 표를 채운다. 반응 곡면은 논문 그림과 같은 형식의 격자로 그린다 — 반응마다 한 줄, 세 번째 요인 수준마다 한 칸, 바닥 등고선·실험점과 잔차·설계 지지 영역 표시. 모형은 자동 선택 모형과 데이터셋이 보고한 항 구성의 재적합을 전환해 비교한다. 실패하면 RB18 패턴이 판별시험 후보(M06)를 보여 주고, 연구자가 사유와 시험을 골라 FMEA 검토부터 다시 시작한다. v7.0이 바꾸는 핵심은 다음과 같다.
 
 - **후보 처방값은 기준값일 뿐 중심점이 아니다** — 상류 mg·%는 `REFERENCE_PROTOTYPE`이고, 중심점으로 옮기면 차단된다.
 - **범위 근거가 약하면 먼저 좁은 실험** — 신규 API에서 low/center/high의 근거가 '제안'뿐이면 RSM으로 바로 가지 않고 `NEEDS_FEASIBILITY`로 보낸다. 범위확인은 2k+1 축점(2요인 5조건, 3요인 7조건)이고, 중심이 실패하면 처방 재검토, 경계가 실패하면 범위 수정으로 돌아간다.
@@ -807,11 +807,14 @@ formula/agents/development.py   FMEA 누락 가설 · 진단 에이전트 (LLM �
 | GET | `/api/doe-v7/package` | v7.0 룰북 패키지 요약(해시·건수·집행 규칙 수) |
 | GET | `/api/doe-v7/cbd-replay?accept_flags=` · `/cbd-replay/slice?x3=` | CBD 문헌 재현(모형·감사·영역·확인) · 반응 곡면 단면 |
 | POST | `/api/doe-v7/range-check` | 신규 API 범위근거 gate → feasibility 계획·판정 → 설계 행렬(상태 저장 없음) |
-| POST | `/api/doe-v7/studies` | `{source: candidate, run_id, candidate_id}` 또는 `{source: cbd_replay}` → 불변 handoff + 샌드박스 study |
+| POST | `/api/doe-v7/studies` | `{source: candidate, run_id, candidate_id}` · `{source: dataset, dataset}` · `{source: cbd_replay}` → 불변 handoff + 샌드박스 study |
 | GET | `/api/doe-v7/studies` · `/{id}` · `/{id}/trace` | 목록 · 상태와 지금 묻는 것(prompt) · lineage·이벤트·결정 원장 |
 | POST | `/api/doe-v7/studies/{id}/actions/{action}` | 연구자 행동(헤더 Idempotency-Key · Expected-State-Version · Actor-ID) — 상태에 없는 행동은 409 |
 | GET | `/api/doe-v7/studies/{id}/fill/{action}` | 문헌 재현 study의 폼 채우기 값(논문 표). 제출하지 않는다 |
-| GET | `/api/doe-v7/studies/{id}/surface?response=&x3=` | 반응 곡면·공동 통과확률 격자(3D·2D 공용) |
+| GET | `/api/doe-v7/studies/{id}/surfaces?source=selected\|published&slice=` | 반응 × 단면 요인 수준 곡면 격자(논문 그림 형식) |
+| GET | `/api/doe-v7/studies/{id}/surface?response=&x3=` | 공동 통과확률 2D 단면 |
+| POST | `/api/doe-v7/studies/{id}/results-csv` | run 단위 결과 CSV → 결과 폼 값(제출하지 않음) |
+| GET · POST | `/api/doe-v7/datasets/schema` · `/datasets/cbd_odt` · `/datasets/validate` | 데이터셋 형식 설명 · 실데이터 예 · 형식 검사(오류 전부) |
 
 개발 스튜디오의 모든 변경 요청은 `Idempotency-Key`(같은 키는 한 번만 반영), `Expected-State-Version`(오래된 버전이면 409), `Actor-ID` 헤더를 받습니다.
 

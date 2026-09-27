@@ -41,7 +41,8 @@ formula/doe/
 ├── models.py       자동 계층적 모델 선택·RB14
 ├── region.py       영역·확인 판정
 ├── replay.py       CBD 픽스처 재현(검증 비교 보기)
-├── demo.py         CBD study 폼 채우기(논문 표 → 폼, 요인은 FMEA 키로 대응)
+├── dataset.py      DoE 데이터셋 공통 형식(run 단위 실험 데이터) — 검증·handoff·폼 채우기·결과 CSV·실행 행렬. CBD는 그 한 사례
+├── surfaces.py     반응 × 단면 요인 수준 곡면 격자(논문 Figure 형식)
 ├── handoff.py      후보 → v7 handoff(§7.1), fingerprint, value_role
 ├── cqa.py          RB02 매핑 + v6.1 cqa_templates(미이관) + M01 시험법 → CQA 표
 ├── fmea.py         RB04 실패모드 → FMEA 초안, RB05 점수 정책(UNKNOWN·고심각도 보호·RPN)
@@ -49,7 +50,8 @@ formula/doe/
 ├── labloop.py      M06 adapter(ConfirmationTestRecord) + RB18 패턴 → 판별시험 후보
 └── service.py      DoeStudyService — create/act/view/trace, 상태기계 구동
 web/server.py       /api/doe-v7/studies/* (명세 §10을 행동 엔드포인트 하나로 묶음 — v6.1과 같은 형태)
-web/static/doe7wizard.js  6단계 마법사(질문 카드 + 단계별 결과), Plotly 3D 곡면(strict 번들 지연 로드)
+web/static/doe7wizard.js  6단계 마법사(질문 카드 + 단계별 결과) · 데이터셋으로 시작 · 결과 CSV 붙여넣기
+web/static/surface3d.js   반응 곡면 격자 렌더러(Plotly strict 번들 지연 로드, 2D 대체)
 web/static/doe7.js        탭 머리 + 검증 비교 보기(CBD 재현 요약 · 범위 gate 계산기)
 database/07_doe/V6_TO_V7_MIGRATION_MATRIX.csv   v6.1 파일별 이관 상태(INSTALLATION §6.2)
 ```
@@ -126,7 +128,7 @@ timeline[], approvals[], package_hash, rulebook_release
 
 | Method | Endpoint | 책임 |
 |---|---|---|
-| POST | `/api/doe-v7/studies` | `{source: candidate|cbd_replay, run_id?, candidate_id?}` → handoff 잠금 + study 생성 |
+| POST | `/api/doe-v7/studies` | `{source: candidate|dataset|cbd_replay, run_id?, candidate_id?, dataset?}` → handoff 잠금 + study 생성 |
 | GET | `/api/doe-v7/studies` · `/{id}` · `/{id}/trace` | 목록 · 상태+지금 묻는 것(prompt) · lineage·이벤트·결정 |
 | POST | `/api/doe-v7/studies/{id}/actions/{action}` | §3의 행동 — 헤더 Idempotency-Key·Expected-State-Version·Actor-ID |
 | GET | `/api/doe-v7/studies/{id}/surface?response=&x3=` | 반응 곡면·공동 통과확률 격자(3D·contour 공용) |
@@ -138,7 +140,8 @@ timeline[], approvals[], package_hash, rulebook_release
 - v7 탭 = 마법사. 위: study 선택/생성(① 후보에서 · CBD 문헌 재현 데모), 6단계 진행바(명세 §4 화면 1–6).
 - 가운데 **질문 카드**: 현재 상태에서 연구자가 해야 할 일과 폼·버튼(v6.1 studio와 같은 상호작용). 판정은 rule ID·결과 코드·DRAFT 배지와 함께.
 - 데모의 "입력 채우기"는 **폼만 채운다** — 제출 버튼은 연구자가 누른다. CBD 데모의 값은 전부 논문 표(픽스처)에서 온다.
-- 결과 영역: 반응별 탭(선택 식 coded·actual, 지표, 선택 이력) + Plotly 3D 곡면(규격 경계면, 실험점) + 2D contour + 다중 CQA 중첩, 3요인은 X3 고정 값을 명시.
+- 결과 영역: 모델 표(선택 식·지표·선택 이력) + 반응 곡면 격자(반응마다 한 줄, 단면 요인 수준마다 한 칸 — 무지개 색 곡면·메시, 바닥 등고선 투영, 실험점과 잔차 줄기, 설계 지지 영역 점선) + 공동 통과확률 2D 단면. 모형은 자동 선택 ↔ 데이터셋이 보고한 항 구성 재적합으로 전환, 단면 요인 선택 가능.
+- 시작 경로 세 가지: ① 후보 · DoE 데이터셋(JSON 공통 형식 — 형식 검사 후 시작) · CBD 문헌 재현(데이터셋의 한 사례). 실행 행렬이 표준 설계와 다르면 실험표 단계의 '실행 행렬 가져오기', 결과는 어느 study든 CSV로 붙여 넣을 수 있다(표만 채움).
   Plotly는 v7 탭에서 곡면을 처음 열 때만 jsdelivr에서 불러오고, 실패하면 2D 단면만 보여 준다.
 - ①의 통과 후보 카드에 "v7 실험개발로 시작" 버튼(v6.1 "개발 착수"와 나란히).
 
