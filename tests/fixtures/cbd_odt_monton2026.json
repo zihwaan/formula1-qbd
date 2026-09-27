@@ -11,43 +11,57 @@
    "material": "CBD",
    "mg": 10,
    "pct": 4,
-   "function": "API"
+   "function": "API",
+   "grade": "CBD isolate, purity 99.80% (RBJ Co., Ltd.)",
+   "grade_locator": "Methods 2.1"
   },
   {
    "material": "Spray-dried mannitol",
    "mg": 127,
    "pct": 50.8,
-   "function": "filler"
+   "function": "filler",
+   "grade": "Mannogem EZ (SPI Pharma)",
+   "grade_locator": "Methods 2.1"
   },
   {
    "material": "MCC",
    "mg": 100,
    "pct": 40,
-   "function": "filler/binder"
+   "function": "filler/binder",
+   "grade": "Comprecel M102",
+   "grade_locator": "Methods 2.1"
   },
   {
    "material": "CCS",
    "mg": 7.5,
    "pct": 3,
-   "function": "superdisintegrant"
+   "function": "superdisintegrant",
+   "grade": "supplier sample (Onimax) — grade not stated",
+   "grade_locator": "Methods 2.1"
   },
   {
    "material": "Fumed silica",
    "mg": 2.5,
    "pct": 1,
-   "function": "glidant"
+   "function": "glidant",
+   "grade": "grade not stated",
+   "grade_locator": "Methods 2.1"
   },
   {
    "material": "Sucralose",
    "mg": 0.5,
    "pct": 0.2,
-   "function": "sweetener"
+   "function": "sweetener",
+   "grade": "grade not stated",
+   "grade_locator": "Methods 2.1"
   },
   {
    "material": "MgSt",
    "mg": 2.5,
    "pct": 1,
-   "function": "lubricant"
+   "function": "lubricant",
+   "grade": "grade not stated",
+   "grade_locator": "Methods 2.1"
   }
  ],
  "factors_table": "Table 2",
@@ -572,6 +586,60 @@
     0.23,
     0.39
    ]
+  }
+ },
+ "process": {
+  "route": "direct_compression",
+  "locator": "Methods 2.2.1",
+  "steps_as_reported": [
+   "80-mesh sieving",
+   "geometric dilution blending of CBD·MCC·CCS·fumed silica·sucralose, 3 min per step",
+   "MgSt premixed with spray-dried mannitol",
+   "premix added and blended 3 min",
+   "250 mg portions weighed and compressed"
+  ],
+  "equipment": "in-house assembled hydraulic press with pressure gauge; die internal diameter 9.7 mm",
+  "batch_scale": {
+   "value": 35,
+   "unit": "tablets",
+   "text": "laboratory scale sufficient to yield 35 tablets"
+  },
+  "fixed_parameters": [
+   {
+    "name": "final_blend_time",
+    "value": 3,
+    "unit": "min",
+    "status": "REPORTED",
+    "locator": "Methods 2.2.1"
+   },
+   {
+    "name": "die_diameter",
+    "value": 9.7,
+    "unit": "mm",
+    "status": "REPORTED",
+    "locator": "Methods 2.2.1"
+   },
+   {
+    "name": "tablet_weight",
+    "value": 250,
+    "unit": "mg",
+    "status": "REPORTED",
+    "locator": "Methods 2.2.1"
+   }
+  ]
+ },
+ "test_methods": {
+  "hardness_kgf": {
+   "text": "hardness tester, kgf, n = 10",
+   "locator": "Methods 2.2 · Table 9 header"
+  },
+  "dt_s": {
+   "text": "each tablet in water 37 ± 0.5 °C, time to complete disintegration, n = 6",
+   "locator": "Methods 2.2 · Table 9 header"
+  },
+  "friability_pct": {
+   "text": "friability tester, 13 tablets",
+   "locator": "Methods 2.2 · Table 9 header"
   }
  }
 }
