@@ -10,11 +10,9 @@ Formula 1 is a QbD (Quality-by-Design) validation engine for pharmaceutical **fo
 
 **As of 2026-09-18 the evidence gate and everything downstream of it (approval, batch, lifecycle) is commented out, not deleted** — see "v3 phase-gate pivot" below. The paragraph above still describes what that code does and the invariant it enforces; it's just not wired into the live graph right now. What *is* live in its place is `formula/biopharm/` (phase gates before generation) plus a non-blocking data-request pattern — read that section before touching anything in this area, since "evidence" and "phase gate" are easy to conflate and they answer different questions (evidence: can we execute this *specific candidate's protocol*; phase gate: what *strategies* should even be generated).
 
-**As of 2026-09-24 there is a second graph after the candidate list** — `ExperimentalDevelopmentGraph`
-(DoE agent, spec v6.1) in `formula/development/` + `formula/qbd/`, driven from the "② 개발 스튜디오" tab.
-It shares no state with discovery; read "ExperimentalDevelopmentGraph (v6.1)" below before touching it.
-
-The README.md (Korean) is the authoritative design doc — update it in the same commit when the design story changes. (An older revision of this file called the LangGraph/judge layer "roadmap, not built"; it has been built and is what the live pod runs.)
+**After the candidate list comes Stage 2** — a 12-step, researcher-approved study from QTPP to ANOVA in `formula/stage2/`
+(started from a candidate's "이 후보로 개발 착수"). It shares no state with discovery; read "Stage 2 — Design Space derivation" below.
+The UI is one ChatGPT-style conversation — read "Chat UI" below before touching `web/static/`.
 
 ## Commands
 
@@ -23,19 +21,18 @@ The README.md (Korean) is the authoritative design doc — update it in the same
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 270 tests — run this first when changing the core
-python database/07_doe/v7_0/scripts/validate_package.py database/07_doe/v7_0   # v7.0 패키지 정적 검증(RESULT: PASS)
+.venv/bin/pytest                                  # 210 tests — run this first when changing the core
 python scripts/audit_conditions.py                # every CSV/manifest condition names a variable something actually sets (exit 1 on a dead name)
-python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.json   # 07_doe static check (errors=0)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
 .venv/bin/python scripts/feedback_demo.py         # lab-in-the-loop (결과 해석)
 .venv/bin/uvicorn web.server:app --port 8000      # dashboard at http://localhost:8000
 .venv/bin/python scripts/import_rulebook.py       # re-import rulebook zips from 추가자료/
 # 기술 보고서(논문 PDF, zihwan.com/pdf): 수치는 엔진으로 계산 → HTML → 헤드리스 Chrome PDF → hub/reports/ 복사 → hub 재배포
-docker run --rm -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1-dev python scripts/report/figdata.py
+docker run --rm -e FORMULA1_LLM_PROVIDER=none -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1:latest python scripts/report/figdata.py
 python3 scripts/report/demo_cards.py <url> dacon 2 [card1,card3…]   # 시연 쿼리 카드 3장 → docs/report/demo_cards.json(보고서 7.5)
-node scripts/report/surfaces_png.mjs http://localhost:<port>/ published docs/report/cbd_surfaces.png   # 그림 12(v7 곡면 격자) — 엔진 화면 그대로 캡처
+python3 scripts/report/stage2_llm.py http://localhost:<port> dacon   # 2단계 LLM 초안 vs 논문 → docs/report/stage2_llm.json(보고서 7.6)
+CHROME=<chrome> node scripts/report/surfaces_png.mjs http://localhost:<port>/ docs/report/cbd_surfaces.png   # 그림 8 — 2단계 11단계 화면 그대로
 python3 scripts/report/build_report.py --tests <pytest 통과 수> --browser "<브라우저 스위트 요약>"
 "<Chrome>" --headless=new --no-pdf-header-footer --virtual-time-budget=15000 --print-to-pdf=docs/report/Formula1_report.pdf "file://$PWD/docs/report/report.html"
 cp docs/report/Formula1_report.pdf ~/zihwan/hub/reports/formula1_report.pdf
@@ -206,20 +203,8 @@ The dashboard follows the **zihwan.com design language**: grayscale chrome + Pre
 mirroring `~/zihwan/wealthmate/frontend/src/tokens.css`, light/dark via `data-theme` with the
 theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one service applies to all).
 
-- **`.grid`'s three columns are input/action in the middle, observation on the outside (2026-09
-  reorder)** — track widths in `.grid` (`300px minmax(0,1fr) 340px`) are positional, not tied to
-  any element: whichever DOM child comes 2nd gets the wide `1fr` track. `index.html` puts
-  `#panel-cands` (candidates, evidence-gate inputs, the workflow panel, the lab-in-the-loop
-  textarea — everywhere a researcher actually types or clicks) as the 2nd child so it's the wide
-  center column, and `.center` (graph/narration/trace — pure observation, nothing to click) as the
-  3rd child so it's the narrow right column. `#panel-chem` (reference data) stays 1st/left/narrow.
-  **If you add a new panel, decide which side of that split it belongs on and place it in source
-  order accordingly** — don't reach for CSS `order` to fake position, because that would desync
-  visual order from tab/reading order. `.cands` uses `repeat(auto-fit, minmax(260px,1fr))` so
-  candidate cards go multi-column in the wide track; `.evidence`/`.workflow`/`.labloop` cap at
-  `max-width: 720px` so prose doesn't stretch to unreadable line lengths even though their
-  container is wide.
-
+- **One conversation, not a grid** — see "Chat UI" below. Actions/cards go into `#agent-log` in order (via `flow.js`),
+  observation (graph · narration · trace) lives in the right drawer. Don't reintroduce side-by-side panels.
 - **Colour is reserved for rule verdicts.** `--status-good/warn/serious/critical` mark
   통과/주의/이관/반려 only. Protocol readiness reuses that vocabulary rather than inventing colours:
   hold = warn + dashed border, approved = good, review = plain — dashed/solid carries the state so
@@ -247,7 +232,7 @@ theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one ser
   rebuild it. Observed live: a QUIC-layer disconnect used to strand the user on a half-finished run.
 - Verify with a real browser, not curl: `tests/browser/verify.mjs` (33 interaction checks),
   `tests/browser/audit.mjs` (XSS injection, double-run, stand-in exposure, a11y, 9 viewport widths),
-  `tests/browser/evidence.mjs` (dual-loop regression), `tests/browser/drq.mjs` (typed DRQ inputs, attachment → instrument draft → submit, 422 on a wrong type),
+  `tests/browser/stage2.mjs` (stage-2 12 steps), `tests/browser/agent.mjs` (chat flow), `tests/browser/drq.mjs` (typed DRQ inputs, attachment → instrument draft → submit, 422 on a wrong type),
   and `tests/browser/scenarios.mjs` (the 3 demo
   scenario cards actually take the path their on-screen `goal` text claims — see `tests/browser/README.md`).
 
@@ -584,63 +569,57 @@ read about it. Keep them in sync with the graph — they are the demo.
   - `packaging_compatibility_rules.csv` names prohibited packaging in Korean prose ("고투습 포장"); `config/packaging_categories.yaml` bridges identifiers to those categories. New packaging goes in that YAML, not the CSV.
   - **`incompatibility_1to1.csv` covers 2° amines for lactose monohydrate only.** INC002 is `secondary_amine`+EXC001, but INC003/INC004 (anhydrous / spray-dried lactose) are `primary_amine` only — so fluoxetine + **무수유당** passes the gate today while fluoxetine + 유당수화물 is rejected, and the mechanism doesn't care about the grade (the Wirth 1998 and Narang 2012 sources are about the amine class). Found while fixing the 2026-08-06 silent pass; **not** patched here because rule rows are the pharmacy team's call. Ask them whether INC003/INC004 should gain `secondary_amine` rows. Generic "유당" still rejects — it head-matches EXC001 — so the gap only shows when a user names the anhydrous grade explicitly.
 
-## ExperimentalDevelopmentGraph (v6.1, 2026-09-24) — the half after the candidate list
+## Stage 2 — Design Space derivation (2026-09-28) — the half after the candidate list
 
-Source of truth: `docs/doe_v6.1/formula1-doe-agent-architecture-v6.1.md` (spec) and `docs/doe_v6.1/HANDOFF.md`
-(handoff; the spec wins on conflict). Delivered as a package (`formula1_doe_v6.1_handoff/`), copied verbatim into
-`database/07_doe/`, `tests/fixtures/`, `tests/golden/`, `scripts/validate_07_doe.py`, `scripts/generators/`.
-Open decision §11-1 was resolved as **new package, not `formula/lifecycle/`** (lifecycle is the commented-out v2
-workflow and has different contracts).
+Replaced (and **permanently deleted**) the v6.1 studio (`formula/development`, `formula/qbd`, `database/07_doe`, studio.js) and
+the v7.0 package/wizard (`formula/doe`, `database/07_doe/v7_0`, doe7*.js) on the user's instruction. Source of truth:
+`docs/stage2/DESIGN.md` (12-step table) — derived from the user's `2단계_수정본.pptx` / `Formula1_본선발표.pptx` slides 5–6 and
+Monton 2026 (CBD ODT, Scientifica 2026:3553253, PMC13519653). Code: `formula/stage2/`, API `/api/stage2/studies/*`, UI `web/static/stage2.{js,css}`.
 
-- **Judgement lives only in `database/07_doe/**.csv`.** `formula/development/rules.py` loads the manifest and
-  evaluates `when_expression` with an **AST whitelist evaluator — never Python `eval`** (the v1 `applies_when.py`
-  uses restricted eval; do not reuse it here). A disallowed node in any CSV makes the load *fail*. Rulebook edits go
-  through `scripts/generators/` → regenerate → `validate_07_doe.py` errors=0.
-- **Missing ≠ not fired.** A `None` in a comparison/arithmetic raises `Missing`, and the rule's
-  `missing_value_action` applies (`RECORD_NOT_CHECKED`, `REQUEST_DATA`, `BLOCK_STAGE`, or a reason code such as
-  `INCONCLUSIVE`, which is routed through the table). The service must put *unknown* values into the context as
-  `None`; **omitting a root skips the rule** (roots absent = rule not applicable to that subject). Don't "fix" a
-  blocking rule by leaving its root out of the context.
-- **Transitions:** strongest effect wins (INVALIDATE/BLOCK > REQUEST_DATA > AUGMENT > ROUTE > WARNING > PASS),
-  ties by `priority`; next state comes from `backtrack_routing_rules.csv` by `(reason_code, from_state)`, and
-  `states.py` re-checks the edge against §5.1. Anything outside → `WAITING_HUMAN_TRIAGE` with a return point.
-- **Modes:** all 171 rules are `DRAFT_PENDING_REVIEW`, so **production enforces 0 rules — that is correct**, not a
-  bug. The UI runs `demo` (sandbox). Verdicts from non-enforced rules are still recorded.
-- **Subjects sharing one object dedupe** (`rules.evaluate` keys on `id()` of the root objects) — pass the *same*
-  list object (e.g. `facs`) to every subject, or FE011-style collection rules report N times.
-- **Engine (`formula/qbd/`) is numpy+scipy only** — no statsmodels/pyDOE3/plotly at runtime (scipy is in the lock
-  file). Golden values from `tests/golden/compute_lornoxicam_golden.py` are pinned in `tests/test_doe_engine.py`:
-  domain 7,501/9,261, mean-ok 0.772, joint≥0.90 0.476, setpoint 2.7/12.5/6.8 P=0.991, DE30 PI 71.9–92.8.
-- **Spec deviations found while implementing (keep them, they are the rulebook being right):** MV006 also flags
-  the AV model (adj 0.885 − pred 0.481), so the demo needs `model_accept` for AV; the spec's "Cook's D run 12" is
-  an exact tie of runs 3 and 12; `SYNTHETIC_DEMO` verification results are refused by VR015 (no VERIFIED from
-  synthetic data — by design).
-- **Screening is two-pass:** effect rules (SA001/002/004/006) classify each factor first, then SA003/005/007/009
-  run with the *classified* factor list. Before this, SA007 read unclassified factors and routed a clearly-active
-  screen to STRATEGY_REVIEW. Only still-INCONCLUSIVE factors can trigger screening augmentation. With δ
-  (`practical_effect_threshold`) unset every effect is INCONCLUSIVE → augmentation — that's the spec (CR007 warns).
-- **Handoff is immutable; fingerprint is checked (PV001).** Required-data submission creates a new revision
-  (`-rN`). Mutating a handoff without recomputing `fingerprint()` sends the study to `WAITING_AUDIT_REVIEW` — pinned
-  by `test_tampered_handoff_goes_to_audit_review`.
-- **Store:** `FORMULA1_DEV_DB` (default `/tmp/formula1/development.db`) — lost on pod restart, same caveat as
-  lifecycle. Every mutation takes `Idempotency-Key` / `Expected-State-Version` / `Actor-ID` headers.
-- **UI (`web/static/studio.{js,css}`):** interaction-first — the centre "question card" is rendered per `status`
-  (`ASK[...]`), inputs are collected by `COLLECT[action]`, and the demo's "데모 입력 채우기" (`FILL[...]`) only fills
-  forms; the researcher always clicks submit. The two tabs (`#view-discovery` / `#view-studio`) wrap the old
-  layout; `app.js` candidate cards call `F1Studio.startFromCandidate(runId, id)` only for gate-passed candidates.
-  Browser regression: `tests/browser/studio.mjs` walks scenes 1–9 by clicking, then on a 390px phone starts from
-  discovery scenario card 4 and auto-plays the **guided demo** to the end with no overflow at any scene.
-  The guided demo (`SCENES`/`nextStep()`/`guideStep()` in studio.js) drives the *same* `doAction(btn)` path a
-  human click uses — fill the form, show it, press the button. When you change a state's form or button, update
-  `nextStep()` too or auto-play will stop at that scene. It deliberately ends at VERIFICATION_GATE blocked by
-  VR015 (synthetic data) — there is no honest way to reach VERIFIED without real batch data.
-- **Unjudgeable verification points get no 2×2** (`judged: false`, spec/PI fields nulled): otherwise synthetic
-  results render as "규격 통과 · PI 안" and VR011 ("all passed") fires next to the VR015 block.
-- **User-facing text is current-state only** (README, explainer, UI copy, experimental_inputs.yaml): no version
-  labels, dates, or "previously it was…" narratives — the user asked for this explicitly (2026-09-24). History
-  belongs in this file and git, not on screen.
-  The explainer gained steps 11–13 (studio overview, authority/evidence, Lornoxicam region) and step 4/5 were
-  rewritten for the two-graph structure — keep them in sync with this section.
+- **12 steps** (`model.STEPS`): prototype(T1) → qtpp(T3) → cqa(T4) → rm_just(T6) → rm_matrix(T5) → fp_just(T8) → fp_matrix(T7) →
+  recommend(≤4 DoE vars, risk PDF) → design(T9: factors 1–3, responses 1–4, any rows) → regression(T10) → surface(Fig 1) → anova(T11, final PDF).
+  Entry is only from a gate-passed candidate (`[이 후보로 개발 착수]` / agent `develop_candidate`) or the CBD demo (`source: cbd_paper`,
+  enables "논문 값으로 채우기" + "논문 표와 비교").
+- **HITL on `StudyStore`** (idempotency key, expected version, append-only events): only the current step can change;
+  `approve` is blocked by `model.check` blocking codes; `reopen` marks later steps `stale` (never deletes). Actions:
+  run · draft · use_reference · save · approve · reopen · attach_images. Store = `FORMULA1_STAGE2_DB` (default `/tmp/formula1/stage2.db`,
+  lost on pod restart).
+- **Matrices are derived, never entered** — `matrix_of(just, cqas)`; the justification table (grouped CQAs per row, paper format) is the
+  only input, so matrix ↔ justification can't disagree and a missing cell blocks (JUST_MISSING). Pinned: Table 6/8 → Table 5/7, 84/84 cells.
+- **LLM drafts (agent.py)**: risk justifications are two calls — a level grid (variable × confirmed CQA), then code groups
+  "same variable, same level" cells and asks for mechanism text per group (batches of 8, one retry). This guarantees exact coverage.
+  Recommend names are matched back to candidates (LLM echoes "Name (kind)" — stripped, case-insensitive; unknown names dropped and noted).
+  LLM numbers absent from the inputs → `LLM_NUMBERS` warning. No response → 503, nothing filled.
+- **Toolkit (doe.py, numpy+scipy, no LLM)**: min/max coding, Mean/Linear/2FI/Quadratic, Design-Expert-like fit summary (sequential F,
+  LOF with pure error, adj/pred R²) → suggests highest order with seq p<0.05 else max pred R²; partial-SS ANOVA; actual-unit equation;
+  surfaces for `surface3d.js` (tiny coefficients <1e-10·max are printed as 0 — the paper itself prints 5.05×10⁻¹⁷ for friability X1X2).
+  Pinned against Table 10/11 (hardness Model SS 10.73 p 0.0005, LOF p 0.4043, df 13; DT p 0.2463; friability p 0.0112).
+- **Measured LLM quality** (`scripts/report/stage2_llm.py` → `docs/report/stage2_llm.json`, contest API, drafts approved unedited):
+  no check ever blocked, but only 17/42 (raw material) and 24/42 (formulation/process) risk cells matched the paper, LLM mostly one level higher.
+  That is the reason the step is "draft + approve", not automation — don't market it otherwise.
+- **PDFs** (`report.py`, fpdf2 + NanumGothic OFL in `formula/stage2/fonts/`): NanumGothic lacks U+2212 — `PDF.normalize_text`
+  replaces it on every output path (a per-call `_safe` missed the equation table once).
+- Tests: `tests/test_stage2.py` (13), browser `tests/browser/stage2.mjs` (CBD 12 steps by clicks, edits/blocks/reopen, PDFs, 1440 + 390).
+
+## Chat UI (2026-09-28) — ChatGPT/Toss-style single conversation
+
+User spec: centered input first (placeholder text is exact — see `agent.js PLACEHOLDER`), then the proposal card with
+"실험 데이터값을 입력하시겠습니까?" + the existing inputs card; [설계 실행] → API 물리화학 card (horizontal: structure | flags ·
+descriptor · estimates split by rules) → 데이터 요청 card → only after [값 제출]/[전부 건너뛰기] (or agent submit) → 후보 처방 card.
+Graph/narration/trace moved to a right drawer (rail tabs, ⤢ wide/normal, full-screen on phones). History stays; new steps append.
+
+- `index.html`: `#agent-log` **is** the thread. Live cards (`#card-inputs`, `#panel-chem`, `#drq`, `#panel-cands`, `#manual`) sit in hidden
+  `#stash`; `flow.js` moves them into the thread at the right moment (ids unchanged, so `app.js` keeps rendering into them). On a new run the
+  previous run's cards are left as **frozen clones** (ids stripped, controls disabled) and the live nodes move to the new position.
+- Sequencing hooks: `f1:proposal` (agent start_run card) → inputs card; `f1:runstart` → chem card; `f1:run` (finish/recompute) +
+  `F1Discovery.pending()` → drq or cands; clicks on `#drq-submit/#drq-skip` or `f1:drqdone` → cands; `f1:flowready` → agent nudge.
+- `agent.dock()` must move `#agent-form` **before** removing `#hello` (it lives inside it — removing first threw and broke every card).
+  Demo scenario cards move to the sidebar (`#side-demos`) at the same time, otherwise they vanish after the first message.
+- Toss tokens are scoped to `body.chat-app` in `app.css` (blue = primary action only; `--status-*` still only for verdicts/risk levels).
+  Surface grid CSS (`.rsg*`) lives in `stage2.css` (it used to be in the deleted doe7.css — without it plots stack in one column).
+- `.s2-t` is the stage-2 *table* class — don't reuse it for text (it has `width:100%`; the step title class is `.s2-ttl`).
+- Free Groq's **daily** token limit is shared with live; a full browser run (verify+agent+scenarios) can exhaust it → candidates/drafts
+  come back empty. Re-run LLM suites with `F1_LLM=dacon` against a local container that has the contest key.
 
 ## Front part merged (PR #1 spec) + input agent (2026-09-24)
 
@@ -663,23 +642,23 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
   `POST /api/runs/{id}/decline` skips (candidates stay provisional). Packaging is excluded from candidate output
   (`recipe.packaging=None`; `process_steps` come from the strategy family row).
 - **Input agent** — `formula/agents/input_agent.py`, `POST /api/agent/turn` · `/api/agent/nudge`, UI `web/static/agent.{js,css}`
-  (launcher bottom-right, bottom sheet on phones). Context is a **server-built snapshot** (run summary / study view) —
+  (the centered input / bottom composer of the chat UI). Context is a **server-built snapshot** (run summary) —
   never trust client state. Guardrails are code, not prompt: `strip_ungrounded` drops any proposal number not present in
   recent user text; SMILES only from user text / `KNOWN_SMILES` / PubChem (`CanonicalSMILES`|`SMILES`|`ConnectivitySMILES`
-  — PubChem renamed the field); measurement keys only from the inputs allowlist ∪ measurement-catalog outputs; studio
-  actions only from `prompt.actions`, and the card refuses to run if `state_version` changed; `start_run` needs SMILES +
+  — PubChem renamed the field); measurement keys only from the inputs allowlist ∪ measurement-catalog outputs;
+  `develop_candidate` only for the current run's passed candidates; `start_run` needs SMILES +
   dose (`ready:false` + ask otherwise). The `start_run` reply text is built in code (the LLM kept re-asking for a SMILES the
-  system had already found). If the LLM only clarifies but the rule parser reads a concrete action ("압축력은 몰라요"),
+  system had already found). If the LLM only clarifies but the rule parser reads a concrete action ("Tm 317도"),
   the rule result wins (`source: "llm+rules"`). Execution goes through the same functions as a human click
-  (`F1Discovery.startRunWith` fills the form first, `submitMeasurements`, `F1Studio.runAction` = `act()`,
-  `startFromCandidate`); `app.js`/`studio.js` dispatch `f1:run` / `f1:study` / `f1:tab` for nudges.
+  (`F1Discovery.startRunWith` fills the form first, `submitMeasurements`, `F1Stage2.startFromCandidate`);
+  nudges fire on `f1:flowready` (after the drq/cands card is placed).
   Tests: `tests/test_input_agent.py`, `tests/browser/agent.mjs`.
-- **Report** — `scripts/report/{figdata,build_report}.py` → `docs/report/`. §7.6 + figures 11–12 + table 9 are v7: `figdata.v7_block()` runs
-  the package loader, the CBD replay and a real CBD study walk through `DoeStudyService` (approvals/events counted, not typed); figure 12 is
-  `cbd_surfaces.png` from `surfaces_png.mjs` (it forces sticky headers static — otherwise the app masthead is baked into the figure).
-  The browser-test sentence in §7.7 must list only suites actually run on that build. Every number in the PDF comes from
-  `figdata.json` (engine run on the Lornoxicam fixture, CSV row counts) or the CLI args (actual test counts). Served by the hub
-  at `zihwan.com/pdf` from `hub/reports/formula1_report.pdf`.
+- **Report** — `scripts/report/{figdata,build_report}.py` → `docs/report/`. §6 + §7.1 + §7.6 are Stage 2: `figdata.stage2_block()`
+  re-derives the paper's matrices/regression/ANOVA and walks a real study with paper values (approvals/events counted, not typed); §7.6
+  reads `stage2_llm.json`; figure 8 is `cbd_surfaces.png` from `surfaces_png.mjs` (it hides the dock/sidebar and un-scrolls the thread,
+  otherwise the composer is baked into the figure). The browser-test sentence in §7.7 must list only suites actually run on that build.
+  Every number in the PDF comes from `figdata.json`/the json files or the CLI args. Served by the hub at `zihwan.com/pdf` from
+  `hub/reports/formula1_report.pdf`.
 
 ### Contest API + agent-first UI (2026-09-24, later)
 
@@ -690,16 +669,15 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
   appends it. Reasoning tokens count against `max_output_tokens`, so the Dacon payload gets ≥2000 (Groq-sized caps are too small).
   A stream that already emitted text is not retried on another provider. Key lives in `~/zihwan/.env` (bare key, gitignored)
   and in k8s `formula1-secrets.DACON_API_KEY` — never print or commit it.
-- **UI: the agent is the primary input.** `#agent-panel` sits right under the tabs (shared by both tabs); the form lives in
-  `<details id="manual">` ("직접 입력"), closed by default. Browser tests open `#manual` before touching `#request`/`#run`,
-  and check `#agent-send` for clickability. There is no floating dock anymore.
+- **UI: the agent is the primary input** (centered input → bottom composer). The form lives in `#manual`, opened as a sheet by
+  `#manual-open` ("직접 입력"). Browser tests click `#manual-open` before touching `#request`/`#run`.
 - The PDF link is intentionally **not** shown in the app (user request); the report is only at `zihwan.com/pdf`.
 - Report experiments: `python3 scripts/report/experiments.py http://localhost:<port> 2` against a container with the
-  contest key → `docs/report/experiments.json` (table 5/6). One pass (8 runs + 6 agent turns) ≈ 575k contest tokens.
+  contest key → `docs/report/experiments.json` (table 5/6). One pass (8 runs + 5 agent turns) ≈ 575k contest tokens.
 - **Model choice is per request (2026-09-25).** `client.use_llm("groq"|"dacon")` sets a contextvar (it follows LangGraph
-  node threads like the event bus). Default = **groq**. `Run(llm=...)` wraps `stream()` and measurement reassess; the agent,
-  study create/action and demo study wrap their thread calls (`_with_llm`). The UI select lives in the agent panel header
-  (`F1LLM` in app.js, sent as `llm` in bodies and `X-F1-LLM` header from studio.js). **Access:** the hub sets
+  node threads like the event bus). Default = **groq**. `Run(llm=...)` wraps `stream()` and measurement reassess; the agent and
+  stage-2 drafts wrap their thread calls (`_with_llm`). The UI select lives in the sidebar (`#side-model`)
+  (`F1LLM` in app.js, sent as `llm` in bodies and `X-F1-LLM` header from stage2.js). **Access:** the hub sets
   `x-f1-role` = `full` (Formula 1 password session) | `guest` (`POST /api/formula1/guest`, "게스트로 접속" in the hub
   lock modal) and overwrites any client value; `web/server.py:llm_choice` 403s `dacon` for guests. No header + empty
   BASE_PATH (local dev) = full. `/api/meta` exposes `access_role`, `llm_options`, and `llm_calls` (per-provider success
@@ -744,9 +722,6 @@ container; writes `docs/report/devfix_results.json`). T5/T6 are unit tests.
   every id verified via Crossref/NCBI; NCBI idconv moved to `pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/` and
   returns pmid as int). A judge output with zero verified ids → `judge.verdict` `source: "uncited"`, score None. Judges retry
   (2 s, 5 s) unless no credentials / daily limit. Groq streams no longer include the reasoning channel (P2-2a).
-- **PI floor (P1-7)** — `predict_point` clips `pi_lower` at 0 with `pi_lower_raw`/`pi_truncated`; studio marks `*`.
-- **Studio (P2-4e/f)** — evaluations carry `at_status`/`at_action`; `view()` sets `current`; rules panel folds past ones;
-  the agent's "막힌 규칙" uses current only. `req()` aborts after 90 s with a retry message.
 - **UI (P2-1/4a/4b/4c/4d/4g)** — `fmtAssigned` renders gate objects; cards show rank → gate badge → confidence (no
   confidence badge on rejected cards) and sort by rank; narration text comes from the run (`aminesNote`), scenario copy no
   longer claims who won't be summoned; `f1:runstart` locks stale agent cards. Route decisions with flow inputs are emitted as
@@ -770,10 +745,8 @@ Source: `Formula1_시연쿼리카드.pdf` (3 cards: lornoxicam 8 mg dispersible 
 - **Code names are kept** (`literature.is_spelling_variant`): the PubChem title replaces the parsed name only when it is
   a spelling variant. The judge prompt tells reviewers to use the requested name. Europe PMC abstracts in the citation
   pool can still contain the real name — `demo_cards.json` records `name_leaks` per run.
-- **`dispersible_tablet`** is a dosage form end to end (intake prompt + `_fallback` "분산정", `from_recipe` passes it to
-  the Handoff) — otherwise the studio drafts no dispersion-time CQA.
-- **`ctx["drug_loading_pct"]`** feeds RTE008 (<5% → content-uniformity flag); FMEA rows that use `blend_time` for
-  `CQA_CU_AV` carry `upstream_signals` from the Handoff verdicts (`fmea.UPSTREAM_TO_CQA`), shown as "↑" in the studio.
+- **`dispersible_tablet`** is a dosage form end to end (intake prompt + `_fallback` "분산정") and reaches the stage-2 prototype.
+- **`ctx["drug_loading_pct"]`** feeds RTE008 (<5% → content-uniformity flag).
 - `measurement_catalog.csv` gained the output keys triggers already asked for (`test_every_trigger_result_key_is_a_catalog_output`).
 
 ## Measurement input change request (2026-09-26) — typed fields, attachments, interpretation drafts
@@ -804,87 +777,3 @@ Source: `measurement_input_change_request.md` (tasks 1–4). Pinned by `tests/te
   `light_sensitive`, …) that only existed when intake set them — they fell to NameError = "didn't fire", which happened
   to equal False. `applies_when.PROPERTY_FLAG_DEFAULTS` now seeds them explicitly. If you add a name, the test fails
   until something sets it (add it to the context, `seed.py`, or `CODE_KEYS` with a reason).
-
-
-## DoE v7.0 — data package + deterministic core + HITL sandbox study (2026-09-27)
-
-Source: `docs/doe_v7.0/formula1-experimental-development-architecture-v7.0.md` (spec) and `database/07_doe/v7_0/INSTALLATION.md`
-(install guide — its constraints are binding). Installed **side by side**: v6.1 folders, `config/rulebook_manifest.yaml` and the 66-row
-`database/reference/confirmation_test_master.csv` are untouched (`test_legacy_assets_untouched`). `scripts/validate_07_doe.py` skips `v7_0/`.
-
-- **Flag off**: `config/doe_module.yaml` `enabled=false · VALIDATION_ONLY · allow_draft_enforcement=false`. All 18 rulebooks are
-  `DRAFT_EXPERT_REVIEW_REQUIRED` + `enforcement_enabled=false`, so `DoePackage.can_enforce` is False for every row and every
-  `Decision.enforced` is False. Studies are **SANDBOX only** (same idea as v6.1 `demo` mode): rules route the study, the UI badges
-  everything DRAFT, and `execution_mode != SANDBOX` is refused until some rule can_enforce. Activation needs the §12 checklist.
-- **Loader** (`formula/doe/package.py`) refuses the package on: version ≠ 7.0.0, counts ≠ 18/7, manifest row counts, SHA256SUMS mismatch,
-  duplicate IDs, unregistered source/test/reason code, any rule or M07 code routing to a forbidden state. RB14's `const.*` thresholds live
-  only in v6.1 `planning/statistical_policy_constants.csv` (not migrated) — the loader reads them from there via the config.
-- **Core** (`formula/doe/`, numpy+scipy, no LLM): `gates` (RB07 range evidence, RB08 2k+1 feasibility, RB09 design) — result codes, next
-  states and Korean messages come from the rule rows, never from code; `design` (1-factor 7 / FCCD 13 / BBD 17, piecewise coded↔actual so
-  asymmetric ranges round-trip exactly, seeded order, Validator); `models` (all strong-hierarchy candidates, LOOCV 1-SE → fewest terms →
-  AICc → adj R² → formula; RB14 gate); `region` (convex-hull domain, joint pass probability from locked constants 0.90 / grid 21,
-  pre-locked PI 2×2 verification); `replay` (CBD ODT). **Don't add gate logic that isn't in a rulebook row** — an earlier draft blocked on
-  pred R² ≤ 0, which RB14 only warns about (MV007); it was removed.
-- **CBD ODT replay** (`tests/fixtures/cbd_odt_monton2026.json` = Monton 2026 Tables 1/2/9/10/11/12 copied from Europe PMC PMC13519653;
-  Wiley blocks direct fetch). Result, pinned by `tests/test_doe_v7_core.py`: hardness `1 + X1 + X2`, DT and friability VALID_WITH_FLAGS
-  (MV007) → `WAITING_MODEL_APPROVAL` until the researcher accepts flags → then REGION_EMPTY under p_min 0.90 (max 0.889) →
-  `MODEL_INADEQUATE` (DR018); the 3 verification lots pass spec+PI 9/9 but are not promoted. `PUBLISHED_REPORT_INCONSISTENCY` (hardness
-  actual equation has X1X2, ANOVA is linear) is **not in M07** — recorded as an audit finding, not a reason code (catalog gap to raise).
-- **HITL study** (`formula/doe/service.py` DoeStudyService — design in `docs/doe_v7.0/IMPLEMENTATION_DESIGN.md`, which is the
-  source of truth for the state/action table). User's reading of the spec (2026-09-27): "approval required" means *in-system*
-  researcher approvals at each step, not "don't build the flow". `contracts.ACTIONS[status]` is the only way to move — anything
-  else 409s; `APPROVAL_POINT` maps actions to the 9 RB00 points and an approval is recorded **only when the action actually
-  advanced** (a blocked approve is not an approval). Rule `next_state` values still carry v6.1 names — `contracts.resolve_state`
-  / `RULE_STATE_ALIAS` maps them (STAY = blocked here); unmapped → `UNMAPPED_NEXT_STATE` in the ledger, study not moved.
-  Store = v6.1 `StudyStore` at `FORMULA1_DOE7_DB` (default `/tmp/formula1/doe7.db` — lost on pod restart).
-  Helpers: `handoff.py` (from_candidate, fingerprint, `REFERENCE_PROTOTYPE`), `cqa.py` (RB02 + v6.1 cqa_templates),
-  `fmea.py` (RB04 draft, RB05 policy), `protocol.py` (run sheet; %w/w factors balanced by the largest non-factor filler → RS002 if
-  negative), `labloop.py` (M06 adapter + RB18 by `reason_code`).
-- **DoE dataset engine** (`formula/doe/dataset.py`, user request 2026-09-27: "not CBD-only — any DoE with run-level data"). One JSON
-  schema (`SCHEMA_DOC`; `GET /api/doe-v7/datasets/schema`): source (required — no unsourced data), factors 1–3 whose `key` must be an
-  RB04 FMEA candidate factor, responses 1–4 with `cqa_id`, runs with factor actual values + response values, optional formulation,
-  `reported_models` (term lists — refit on the same raw data, coefficients are never copied), verification points. `validate` does
-  structure only and returns **all** errors; rules still judge. A dataset study stores `st["dataset"]`; `fill(st, action)` fills forms from
-  it (None for studies without one — no invented values). **CBD is just `dataset.from_cbd_fixture`** (`/datasets/cbd_odt` serves it as
-  the real-data example); `demo.py` and `handoff.from_fixture` are gone. Factors are matched **by FMEA key, never by position** (the UI
-  sorts candidates; positional matching once put psi into the MCC factor → RS002 on every run). If the executed matrix differs from the
-  generated standard design (other center count, order…), `plan_import` (DOE_PLAN_REVIEW) replaces the draft with it — same Validator,
-  `design_type=IMPORTED`, `design_family` = `design.classify` (BBD/FCCD point set → that domain policy), old plan kept with `replaced`,
-  timeline `DOE_PLAN_REPLACED`. Results for **any** study can be pasted as CSV (`POST …/results-csv`): matched by `run_id` or factor actual
-  values; columns may be CQA IDs/names but values land under the study's response key; missing `test_method_version` /
-  `replicate_independence` columns are then blocked by RB12 (RQ003/RQ008) — correct, not a bug.
-- **Design Validator lesson (2026-09-27):** the 1-factor standard design (7 runs) replicates low/high twice *by design*; counting those as
-  duplicate runs and mapping it to DV016 (BLOCK) made **every 1-factor plan unapprovable**. `design.validate` now subtracts the design's
-  own replicates, `unique_run_ids` feeds DV016 (duplicate/missing run *records*), and extra duplicate points map to **DV012 (WARNING)** —
-  which is what RB10 actually says. Found only by walking a 1-factor dataset end to end; pinned by `test_one_factor_dataset_line_surfaces`.
-- **Data gaps decided in IMPLEMENTATION_DESIGN §8** — keep these, they're the rulebook being honest: M05 `VERIFICATION` is DENY for
-  every status → `VERIFICATION_BATCH` (outside M05) allowed only when VR003/VR013/VR019/RQ009 independence holds; `MEASURED_IN_STUDY`
-  = alias of `MEASURED_PRIOR_BATCH` (MODEL_FIT only with a locked plan); M04 `force` has N·kgf only — **kN is RE009** (don't add a
-  conversion in code); psi (pressure) ≠ kN (force). RB03 expressions apply CR002 regardless of role, so NOT_APPLICABLE CQAs need
-  `acceptance_operator=None`.
-- **UI**: tab `#tab-v7` / `#view-v7`, deep link `?v7`. Sub-tabs: **실험개발 study** (`web/static/doe7wizard.js`, default) ·
-  CBD 재현 요약 / 범위 gate 계산기 (`doe7.js`, stateless). The wizard renders `FORMS[form action]` per status and `COLLECT[action]`
-  reads it; "저장 후 승인" posts the paired edit first (`SAVE_BEFORE`). Fill = `GET …/fill/{action}` → form only.
-  **Response surfaces = `web/static/surface3d.js`** (`F1Surfaces.render`), laid out like the paper's Figure 1 (user supplied the image):
-  black bar per response, one 3D cell per level of the slice factor ((a)(b)(c)), rainbow Design-Expert ramp with mesh lines, grey floor
-  with projected contour lines (marching squares **joined into polylines and lifted 0.6 % above the floor** — unjoined segments or lines at
-  exactly floor height render dotted via z-fighting), observed points with residual stems (dark red above / pink below the surface),
-  dashed design-support outline (outside = extrapolation; the surface is drawn over the full square like the paper). Data from
-  `formula/doe/surfaces.py` via `GET …/surfaces?source=selected|published&slice=` (and `/cbd-replay/surfaces`). Axis order follows the
-  dataset's factor order, slice factor selectable. Long axis titles are shortened (3D titles clip at the canvas edge). One-factor studies get 2D prediction lines + points (`kind: LINE`). Plotly =
-  `plotly.js-strict-dist-min` from jsdelivr (strict bundle: hub CSP has no `unsafe-eval`); only one grid keeps WebGL contexts (~16 per
-  page) — the other becomes a "다시 그리기" button; 2D SVG fallback if Plotly fails. The joint-probability 2D slices stay below the grid. `.d7-card`/wizard grids pin `grid-template-columns: minmax(0,1fr)` — without it a long `<select>` option or a
-  details table pushed the phone page 145 px wide. ① candidate cards have **v7 실험개발로 시작** next to the v6.1 button
-  (`F1Doe7Wizard.startFromCandidate`) — it only works after the run finishes (`execution.final`), same as v6.1.
-- Tests: `tests/test_doe_v7_service.py` (CBD walk → REGION_EMPTY/LB012, new-API walk with synthetic test-only data through
-  feasibility boundary failure → FCCD → VR015/VR003/VR013 blocks → VERIFIED, HITL 409s, idempotency, version conflict, key-based fill);
-  `tests/test_doe_v7_dataset.py` (validation errors, second test-only dataset → plan_import → region, CSV matching, CBD as instance);
-  browser `tests/browser/doe7wizard.mjs` (CBD by clicks incl. 3×3 surface grid + source toggle, desktop + 390 px, no LLM),
-  `doe7dataset.mjs` (paste real CBD dataset JSON → plan_import → CSV paste → RB12 block → full CSV → model grid),
-  `doe7full.mjs` (**local container only** — test-only synthetic dataset; every wizard form: feasibility fail → LB002 → resubmit → pass →
-  FCCD → results → region → vplan_lock → VR015 → VERIFICATION_BATCH → final approve → VERIFIED with all 9 approval points; then a
-  1-factor dataset → line plots), `doe7candidate.mjs` (one real LLM run →
-  candidate → v7 study → RB01 asks for equipment/scale/grade), `doe7.mjs` (comparison sub-tabs).
-- `database/07_doe/V6_TO_V7_MIGRATION_MATRIX.csv` — per v6.1 file status from rule-ID comparison (not guessed); pinned by
-  `test_migration_matrix_covers_every_legacy_file`. `scripts/validate_07_doe.py` skips it. Not done: archive of v6.1 (gated on
-  expert review), LLM hypotheses in lab-loop.

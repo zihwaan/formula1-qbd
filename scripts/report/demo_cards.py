@@ -3,7 +3,7 @@
     python3 scripts/report/demo_cards.py http://localhost:8106 dacon 2
 
 출력: docs/report/demo_cards.json — 모든 값은 서버 응답·이벤트 스트림에서 읽는다(정답지는 카드에 적힌 출처의 값).
-카드 1은 후보 → 연구자가 고른 후보로 개발 착수(Handoff) → 스튜디오에 논문 Table 3 CSV를 올려 영역까지 간다.
+카드 1은 후보 → 연구자가 고른 후보로 개발 착수 → 2단계 study를 열고 프로토타입 실행 · QTPP 초안까지 간다.
 """
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ ROOT = dc.ROOT
 LLM = dc.LLM
 REPEAT = dc.REPEAT
 sys.path.insert(0, str(ROOT))
-from formula.development.handoff import LORNOXICAM_SCRIPT as S  # noqa: E402
 
 CARD1 = dc.CASES["T1"]
 CARD1_POOR = {**CARD1, "measured_params": {**CARD1["measured_params"], "angle_of_repose": 48}}
@@ -44,51 +43,27 @@ ANSWER = {
 
 
 def act(sid, action, payload, version):
-    return dc.call("POST", f"/api/development-studies/{sid}/actions/{action}", {"payload": payload},
-                   {"Idempotency-Key": f"{sid}-{action}-{version}", "Expected-State-Version": str(version),
-                    "X-F1-LLM": LLM})
+    return dc.call("POST", f"/api/stage2/studies/{sid}/actions/{action}", {"payload": payload},
+                   {"Idempotency-Key": f"{sid}-{action}-{version}", "Expected-State-Version": str(version), "X-F1-LLM": LLM})
 
 
-def studio_walk(rid, cid):
-    """연구자가 '개발 착수'를 누른 뒤의 스튜디오 경로 — 가이드 시연과 같은 입력(논문 값)을 이 Handoff에 넣는다."""
-    st = dc.call("POST", f"/api/candidates/{cid}/development-studies", {"run_id": rid, "candidate_version": 1},
-                 {"Idempotency-Key": f"card1-{rid}-{cid}", "X-F1-LLM": LLM})
-    sid = st["study_id"]
-    csv_text = dc.call("GET", "/api/development-studies/demo/lornoxicam/csv")["csv"]
-    rd = {**S["required_data"], "equipment_id": "EQ_LX_MIXER;EQ_LX_PRESS",
-          "fixed_parameters": S["required_data"]["fixed_parameters"] + [
-              {"name": "blend_time", "value": 10, "reason": "Almotairi 2022 Table 9"},
-              {"name": "lubrication_time", "value": 3, "reason": "Almotairi 2022 §3.2.4"}]}
-    steps = [("required_data", rd), ("cqa_edit", {"edits": S["cqa_edits"]}), ("cqa_approve", {}),
-             ("fmea_edit", {"edits": S["fmea_edits"]}), ("fmea_approve", {}),
-             ("factor_data", {"factors": S["factor_inputs"]}), ("factor_approve", S["factor_approval"]),
-             ("plan_approve", {}), ("results_submit", {"csv": csv_text, "column_map": S["column_map"]}),
-             ("results_confirm", {"accept": True}), ("model_reduce", S["model_reduction"]),
-             ("model_accept", S["model_accept"]), ("model_approve", {})]
-    rec = {"study_id": sid, "dosage_form": (st.get("handoff") or {}).get("dosage_form"), "steps": []}
-    view = st
-    for action, payload in steps:
-        try:
-            view = act(sid, action, payload, view["state_version"])
-        except Exception as exc:  # noqa: BLE001 — 멈춘 지점을 그대로 기록한다
-            body = getattr(exc, "read", lambda: b"")().decode(errors="replace")[:400]
-            rec["steps"].append({"action": action, "error": body or str(exc)})
-            rec["stopped_at"] = {"action": action, "status": view.get("status")}
-            return rec, view
-        rec["steps"].append({"action": action, "status": view.get("status")})
-        if action == "fmea_approve":
-            rec["upstream_rows"] = [{"row_id": r["row_id"], "signals": r["upstream_signals"]}
-                                    for r in (view.get("fmea") or {}).get("rows", []) if r.get("upstream_signals")]
-        if action == "results_confirm":
-            rec["diagnosis_flags"] = sorted({v.get("rule_id") for e in (view.get("evaluations") or {}).values()
-                                             for v in e.get("verdicts", [])
-                                             if str(v.get("rule_id", "")).startswith("MV") and v.get("status") == "FIRES"})
-    s = (view.get("region") or {}).get("summary") or {}
-    rec["region"] = {k: s.get(k) for k in ("grid_points_in_domain", "mean_ok_fraction", "feasible_fraction",
-                                           "setpoint")}
-    rec["cqas"] = sorted(c["cqa_id"] for c in (view.get("cqas") or {}).values()
-                         if c.get("analysis_role") != "NOT_APPLICABLE")
-    rec["final_status"] = view.get("status")
+def stage2_walk(rid, cid):
+    """연구자가 '이 후보로 개발 착수'를 누른 뒤의 2단계 — 프로토타입 실행 → QTPP·CQA LLM 초안까지(승인은 연구자 몫이라 초안에서 멈춘다)."""
+    view = dc.call("POST", "/api/stage2/studies", {"source": "candidate", "run_id": rid, "candidate_id": cid},
+                   {"Idempotency-Key": f"card1-{rid}-{cid}", "X-F1-LLM": LLM})
+    sid = view["study"]["study_id"]
+    rec = {"study_id": sid, "prototype_rows": len(view["study"]["steps"]["prototype"]["data"]["ingredients"]), "steps": []}
+    try:
+        view = act(sid, "run", {}, view["study"]["state_version"])
+        rec["steps"].append({"action": "run", "status": view["current"]})
+        view = act(sid, "draft", {}, view["study"]["state_version"])
+        q = view["study"]["steps"]["qtpp"]
+        rec["steps"].append({"action": "draft", "step": "qtpp", "rows": len((q["data"] or {}).get("items") or []), "source": q["source"],
+                             "checks": [c["code"] for c in q["checks"]]})
+    except Exception as exc:  # noqa: BLE001 — 멈춘 지점을 그대로 기록한다
+        body = getattr(exc, "read", lambda: b"")().decode(errors="replace")[:400]
+        rec["stopped_at"] = {"error": body or str(exc)}
+    rec["final_status"] = view.get("current")
     return rec, view
 
 
@@ -124,7 +99,7 @@ def card1(rep, case, tag):
     if pick:
         # 연구자가 카드에서 고른 후보 = 순위 1위 통과 후보(자동 진입이 아니라 이 스크립트가 버튼을 누른다)
         rec["picked"] = pick
-        rec["studio"], _ = studio_walk(rid, pick)
+        rec["stage2"], _ = stage2_walk(rid, pick)
     return rec
 
 

@@ -113,10 +113,11 @@ def check(name, case, rep):
                                          for g in rec["bcs_signals"])
         checks["유동성 입력이 경로 판정에 반영"] = bool(rec["route_signals"])
         if s.get("winner"):
-            st = call("POST", f"/api/candidates/{s['winner']}/development-studies",
-                      {"run_id": rid, "candidate_version": 1}, {"Idempotency-Key": f"t1-{rid}", "X-F1-LLM": LLM})
-            rec["study_title"] = (st.get("candidate") or {}).get("api_name") or st.get("title")
-            checks["study 이름 Lornoxicam"] = "Lornoxicam" in json.dumps(st.get("handoff", {}), ensure_ascii=False)[:4000]
+            st = call("POST", "/api/stage2/studies", {"source": "candidate", "run_id": rid, "candidate_id": s["winner"]},
+                      {"Idempotency-Key": f"t1-{rid}", "X-F1-LLM": LLM})
+            proto = ((st.get("study") or {}).get("steps") or {}).get("prototype", {}).get("data") or {}
+            rec["study_title"] = (st.get("study") or {}).get("title")
+            checks["2단계 프로토타입 API = Lornoxicam"] = "lornoxicam" in str(proto.get("api") or "").lower()
     elif name == "T2":
         checks["INFEASIBLE(INC001)"] = s["status"] == "infeasible" and "INC001" in rec["fired_any"]
         checks["RO5_MW_02·VEBER_TPSA_02 미발동"] = not ({"RO5_MW_02", "VEBER_TPSA_02"} & set(rec["fired_any"]))

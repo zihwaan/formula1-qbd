@@ -39,7 +39,6 @@ UTTERANCES = [
     {"id": "U3", "tab": "discovery", "text": "소아용 아세트아미노펜 시럽 설계해 줘. 용량은 알아서 적당히 정해"},
     {"id": "U4", "tab": "discovery", "text": "플루옥세틴 정제 10mg, SMILES는 네가 기억하는 걸로 넣어"},
     {"id": "U5", "tab": "discovery", "text": "메트포르민 500mg 정제인데 안식각은 대충 30도쯤으로 해 줘"},
-    {"id": "U6", "tab": "studio", "text": "압축력은 몰라요", "study": True},
 ]
 
 
@@ -120,10 +119,8 @@ def run_scenario(sc):
     }
 
 
-def run_agent(u, study_id):
+def run_agent(u):
     body = {"message": u["text"], "tab": u["tab"], "history": [], "llm": LLM}
-    if u.get("study"):
-        body["study_id"] = study_id
     t0 = time.time()
     r = call("POST", "/api/agent/turn", body)
     props = r.get("proposals") or []
@@ -144,8 +141,7 @@ def main():
         for sc in SCENARIOS:
             print("run", rep + 1, sc["id"], flush=True)
             runs.append({**run_scenario(sc), "repeat": rep + 1})
-    study = call("POST", "/api/development-studies/demo/lornoxicam")
-    agent = [run_agent(u, study["study_id"]) for u in UTTERANCES]
+    agent = [run_agent(u) for u in UTTERANCES]
     q1 = quota()
     # 실제로 응답한 프로바이더별 호출 수(새로 띄운 서버라 이 실험분만 센다) — 대회 API로 돌았는지의 증거
     calls = call("GET", "/api/meta").get("llm_calls", {})
