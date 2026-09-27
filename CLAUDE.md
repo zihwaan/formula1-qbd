@@ -23,7 +23,7 @@ The README.md (Korean) is the authoritative design doc — update it in the same
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 254 tests — run this first when changing the core
+.venv/bin/pytest                                  # 266 tests — run this first when changing the core
 python database/07_doe/v7_0/scripts/validate_package.py database/07_doe/v7_0   # v7.0 패키지 정적 검증(RESULT: PASS)
 python scripts/audit_conditions.py                # every CSV/manifest condition names a variable something actually sets (exit 1 on a dead name)
 python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.json   # 07_doe static check (errors=0)
@@ -802,7 +802,7 @@ Source: `measurement_input_change_request.md` (tasks 1–4). Pinned by `tests/te
   until something sets it (add it to the context, `seed.py`, or `CODE_KEYS` with a reason).
 
 
-## DoE v7.0 — data package + deterministic core, validation mode only (2026-09-27)
+## DoE v7.0 — data package + deterministic core + HITL sandbox study (2026-09-27)
 
 Source: `docs/doe_v7.0/formula1-experimental-development-architecture-v7.0.md` (spec) and `database/07_doe/v7_0/INSTALLATION.md`
 (install guide — its constraints are binding). Installed **side by side**: v6.1 folders, `config/rulebook_manifest.yaml` and the 66-row
@@ -810,7 +810,8 @@ Source: `docs/doe_v7.0/formula1-experimental-development-architecture-v7.0.md` (
 
 - **Flag off**: `config/doe_module.yaml` `enabled=false · VALIDATION_ONLY · allow_draft_enforcement=false`. All 18 rulebooks are
   `DRAFT_EXPERT_REVIEW_REQUIRED` + `enforcement_enabled=false`, so `DoePackage.can_enforce` is False for every row and every
-  `Decision.enforced` is False. Nothing in v7 creates or advances a study. Activation needs the §12 checklist (reviews, rollback rehearsal).
+  `Decision.enforced` is False. Studies are **SANDBOX only** (same idea as v6.1 `demo` mode): rules route the study, the UI badges
+  everything DRAFT, and `execution_mode != SANDBOX` is refused until some rule can_enforce. Activation needs the §12 checklist.
 - **Loader** (`formula/doe/package.py`) refuses the package on: version ≠ 7.0.0, counts ≠ 18/7, manifest row counts, SHA256SUMS mismatch,
   duplicate IDs, unregistered source/test/reason code, any rule or M07 code routing to a forbidden state. RB14's `const.*` thresholds live
   only in v6.1 `planning/statistical_policy_constants.csv` (not migrated) — the loader reads them from there via the config.
@@ -825,7 +826,33 @@ Source: `docs/doe_v7.0/formula1-experimental-development-architecture-v7.0.md` (
   (MV007) → `WAITING_MODEL_APPROVAL` until the researcher accepts flags → then REGION_EMPTY under p_min 0.90 (max 0.889) →
   `MODEL_INADEQUATE` (DR018); the 3 verification lots pass spec+PI 9/9 but are not promoted. `PUBLISHED_REPORT_INCONSISTENCY` (hardness
   actual equation has X1X2, ANOVA is linear) is **not in M07** — recorded as an audit finding, not a reason code (catalog gap to raise).
-- **UI**: third tab `#tab-v7` / `#view-v7` (`web/static/doe7.{js,css}`, deep link `?v7`), read-only API `/api/doe-v7/*`. Browser test
-  `tests/browser/doe7.mjs` (no LLM). `studio.js showTab` now iterates `discovery|studio|v7`.
-- Not done yet (INSTALLATION PR 4–5): the 6-step wizard on real studies, Axes3D (the tab draws 2D slices), M06 adapter for labloop,
-  `V6_TO_V7_MIGRATION_MATRIX.csv`, archive of v6.1.
+- **HITL study** (`formula/doe/service.py` DoeStudyService — design in `docs/doe_v7.0/IMPLEMENTATION_DESIGN.md`, which is the
+  source of truth for the state/action table). User's reading of the spec (2026-09-27): "approval required" means *in-system*
+  researcher approvals at each step, not "don't build the flow". `contracts.ACTIONS[status]` is the only way to move — anything
+  else 409s; `APPROVAL_POINT` maps actions to the 9 RB00 points and an approval is recorded **only when the action actually
+  advanced** (a blocked approve is not an approval). Rule `next_state` values still carry v6.1 names — `contracts.resolve_state`
+  / `RULE_STATE_ALIAS` maps them (STAY = blocked here); unmapped → `UNMAPPED_NEXT_STATE` in the ledger, study not moved.
+  Store = v6.1 `StudyStore` at `FORMULA1_DOE7_DB` (default `/tmp/formula1/doe7.db` — lost on pod restart).
+  Helpers: `handoff.py` (from_candidate / from_fixture, fingerprint, `REFERENCE_PROTOTYPE`), `cqa.py` (RB02 + v6.1 cqa_templates),
+  `fmea.py` (RB04 draft, RB05 policy), `protocol.py` (run sheet; %w/w factors balanced by the largest non-factor filler → RS002 if
+  negative), `labloop.py` (M06 adapter + RB18 by `reason_code`), `demo.py` (CBD form fill — **matches factors by FMEA key, never by
+  position**: the UI sorts candidates, and positional matching put psi into the MCC factor → RS002 on every run).
+- **Data gaps decided in IMPLEMENTATION_DESIGN §8** — keep these, they're the rulebook being honest: M05 `VERIFICATION` is DENY for
+  every status → `VERIFICATION_BATCH` (outside M05) allowed only when VR003/VR013/VR019/RQ009 independence holds; `MEASURED_IN_STUDY`
+  = alias of `MEASURED_PRIOR_BATCH` (MODEL_FIT only with a locked plan); M04 `force` has N·kgf only — **kN is RE009** (don't add a
+  conversion in code); psi (pressure) ≠ kN (force). RB03 expressions apply CR002 regardless of role, so NOT_APPLICABLE CQAs need
+  `acceptance_operator=None`.
+- **UI**: tab `#tab-v7` / `#view-v7`, deep link `?v7`. Sub-tabs: **실험개발 study** (`web/static/doe7wizard.js`, default) ·
+  CBD 재현 요약 / 범위 gate 계산기 (`doe7.js`, stateless). The wizard renders `FORMS[form action]` per status and `COLLECT[action]`
+  reads it; "저장 후 승인" posts the paired edit first (`SAVE_BEFORE`). Fill = `GET …/fill/{action}` → form only. 3D surface =
+  `plotly.js-strict-dist-min` from jsdelivr (strict bundle because the hub CSP has no `unsafe-eval`), loaded on first draw; 2D SVG
+  heat maps always. `.d7-card`/wizard grids pin `grid-template-columns: minmax(0,1fr)` — without it a long `<select>` option or a
+  details table pushed the phone page 145 px wide. ① candidate cards have **v7 실험개발로 시작** next to the v6.1 button
+  (`F1Doe7Wizard.startFromCandidate`) — it only works after the run finishes (`execution.final`), same as v6.1.
+- Tests: `tests/test_doe_v7_service.py` (CBD walk → REGION_EMPTY/LB012, new-API walk with synthetic test-only data through
+  feasibility boundary failure → FCCD → VR015/VR003/VR013 blocks → VERIFIED, HITL 409s, idempotency, version conflict, key-based fill);
+  browser `tests/browser/doe7wizard.mjs` (CBD by clicks, desktop + 390 px, no LLM), `doe7candidate.mjs` (one real LLM run →
+  candidate → v7 study → RB01 asks for equipment/scale/grade), `doe7.mjs` (comparison sub-tabs).
+- `database/07_doe/V6_TO_V7_MIGRATION_MATRIX.csv` — per v6.1 file status from rule-ID comparison (not guessed); pinned by
+  `test_migration_matrix_covers_every_legacy_file`. `scripts/validate_07_doe.py` skips it. Not done: archive of v6.1 (gated on
+  expert review), LLM hypotheses in lab-loop, CSV paste for results.

@@ -541,19 +541,26 @@ RDKit 계산값 + 사용자 실측값 → 파생값 계산 (derived_quantities.c
 
 맨 위 **① 후보 탐색 → ② 개발 스튜디오** 탭이 곧 두 그래프입니다. 스튜디오의 주인공은 가운데 **질문 카드**입니다 — 지금 상태에서 시스템이 연구자에게 묻는 것과 입력 폼, 승인·반려 버튼이 있고, 규칙이 막으면 어느 규칙이 왜 막았는지가 카드 안에 바로 뜹니다(그게 곧 다음에 넣을 값입니다). 그 아래에 시스템 판정과 연구자 결정이 번갈아 쌓이는 대화 기록, 옆에 단계 레일, 오른쪽에 결과(모델 표·영역 단면 지도·확인점)·규칙 판정 전체·lineage가 대화를 따라 채워집니다. 휴대폰에서는 한 열로 쌓이고, 편집 표는 행마다 카드로 바뀝니다.
 
-### 실험개발 v7.0 — 검증 모드(DRAFT)
+### 실험개발 v7.0 — 단계별 승인 study(샌드박스 · DRAFT)
 
-다음 판 실험개발 명세(v7.0)의 룰북·참조 마스터(`database/07_doe/v7_0/`: 룰북 18 · 마스터 7 · 확인시험 90 · reason code 167)와 결정론 core(`formula/doe/`)가 들어 있다. 규칙은 모두 전문가 검토 전(DRAFT)이라 **집행하는 규칙은 0개**이고, 화면의 **DoE v7.0 검증** 탭은 study 상태를 만들거나 옮기지 않는 계산만 보여 준다(`config/doe_module.yaml`: `enabled=false`, `VALIDATION_ONLY`). v7.0이 바꾸는 핵심은 다음과 같다.
+다음 판 실험개발 명세(v7.0)의 룰북·참조 마스터(`database/07_doe/v7_0/`: 룰북 18 · 마스터 7 · 확인시험 90 · reason code 167)와 결정론 core(`formula/doe/`)가 들어 있다. 규칙은 모두 전문가 검토 전(DRAFT)이라 **production에서 집행하는 규칙은 0개**이고(`config/doe_module.yaml`: `enabled=false`), study는 **샌드박스**로만 만든다 — 규칙이 study를 라우팅하지만 모든 판정·화면에 `DRAFT / RESEARCH USE ONLY / NOT A GMP INSTRUCTION`이 붙는다.
+
+화면의 **DoE v7.0 실험개발** 탭은 6단계 마법사다(후보·CQA → FMEA·요인 → 범위·feasibility → 실험표 → 결과·모델 → 영역·확인). 단계마다 가운데 질문 카드가 지금 할 일과 폼을 보여 주고, 연구자가 입력하고 승인해야 다음 단계로 넘어간다. 승인 지점은 9개(CQA 선택 · FMEA 검토 · 요인·범위 · feasibility 계획 · DoE 계획 · 실행 프로토콜 · 플래그 모델 수용 · 확인 계획 · 확인 영역)이고, 상태에 맞지 않는 행동은 서버가 거부한다. 규칙이 막으면 어느 규칙(rule ID)이 왜 막았는지가 카드에 뜬다. 시작은 ① 후보 카드의 **v7 실험개발로 시작**(신규 API — 후보에 없는 설비·배치 규모·주성분 등급을 먼저 채우라고 요청한다) 또는 **CBD 문헌 재현으로 시작**이다. 문헌 재현 study의 **입력 채우기**는 논문 표 값으로 폼만 채우고, 제출은 연구자가 누른다. 반응 곡면은 3D(Plotly)와 2D 단면으로 그린다. 실패하면 RB18 패턴이 판별시험 후보(M06)를 보여 주고, 연구자가 사유와 시험을 골라 FMEA 검토부터 다시 시작한다. v7.0이 바꾸는 핵심은 다음과 같다.
 
 - **후보 처방값은 기준값일 뿐 중심점이 아니다** — 상류 mg·%는 `REFERENCE_PROTOTYPE`이고, 중심점으로 옮기면 차단된다.
 - **범위 근거가 약하면 먼저 좁은 실험** — 신규 API에서 low/center/high의 근거가 '제안'뿐이면 RSM으로 바로 가지 않고 `NEEDS_FEASIBILITY`로 보낸다. 범위확인은 2k+1 축점(2요인 5조건, 3요인 7조건)이고, 중심이 실패하면 처방 재검토, 경계가 실패하면 범위 수정으로 돌아간다.
 - **설계는 요인 수로 정해진다** — 1요인 7 run, 2요인 FCCD 13 run, 3요인 BBD 17 run. 혼합물·범주형·바꾸기 어려운 요인은 표준 설계로 억지로 바꾸지 않고 고급 설계로 보낸다.
 - **회귀식은 사람이 고르지 않는다** — 계층성을 지키는 후보 모형 전부(3요인 95개)를 LOOCV로 비교해, 최소 오차의 1-표준오차 범위 안에서 항이 가장 적은 식을 고른다. R²가 가장 높은 식을 고르지 않는다.
 - **영역은 불확실성을 반영한 기준으로만** — 공동 통과확률 0.90(결과 전에 잠금). 평균만 보는 영역은 허용하지 않고, 결과를 본 뒤 기준을 완화할 수 없다.
+- **근거 등급은 올릴 수 없다** — 연구자는 범위 근거를 고르지만 `FEASIBILITY_CONFIRMED`는 feasibility 결과로만 생긴다. 결과·확인 lot도 근거 등급별 허용표(M05)로 적합·확인에 쓸 수 있는지 정해진다.
+- **확인은 독립 batch로, 결과 전에 잠근 계획으로** — SETPOINT·BOUNDARY·ROBUSTNESS 세 점의 예측구간을 먼저 잠그고, 모델 적합에 쓴 batch·blend나 다른 점과 같은 batch는 확인으로 인정하지 않는다.
+- **조성 요인은 balance 성분으로 100%를 맞춘다** — 실험표의 run마다 칭량표를 만들고, balance 성분이 음수가 되는 점은 차단한다.
 
 **CBD 구강붕해정 문헌 재현.** Monton 등(2026, Scientifica)의 Box–Behnken 17 run 원자료(Table 9)를 논문 식 없이 다시 적합한다. 경도는 논문의 3항 대신 압축력·MCC 2항 식이 골라지고, 붕해시간은 세 요인으로 거의 설명되지 않는다(예측 R² ≈ 0 — 논문 ANOVA도 모형 p = 0.2463). 논문 표끼리의 불일치(경도 실제 단위 식의 교호작용 항)는 고치지 않고 감사 기록으로 남긴다. 경고가 붙은 모형은 연구자가 승인해야 영역 계산으로 넘어가고, 승인 뒤에도 잠근 기준에서 영역이 비어(최대 공동 통과확률 0.889) **승격하지 않는다**. 논문의 확인 lot 3개는 규격과 예측구간을 모두 통과하지만(9/9), 영역이 없으면 확인 통과만으로 검증 영역이 되지 않는다.
 
-**신규 API 범위 gate.** 요인별 low/center/high와 근거를 넣으면 범위근거 판정 → 필요하면 feasibility 조건표 → 조건별 결과를 체크하면 다음 상태 → 준비되면 설계 행렬이 나온다.
+**검증 비교 보기.** 같은 탭의 "CBD 재현 요약"은 위 재현을 한 화면에 계산해 보여 주고, "범위 gate 계산기"는 요인별 low/center/high와 근거를 넣어 범위근거 판정 → feasibility 조건표 → 설계 행렬을 저장 없이 확인한다.
+
+룰북 데이터와 명세가 어긋나는 곳(예: 근거 등급표에서 확인(VERIFICATION)이 모든 등급에 금지 — 새 확인 batch 전용 등급으로 해석, 압축력 kN 단위 미등록)은 `docs/doe_v7.0/IMPLEMENTATION_DESIGN.md` §8에 결정과 함께 적었고, v6.1 파일별 이관 상태는 `database/07_doe/V6_TO_V7_MIGRATION_MATRIX.csv`에 있다.
 
 ## 12. 시연 시나리오
 
@@ -800,6 +807,11 @@ formula/agents/development.py   FMEA 누락 가설 · 진단 에이전트 (LLM �
 | GET | `/api/doe-v7/package` | v7.0 룰북 패키지 요약(해시·건수·집행 규칙 수) |
 | GET | `/api/doe-v7/cbd-replay?accept_flags=` · `/cbd-replay/slice?x3=` | CBD 문헌 재현(모형·감사·영역·확인) · 반응 곡면 단면 |
 | POST | `/api/doe-v7/range-check` | 신규 API 범위근거 gate → feasibility 계획·판정 → 설계 행렬(상태 저장 없음) |
+| POST | `/api/doe-v7/studies` | `{source: candidate, run_id, candidate_id}` 또는 `{source: cbd_replay}` → 불변 handoff + 샌드박스 study |
+| GET | `/api/doe-v7/studies` · `/{id}` · `/{id}/trace` | 목록 · 상태와 지금 묻는 것(prompt) · lineage·이벤트·결정 원장 |
+| POST | `/api/doe-v7/studies/{id}/actions/{action}` | 연구자 행동(헤더 Idempotency-Key · Expected-State-Version · Actor-ID) — 상태에 없는 행동은 409 |
+| GET | `/api/doe-v7/studies/{id}/fill/{action}` | 문헌 재현 study의 폼 채우기 값(논문 표). 제출하지 않는다 |
+| GET | `/api/doe-v7/studies/{id}/surface?response=&x3=` | 반응 곡면·공동 통과확률 격자(3D·2D 공용) |
 
 개발 스튜디오의 모든 변경 요청은 `Idempotency-Key`(같은 키는 한 번만 반영), `Expected-State-Version`(오래된 버전이면 409), `Actor-ID` 헤더를 받습니다.
 
