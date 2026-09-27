@@ -1,0 +1,30 @@
+rulebook_id: RB15_MODEL_SELECTION_POLICY
+version: 7.0.0
+effective_from: '2026-09-26'
+validation_status: DRAFT_EXPERT_REVIEW_REQUIRED
+enforcement_enabled: false
+random_seed: 20260926
+selection_steps:
+- enumerate predeclared hierarchical candidates
+- remove candidates failing rank, residual-df, or numerical-stability gates
+- calculate LOOCV RMSE and its standard error
+- form one-standard-error candidate set around minimum CV RMSE
+- choose fewest-term model in that set
+- tie-break by lower AICc, higher adjusted R2, then normalized formula lexicographically
+primary_metric: LOOCV_RMSE
+one_standard_error_rule: true
+tie_breakers:
+- TERM_COUNT_ASC
+- AICc_ASC
+- ADJUSTED_R2_DESC
+- NORMALIZED_FORMULA_ASC
+required_outputs:
+- selected_model
+- selection_history
+- rejected_candidates_with_reason
+- policy_version
+- seed
+failure_state: MODEL_INADEQUATE
+sources:
+- SRC_MONTGOMERY_DAE
+- SPEC:v7.0

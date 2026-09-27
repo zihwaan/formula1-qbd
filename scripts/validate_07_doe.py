@@ -38,7 +38,8 @@ man = yaml.safe_load((ROOT/"governance"/"rulebook_manifest.yaml").read_text(enco
 entries = {e["file"].split("07_doe/")[1]: e for e in man["entries"]}
 for f in entries:
     if not (ROOT/f).exists(): errors.append(f"manifest 파일 없음: {f}")
-on_disk = {str(p.relative_to(ROOT)).replace("\\","/") for p in ROOT.rglob("*.csv")}
+# v7_0/ 은 별도 패키지(자체 manifest·validate_package.py) — v6.1 manifest 대상이 아니다(database/07_doe/v7_0/INSTALLATION.md)
+on_disk = {str(p.relative_to(ROOT)).replace("\\","/") for p in ROOT.rglob("*.csv") if not str(p.relative_to(ROOT)).startswith(("v7_0/", "archive/"))}
 for f in on_disk - set(entries): errors.append(f"manifest에 없는 CSV: {f}")
 
 SCHEMA = man["context_schema"]; ROOTS = SCHEMA["roots"]; ENT = SCHEMA["entities"]
