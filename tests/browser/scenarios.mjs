@@ -18,7 +18,7 @@ await p.goto(URL, { waitUntil: 'networkidle' });
 let fail = 0;
 const ck = (n, ok, d = '') => { console.log(`${ok ? '  ✓' : '  ✗'} ${n}${d ? ' — ' + d : ''}`); if (!ok) fail++; };
 
-async function waitDone(timeout = 240000) {
+async function waitDone(timeout = 480000) {
   await p.waitForFunction(() => document.getElementById('run').textContent.trim() === '설계 실행',
     null, { timeout });
 }
@@ -46,6 +46,7 @@ console.log('\n[시나리오 3 · 값을 몰라도 후보부터, 갈리는 지�
 await p.locator('.scenario').nth(2).click();
 await waitDone();
 await p.waitForTimeout(1500);
+ck('데이터 요청 카드가 대화에 놓인다(후보 카드는 그 뒤)', await p.evaluate(() => !!document.querySelector('#agent-log #drq') && !document.querySelector('#agent-log #panel-cands')));
 
 // finishRun()이 renderDataRequests()로 #drq를 채우고, continueScenario()는 입력칸을 짚어 줄 뿐
 // 값을 넣지 않는다(시스템은 측정값을 지어내지 않는다). 아래에서 **테스트가** 연구자 대신 값을 넣는다.
@@ -54,7 +55,7 @@ ck('데이터 요청 패널이 보인다(후보는 이미 나온 채로)', drqVi
 const reqCount = await p.locator('#drq-body .drq-req').count();
 ck('대기 중인 데이터 요청이 1건 이상 렌더된다', reqCount >= 1, `${reqCount}건`);
 const candsBeforeBadge = await p.locator('#cands .drq-badge').count();
-ck('후보 카드에 신뢰도 배지(grounded/provisional)가 보인다', candsBeforeBadge >= 1, `${candsBeforeBadge}개`);
+ck('후보 카드에 신뢰도 배지(grounded/provisional)가 보인다', candsBeforeBadge >= 1, `배지 ${candsBeforeBadge}개 · 후보 카드 ${await p.locator('#cands .card').count()}장`);
 
 const autoFilled = await p.evaluate(() => [...document.querySelectorAll('#drq-body .drq-num input')].some((i) => i.value));
 ck('시스템이 측정값을 대신 채우지 않는다', !autoFilled);
@@ -71,6 +72,8 @@ await p.waitForFunction(() => {
 const drqOutText = await p.locator('#drq-out').textContent().catch(() => '');
 ck('값 제출 → 재계산 결과가 그 자리에 뜬다(그래프 재실행 없음)',
   drqOutText.includes('전략') && drqOutText.includes('plan_signature'), drqOutText.slice(0, 160));
+ck('값 제출 뒤 후보 처방 카드가 대화에 이어진다', await p.locator('#agent-log #panel-cands').count() === 1);
+ck('시연 카드는 대화 시작 뒤 왼쪽 목록에 있다', await p.locator('#side-demos .scenario').count() === 4);
 
 console.log('\n[콘솔/페이지 오류]');
 ck('오류 0건', errs.length === 0, errs.slice(0, 5).join(' | '));

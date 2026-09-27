@@ -54,7 +54,7 @@ check('현재 항목 하이라이트', await page.evaluate(
   () => document.querySelectorAll('#guide-nav li')[7].classList.contains('on')));
 
 console.log('\n[2b] 가이드 레이아웃 — 셸 밖으로 삐져나가지 않고 내부 스크롤이 산다');
-for (const step of [1, 4, 6, 7, 8, 9, 11, 16]) {
+for (const step of [1, 4, 5, 6, 8, 9, 11, 12, 13, 15]) {
   const r = await page.evaluate((s) => {
     document.querySelectorAll('#guide-nav li')[s - 1].click();
     const shell = document.querySelector('.guide-shell').getBoundingClientRect();
@@ -94,10 +94,21 @@ check('닫은 뒤 body 스크롤 복구',
   await page.evaluate(() => document.body.style.overflow === ''));
 
 console.log('\n[5] 설계 실행 → 규칙 모달');
-await page.evaluate(() => { document.getElementById('manual').open = true; });   // 폼은 보조 경로(접힘)
+await page.click('#manual-open');                                   // 폼은 보조 경로(직접 입력 시트)
+check('직접 입력 시트가 열린다', await shown(page, 'manual-sheet'));
 await page.fill('#request', '소아용 플루옥세틴 정제를 설계해줘');
 await page.click('#run');
-await page.waitForSelector('.chip', { timeout: 240000 });
+check('실행하면 시트가 닫힌다', !(await shown(page, 'manual-sheet')));
+await page.waitForSelector('#agent-log #panel-chem', { timeout: 30000 });
+check('API 물리화학 카드가 대화에 놓인다', true);
+check('대화에 사용자 요청 말풍선', (await page.locator('#agent-log .ad-msg.user').count()) === 1);
+// 데이터 요청이 있으면 건너뛰어야 후보 카드가 대화에 나온다
+await page.waitForFunction(() => document.querySelector('#agent-log #drq:not([hidden])') || document.querySelector('#agent-log #panel-cands'), null, { timeout: 480000 });
+if (await page.locator('#agent-log #drq:not([hidden])').count()) {
+  check('데이터 요청 카드가 후보보다 먼저', !(await page.locator('#agent-log #panel-cands').count()));
+  await page.click('#drq-skip');
+}
+await page.waitForSelector('#agent-log #panel-cands .chip', { timeout: 240000 });
 check('후보 카드에 규칙 칩이 생긴다', (await page.locator('.chip').count()) > 0);
 await page.locator('.chip').first().click();
 await page.waitForTimeout(900);
@@ -114,11 +125,25 @@ check('✕ 로 규칙 모달이 닫힌다', !(await shown(page, 'modal')));
 
 console.log('\n[6] 실행 결과 렌더링');
 check('분자 구조 SVG', await page.evaluate(() => !!document.querySelector('#mol-svg svg')));
+check('물리화학 카드 가로(구조 | 플래그·descriptor·물성 줄 구분)', await page.evaluate(() => {
+  const m = document.querySelector('.chem-mol').getBoundingClientRect(), s = document.querySelector('.chem-sections').getBoundingClientRect();
+  return s.left >= m.right - 1 && document.querySelectorAll('.chem-sections .chem-sec h3').length >= 3;
+}));
+await page.click('.rail-tab[data-pane="flow"]');
+check('오른쪽 탭 — 에이전트 흐름 열림', await shown(page, 'graph'));
+await page.click('#drawer-size');
+check('크게 보기', (await page.getAttribute('#drawer', 'data-size')) === 'wide');
+await page.click('.rail-tab[data-pane="narr"]');
+check('지금 무슨 일이 탭', await shown(page, 'narration'));
+await page.click('.rail-tab[data-pane="trace"]');
 check('그래프 노드 점등', await page.evaluate(
   () => document.querySelectorAll('#graph .node.done, #graph .node.active').length > 0));
 check('트레이스 이벤트', (await page.locator('.ev').count()) > 5);
 await page.waitForSelector('#consensus:not([hidden])', { timeout: 240000 }).catch(() => {});
 check('합의 결과', await shown(page, 'consensus'));
+
+await page.click('#drawer-close');
+check('서랍 닫힘', (await page.getAttribute('#drawer', 'data-size')) === 'closed');
 
 console.log('\n[7] 테마 전환');
 const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);

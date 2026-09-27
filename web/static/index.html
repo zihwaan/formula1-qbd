@@ -2,95 +2,127 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <!--BASE-->
-  <title>Formula 1 — QbD 제형 설계 검증 엔진</title>
-  <meta name="description" content="AI가 처방을 제안하고 결정론적 규칙이 검증하는 제형 설계 엔진. 분자식에서 시작해 구조 패턴 82종과 출처가 붙은 규칙표가 순서대로 처방을 검증한다.">
+  <title>Formula 1 — 제형 설계 에이전트</title>
+  <meta name="description" content="AI가 처방을 제안하고 결정론적 규칙이 검증한다. 후보 처방을 고르면 QTPP·CQA·위험평가·DoE·회귀식·반응 곡면·ANOVA까지 단계마다 승인하며 진행한다.">
   <link rel="icon" href="static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="static/styles.css">
   <link rel="stylesheet" href="static/explainer.css">
-  <link rel="stylesheet" href="static/studio.css">
-  <link rel="stylesheet" href="static/doe7.css">
   <link rel="stylesheet" href="static/agent.css">
+  <link rel="stylesheet" href="static/app.css">
+  <link rel="stylesheet" href="static/stage2.css">
   <script>
-    /* 테마를 그리기 전에 적용해 첫 프레임 깜빡임을 막는다.
-       키는 머니메이트·브리핑과 공유('mm:theme') — 한 서비스에서 바꾸면 전체 반영. */
+    /* 테마를 그리기 전에 적용해 첫 프레임 깜빡임을 막는다. 키는 지환닷컴 서비스들과 공유('mm:theme'). */
     try {
       const saved = localStorage.getItem("mm:theme");
       if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
     } catch (e) { /* 사생활 모드 — 시스템 설정을 따른다 */ }
   </script>
 </head>
-<body>
-  <nav class="masthead">
-    <div class="masthead-inner">
+<body class="chat-app">
+<!-- 화면은 대화 하나다: 왼쪽 목록 · 가운데 대화(아래로 순서대로 쌓인다) · 아래 입력 · 오른쪽 진행 과정 서랍.
+     1단계(후보 탐색)와 2단계(Design Space 도출)가 같은 대화에 이어진다. flow.js가 카드를 제자리에 놓는다. -->
+<div class="app" id="app">
+  <aside class="side" id="side" aria-label="대화 목록">
+    <div class="side-top">
       <span class="brand">Formula 1</span>
-      <div class="masthead-actions">
-        <span class="pill" id="pill-rules">룰북 —</span>
-        <span class="pill" id="pill-llm">LLM —</span>
-        <button id="guide-open" class="btn btn-ghost" type="button">시스템 설명</button>
-        <button class="btn-icon" id="btn-theme" type="button" title="라이트/다크 전환" aria-label="라이트/다크 전환">◐</button>
+      <button class="icon-btn side-close" id="side-close" type="button" aria-label="목록 닫기">✕</button>
+    </div>
+    <button class="side-new" id="new-chat" type="button"><span aria-hidden="true">＋</span> 새 설계</button>
+    <nav class="side-list">
+      <h4 id="side-demos-h" hidden>시연</h4>
+      <div class="side-demos" id="side-demos"></div>
+      <h4>2단계 개발</h4>
+      <ul id="side-s2"><li class="side-empty">후보 카드의 ‘이 후보로 개발 착수’로 시작합니다</li></ul>
+    </nav>
+    <div class="side-foot">
+      <div class="side-model" id="side-model"></div>
+      <div class="side-pills"><span class="pill" id="pill-rules">룰북 —</span><span class="pill" id="pill-llm">LLM —</span></div>
+      <div class="side-actions">
+        <button id="guide-open" class="side-link" type="button">시스템 설명</button>
+        <button class="side-link" id="btn-theme" type="button" title="라이트/다크 전환" aria-label="라이트/다크 전환">화면 테마</button>
       </div>
     </div>
-  </nav>
+  </aside>
+  <div class="side-scrim" id="side-scrim" hidden></div>
 
-  <div class="page">
-    <header class="hero">
-      <h1>Formula 1</h1>
-      <p>AI가 처방을 제안하고, 결정론적 규칙이 검증한다 — 실패를 미리 겪어보는 제형 설계 엔진</p>
+  <main class="main" id="main">
+    <header class="topbar">
+      <button class="icon-btn" id="side-open" type="button" aria-label="목록 열기">☰</button>
+      <b class="topbar-title" id="chat-title">새 설계</b>
+      <button class="topbar-btn" id="drawer-toggle" type="button" aria-controls="drawer" aria-expanded="false">진행 과정</button>
     </header>
 
-    <!-- 두 개의 그래프 = 두 개의 작업 단계. 연구자가 ①에서 후보를 고르면 ②로 넘어간다.
-         두 그래프는 state를 공유하지 않고 불변 Handoff 하나로만 이어진다(명세 v6.1 §1.1). -->
-    <nav class="flow-tabs" role="tablist" aria-label="작업 단계">
-      <button class="flow-tab on" id="tab-discovery" role="tab" aria-selected="true" aria-controls="view-discovery" type="button">
-        <span class="flow-num">1</span><span class="flow-text"><b>후보 탐색</b><small>요청 → 후보 처방 목록</small></span>
-      </button>
-      <span class="flow-arrow" aria-hidden="true">→</span>
-      <button class="flow-tab" id="tab-studio" role="tab" aria-selected="false" aria-controls="view-studio" type="button">
-        <span class="flow-num">2</span><span class="flow-text"><b>개발 스튜디오</b><small>고른 후보 → CQA·FMEA·DoE → VERIFIED 영역</small></span>
-      </button>
-      <span class="flow-arrow" aria-hidden="true">·</span>
-      <button class="flow-tab" id="tab-v7" role="tab" aria-selected="false" aria-controls="view-v7" type="button">
-        <span class="flow-num">v7</span><span class="flow-text"><b>DoE v7.0 실험개발</b><small>6단계 · 단계별 승인 · CBD 문헌 재현 · DRAFT</small></span>
-      </button>
-    </nav>
+    <div class="thread" id="agent-log" role="log" aria-live="polite">
+      <!-- 처음 화면 — 가운데 입력칸(입력 에이전트)과 시연 카드. 첫 메시지를 보내면 입력칸이 아래로 내려간다. -->
+      <section class="hello" id="hello">
+        <h1>무엇을 설계할까요?</h1>
+        <p>약 이름(또는 SMILES)·대상 환자·제형·1회 용량을 말하면 설계를 준비합니다. 후보를 고르면 QTPP부터 ANOVA까지 이어서 진행합니다.</p>
+        <div class="hello-dock" id="hello-dock"></div>
+        <div class="scenario-cards" id="scenarios" aria-label="시연"></div>
+      </section>
+      <!-- 이 아래로 대화(agent.js)와 단계 카드(flow.js · stage2.js)가 순서대로 쌓인다 -->
+    </div>
 
-    <!-- 입력 에이전트 — 화면의 주 입력. 말로 요청하면 맥락을 읽고 제안 카드로 정리한다(agent.js).
-         폼 입력은 아래 "직접 입력"에 접혀 있는 보조 경로다. 두 탭이 같은 대화를 공유한다. -->
-    <section id="agent-panel" class="agent-panel" aria-label="입력 에이전트"></section>
+    <div class="dock" id="dock">
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+      <div class="dock-inner" id="dock-inner"></div>
+      <div class="dock-foot"><button type="button" class="linkish" id="manual-open">직접 입력</button>
+        <span>판정은 룰북이, 결정은 연구자가 합니다 · 연구용 초안</span></div>
+    </div>
+  </main>
 
-    <!-- 상태·오류 단일 통로. aria-live라 스크린리더도 읽는다. -->
-    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+  <!-- 오른쪽 진행 과정 서랍 — 에이전트 흐름 · 해설 · 트레이스. 탭을 누르면 열리고, 크게/작게 바꿀 수 있다. -->
+  <aside class="drawer" id="drawer" aria-label="진행 과정" data-size="closed">
+    <div class="drawer-rail" role="tablist" aria-label="진행 과정 탭">
+      <button type="button" class="rail-tab" data-pane="flow" role="tab">에이전트 흐름</button>
+      <button type="button" class="rail-tab" data-pane="narr" role="tab">지금 무슨 일이</button>
+      <button type="button" class="rail-tab" data-pane="trace" role="tab">실행 트레이스</button>
+    </div>
+    <div class="drawer-body">
+      <div class="drawer-head">
+        <b id="drawer-title">에이전트 흐름</b>
+        <div class="drawer-ctrl">
+          <button type="button" class="icon-btn" id="drawer-size" aria-label="크게 보기" title="크게 / 작게">⤢</button>
+          <button type="button" class="icon-btn" id="drawer-close" aria-label="닫기">✕</button>
+        </div>
+      </div>
+      <div class="drawer-pane" data-pane="flow">
+        <p class="pane-help">노드가 실행되면 점등 · 심사관은 조건에 맞을 때만 소집</p>
+        <svg id="graph" viewBox="0 0 980 300" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="legend">
+          <span><i class="sw det"></i>결정론 (오차 0%)</span>
+          <span><i class="sw llm"></i>LLM 판단</span>
+          <span><i class="sw jud"></i>동적 소집 심사관</span>
+          <span><i class="sw loop"></i>되먹임 (규칙 반려 → 재설계)</span>
+        </div>
+      </div>
+      <div class="drawer-pane" data-pane="narr" hidden>
+        <p class="pane-help">실행 단계마다 어느 계층이 무엇을 왜 하는지</p>
+        <div id="scenario-goal" class="scenario-goal" hidden></div>
+        <div id="narration" class="narration" role="log" aria-live="polite">
+          <div class="empty">설계를 실행하면 단계별 해설이 여기에 흐릅니다.</div>
+        </div>
+      </div>
+      <div class="drawer-pane" data-pane="trace" hidden>
+        <p class="pane-help">규칙 발동을 누르면 원본 CSV 행과 출처를 봅니다</p>
+        <div id="trace" class="trace" role="log" aria-live="polite" aria-relevant="additions"></div>
+      </div>
+    </div>
+  </aside>
+</div>
 
-    <div id="view-discovery" role="tabpanel" aria-labelledby="tab-discovery">
-    <!-- 보조 경로: 폼으로 직접 요청·구조식·실측값을 넣는다. 에이전트의 제안 카드도 이 폼 값으로 실행된다. -->
-    <details class="manual" id="manual">
-      <summary>직접 입력 <span class="manual-opt">폼으로 요청 · SMILES · 고정 부형제 · 실측값을 넣어 바로 실행</span></summary>
-    <section class="composer">
-      <label class="sr-only" for="request">설계 요구</label>
-      <input id="request" type="text" autocomplete="off"
-             value="소아용 플루옥세틴 정제를 설계해줘"
-             placeholder="설계 요구를 자연어로 입력 (예: 소아용 해열제 정제)">
-      <label class="sr-only" for="smiles">SMILES (선택)</label>
-      <input id="smiles" type="text" autocomplete="off" placeholder="SMILES (선택)">
-      <label class="sr-only" for="pinned">반드시 포함할 부형제</label>
-      <input id="pinned" type="text" autocomplete="off"
-             placeholder="반드시 포함할 부형제 (쉼표, 선택)">
-      <button id="run">설계 실행</button>
-      <button id="replay" class="ghost" disabled>재생</button>
-    </section>
-
-    <!-- 이미 갖고 있는 실측값을 처음부터 넣는 자리 (선택).
-         비워 두면 시스템이 "모른다"로 판정하고 확인시험을 먼저 요청한다 —
-         값을 넣으면 그만큼 선행 시험이 줄고, 룰 판정 자체가 실측 기반으로 바뀐다. -->
-    <details class="inputs" id="inputs">
+<!-- 대화에 놓일 카드들 — flow.js가 필요한 순간에 대화로 옮긴다(아이디는 app.js가 쓴다). -->
+<div class="stash" id="stash" hidden>
+  <!-- 실험 데이터 입력 카드 -->
+  <section class="card inputs-card" id="card-inputs">
+    <details class="inputs" id="inputs" open>
       <summary>실험 데이터 입력 <span class="inputs-opt">선택 · 비워도 실행됩니다</span></summary>
       <p class="inputs-help">
-        이미 측정한 값이 있으면 넣어 주세요. <b>실측값은 추정보다 우선</b>하며,
-        각 항목이 무엇을 여는지 아래에 적어 두었습니다. 넣지 않으면 시스템은 “모른다”로 보고
+        이미 측정한 값이 있으면 넣어 주세요. <b>실측값은 추정보다 우선</b>하며, 넣지 않으면 시스템은 “모른다”로 보고
         후보는 그대로 내되, 전략이 갈리는 지점에서만 <b>데이터 요청</b>을 남깁니다.
       </p>
       <div id="inputs-body" class="inputs-grid"></div>
@@ -99,230 +131,117 @@
         <span id="inputs-count" class="inputs-count"></span>
       </div>
     </details>
+  </section>
+
+  <!-- API 물리화학 카드(가로) — 구조 | 구조 플래그 · Descriptor · 물성 추정(줄로 구분) -->
+  <section class="card chem-card" id="panel-chem">
+    <h2>API 물리화학 <small>RDKit</small></h2>
+    <div id="chem-empty" class="empty">구조와 descriptor를 계산하는 중입니다…</div>
+    <div id="chem-body" class="chem-row" hidden>
+      <div class="chem-mol">
+        <div class="mol" id="mol-svg"></div>
+        <div class="kv" id="mol-id"></div>
+      </div>
+      <div class="chem-sections">
+        <div class="chem-sec"><h3>구조 플래그</h3><div class="flags" id="mol-flags"></div></div>
+        <div class="chem-sec"><h3>Descriptor</h3><table class="desc" id="mol-desc"></table></div>
+        <div class="chem-sec"><h3>물성 추정</h3><div id="mol-est"></div><div id="mol-warn"></div></div>
+        <div class="chem-sec" id="pred-panel" hidden><h3>물성 예측 · BCS · 시험 계획</h3><div id="pred-body"></div></div>
+        <div class="chem-sec" id="lit-panel" hidden><h3>문헌 조사</h3><div id="lit-body"></div></div>
+      </div>
+    </div>
+    <details class="smarts" id="smarts">
+      <summary>구조 패턴(SMARTS) 직접 검사</summary>
+      <p class="smarts-help">배합금기 판정은 “이 분자에 이 작용기가 있는가”에서 시작합니다. 그 판별에 쓰는 <b>SMARTS 패턴</b>을 직접 대 볼 수 있습니다.
+        염은 판정 계층과 같게 <b>parent를 추출한 뒤</b> 매칭합니다.</p>
+      <label class="sr-only" for="sm-smiles">검사할 SMILES</label>
+      <input id="sm-smiles" type="text" autocomplete="off" placeholder="SMILES (비우면 이번 실행의 분자)">
+      <label class="sr-only" for="sm-pattern">SMARTS 패턴</label>
+      <input id="sm-pattern" type="text" autocomplete="off" placeholder="SMARTS 패턴 (예: [NX3][CX3](=[OX1]))">
+      <div class="smarts-presets" id="sm-presets"></div>
+      <button id="sm-run" type="button">패턴 검사</button>
+      <div id="sm-out"></div>
     </details>
+  </section>
 
-    <!-- 시연 시나리오 — 누르면 바로 실행되고, 아키텍처 해설이 실행에 맞춰 흐른다.
-         각 시나리오가 실제로 어떤 경로를 밟는지 측정해서 고른 조합이다. -->
-    <section class="scenarios" aria-label="시연 시나리오">
-      <div class="scenarios-head">
-        <span class="scenarios-label">시연 시나리오 — 누르면 바로 실행됩니다</span>
-        <span class="scenarios-hint">실행되는 동안 오른쪽에 아키텍처 해설이 단계별로 뜹니다 · 시간은 대회 API 기준(무료 모델은 분당 토큰 한도로 약 2–3배)</span>
-      </div>
-      <div id="scenarios" class="scenario-cards"></div>
+  <!-- 데이터 요청 카드(비차단) -->
+  <section class="card drq" id="drq" hidden aria-live="polite">
+    <header>
+      <h3>데이터 요청 <small>비차단 · 값을 몰라도 진행</small></h3>
+      <p>값을 몰라도 후보는 이미 설계돼 있습니다. 값을 넣으면 전략과 신뢰도를 다시 계산하고, 건너뛰면 예측값으로 계속합니다.</p>
+    </header>
+    <div id="drq-body"></div>
+  </section>
+
+  <!-- 후보 처방 카드 -->
+  <section class="card cands-card" id="panel-cands">
+    <h2>후보 처방 <small id="cand-count"></small></h2>
+    <div id="cands" class="cands"><div class="empty">아직 생성된 후보가 없습니다.</div></div>
+    <div id="consensus" class="consensus" hidden></div>
+  </section>
+
+  <!-- 직접 입력(보조 경로) — 입력 에이전트 없이 폼으로 실행 -->
+  <details class="manual" id="manual">
+    <summary>직접 입력</summary>
+    <section class="composer">
+      <label class="sr-only" for="request">설계 요구</label>
+      <input id="request" type="text" autocomplete="off" value="" placeholder="설계 요구를 자연어로 입력 (예: 소아용 해열제 정제)">
+      <label class="sr-only" for="smiles">SMILES (선택)</label>
+      <input id="smiles" type="text" autocomplete="off" placeholder="SMILES (선택)">
+      <label class="sr-only" for="pinned">반드시 포함할 부형제</label>
+      <input id="pinned" type="text" autocomplete="off" placeholder="반드시 포함할 부형제 (쉼표, 선택)">
+      <button id="run">설계 실행</button>
+      <button id="replay" class="ghost" disabled>재생</button>
     </section>
+  </details>
+</div>
 
-    <main class="grid">
-      <!-- ── 좌: 분자 / 스펙 (참고 자료 · 바깥) ───────────────────────── -->
-      <aside class="panel" id="panel-chem">
-        <h2>API 물리화학 <small>RDKit</small></h2>
-        <div id="chem-empty" class="empty">설계를 실행하면 구조와 descriptor가 표시됩니다.</div>
-        <div id="chem-body" hidden>
-          <div class="mol" id="mol-svg"></div>
-          <div class="kv" id="mol-id"></div>
-          <h3>구조 플래그</h3>
-          <div class="flags" id="mol-flags"></div>
-          <h3>Descriptor</h3>
-          <table class="desc" id="mol-desc"></table>
-          <h3>물성 추정</h3>
-          <div id="mol-est"></div>
-          <div id="mol-warn"></div>
-        </div>
-
-        <div id="pred-panel" hidden>
-          <h3>물성 예측 · BCS · 시험 계획</h3>
-          <div id="pred-body"></div>
-        </div>
-        <div id="lit-panel" hidden>
-          <h3>문헌 조사</h3>
-          <div id="lit-body"></div>
-        </div>
-
-        <!-- SMARTS 직접 검사 — 배합금기 판정의 출발점을 사람이 확인할 수 있게 -->
-        <details class="smarts" id="smarts">
-          <summary>구조 패턴(SMARTS) 직접 검사</summary>
-          <p class="smarts-help">
-            배합금기 판정은 “이 분자에 이 작용기가 있는가”에서 시작합니다.
-            그 판별에 쓰는 <b>SMARTS 패턴</b>을 여기서 직접 대 볼 수 있습니다.
-            염은 판정 계층과 같게 <b>parent를 추출한 뒤</b> 매칭합니다.
-          </p>
-          <label class="sr-only" for="sm-smiles">검사할 SMILES</label>
-          <input id="sm-smiles" type="text" autocomplete="off"
-                 placeholder="SMILES (비우면 위 실행 결과 사용)">
-          <label class="sr-only" for="sm-pattern">SMARTS 패턴</label>
-          <input id="sm-pattern" type="text" autocomplete="off"
-                 placeholder="SMARTS 패턴 (예: [NX3][CX3](=[OX1]))">
-          <div class="smarts-presets" id="sm-presets"></div>
-          <button id="sm-run" type="button">패턴 검사</button>
-          <div id="sm-out"></div>
-        </details>
-      </aside>
-
-      <!-- ── 중앙(메인): 후보 확인·근거 입력·승인·배치·결과 입력 ─────────
-           연구자가 실제로 값을 입력하고 버튼을 누르는 자리라서 가운데 넓은 칸에 둔다.
-           그래프·해설·트레이스는 "지켜보는" 화면이라 오른쪽 좁은 칸으로 옮겼다
-           (2026-09 UI 재배치 — 입력이 메인, 관측은 바깥). -->
-      <section class="panel main-col" id="panel-cands" aria-label="후보 확인과 다음 행동">
-        <h2>후보 처방 <small id="cand-count"></small></h2>
-        <div id="cands" class="cands">
-          <div class="empty">아직 생성된 후보가 없습니다.</div>
-        </div>
-        <div id="consensus" class="consensus" hidden></div>
-
-        <!-- v3: 근거 충족 게이트·장기 실행 작업함·배치 결과 루프(실행 가능 프로토콜·
-             승인·배치 피드백)는 이 빌드의 출력 경계 밖이다(§1, IMPLEMENTATION_GUIDE.md).
-             지우지 않고 주석으로만 남긴다 — formula/lifecycle/·formula/evidence/gate.py도
-             그대로다. 되돌릴 때는 이 블록과 web/server.py·app.js의 대응 주석을 함께 푼다.
-
-        <div id="evidence" class="evidence" hidden></div>
-        <section class="workflow" id="workflow" hidden aria-live="polite"> ... </section>
-        <details class="labloop" id="labloop"> ... </details>
-        -->
-
-        <!-- ── v3 데이터 요청 (lab-in-the-loop, 비차단) ──────────────────
-             판정이 실제로 갈리는 지점에서만 구체적 실측(XRPD·DSC 등)을 요청한다.
-             이 요청은 무엇도 막지 않는다 — 후보는 이미 위에 나와 있고, 값을 넣으면
-             전략과 신뢰도만 다시 계산된다(그래프를 다시 돌리지 않는다). -->
-        <section class="drq" id="drq" hidden aria-live="polite">
-          <header>
-            <h3>데이터 요청 <small>비차단 · 값을 몰라도 진행</small></h3>
-            <p>값을 몰라도 후보는 이미 나와 있습니다. Tier가 낮은(적은 시료로 되는) 항목부터
-              채우면 전략이 좁혀지고 후보 신뢰도가 grounded로 올라갑니다.</p>
-          </header>
-          <div id="drq-body"></div>
-        </section>
-      </section>
-
-      <!-- ── 우: 에이전트 그래프 · 해설 · 트레이스 (관측 · 바깥) ─────────
-           클릭할 것도, 값을 넣을 것도 없는 "지켜보는" 화면이라 좁은 칸으로 뺐다. -->
-      <section class="center observe-col" aria-label="실행 관측 (그래프·해설·트레이스)">
-        <div class="panel graph-panel">
-          <h2>에이전트 흐름 <small>노드가 실행되면 점등 · 심사관은 조건에 맞을 때만 소집</small></h2>
-          <svg id="graph" viewBox="0 0 980 300" preserveAspectRatio="xMidYMid meet"></svg>
-          <div class="legend">
-            <span><i class="sw det"></i>결정론 (오차 0%)</span>
-            <span><i class="sw llm"></i>LLM 판단</span>
-            <span><i class="sw jud"></i>동적 소집 심사관</span>
-            <span><i class="sw loop"></i>되먹임 (규칙 반려 → 재설계)</span>
-          </div>
-        </div>
-
-        <!-- 실행에 맞춰 흐르는 아키텍처 해설 — 지금 어느 계층이 무엇을 왜 하는지 -->
-        <div class="panel narration-panel">
-          <h2>지금 무슨 일이 일어나고 있나 <small>실행 단계마다 어느 계층이 무엇을 왜 하는지</small></h2>
-          <div id="scenario-goal" class="scenario-goal" hidden></div>
-          <div id="narration" class="narration" role="log" aria-live="polite">
-            <div class="empty">시나리오를 누르거나 설계를 실행하면 단계별 해설이 여기에 흐릅니다.</div>
-          </div>
-        </div>
-        <div class="panel trace-panel">
-          <h2>실행 트레이스 <small>규칙 발동을 클릭하면 원본 CSV 행과 출처를 봅니다</small></h2>
-          <div id="trace" class="trace" role="log" aria-live="polite" aria-relevant="additions"></div>
-        </div>
-      </section>
-    </main>
-    </div>
-
-    <!-- ② 개발 스튜디오 — ExperimentalDevelopmentGraph (명세 v6.1).
-         화면의 주인공은 "지금 시스템이 연구자에게 묻는 것"이다(가운데 질문 카드).
-         결과(모델·영역·확인점)는 그 대화의 흐름을 따라 오른쪽에 쌓인다. studio.js가 채운다. -->
-    <!-- DoE v7.0 — 실험개발 study(샌드박스, 단계마다 연구자 승인) = doe7wizard.js. 검증 비교(CBD 재현 요약 · 범위 gate) = doe7.js. -->
-    <section id="view-v7" role="tabpanel" aria-labelledby="tab-v7" hidden>
-      <div class="d7-banner" id="d7-banner">DRAFT / RESEARCH USE ONLY / NOT A GMP INSTRUCTION</div>
-      <div class="d7-pkg" id="d7-pkg"></div>
-      <div class="d7-sub" role="tablist" aria-label="v7 보기">
-        <button type="button" class="d7-subtab on" data-v="wizard" aria-selected="true">실험개발 study</button>
-        <button type="button" class="d7-subtab" data-v="replay" aria-selected="false">CBD 재현 요약</button>
-        <button type="button" class="d7-subtab" data-v="sandbox" aria-selected="false">범위 gate 계산기</button>
-      </div>
-      <div id="d7-wizard" class="d7-wizard"></div>
-      <div id="d7-replay" hidden></div>
-      <div id="d7-sandbox" hidden></div>
-    </section>
-
-    <section id="view-studio" role="tabpanel" aria-labelledby="tab-studio" hidden>
-      <div class="studio-bar">
-        <div class="studio-id" id="studio-id">
-          <b>아직 연 study가 없습니다</b>
-          <span>①에서 후보 카드의 <em>이 후보로 개발 착수</em>를 누르거나, 가이드 시연으로 시작하세요.</span>
-        </div>
-        <div class="studio-bar-actions">
-          <label class="sr-only" for="studio-list">최근 study</label>
-          <select id="studio-list"><option value="">최근 study…</option></select>
-          <button id="studio-demo" class="primary" type="button">▶ 가이드 시연 — Lornoxicam 분산정</button>
-        </div>
-      </div>
-      <div id="studio-empty" class="studio-empty">
-        <h3>여기서는 시스템이 묻고, 연구자가 정합니다</h3>
-        <ol>
-          <li><b>후보 고정</b> — 고른 처방 하나(<code>candidate_id@version</code>)가 불변 Handoff가 됩니다.</li>
-          <li><b>연구자가 계약을 정한다</b> — CQA 규격, FMEA 처리 방향, 요인 범위는 시스템이 <em>제안</em>하고 연구자가 <em>승인</em>합니다.</li>
-          <li><b>숫자는 코드가</b> — 설계행렬·회귀·예측구간·영역은 결정론 엔진이 계산하고, 판정은 룰북 171개 규칙이 합니다.</li>
-          <li><b>확인배치로 끝난다</b> — 독립 배치 3개가 잠근 예측구간 안에 들어와야 <b>VERIFIED</b>입니다.</li>
-        </ol>
-      </div>
-      <div class="studio-grid" id="studio-grid" hidden>
-        <nav class="studio-rail" aria-label="개발 단계"><ol id="studio-phases"></ol>
-          <div class="studio-mode" id="studio-mode"></div>
-        </nav>
-        <main class="studio-main">
-          <section class="guide-bar" id="studio-guide" aria-live="polite" hidden></section>
-          <section class="ask" id="studio-ask" aria-live="polite"></section>
-          <section class="dialogue">
-            <h3>지금까지의 대화 <small>시스템 판정과 연구자 결정 — 최신이 위</small></h3>
-            <ol id="studio-log"></ol>
-          </section>
-        </main>
-        <aside class="studio-side" aria-label="결과와 근거">
-          <div class="side-tabs" role="tablist">
-            <button class="side-tab on" data-tab="results" type="button">결과</button>
-            <button class="side-tab" data-tab="rules" type="button">규칙 판정</button>
-            <button class="side-tab" data-tab="trace" type="button">lineage</button>
-          </div>
-          <div id="studio-side-body"></div>
-        </aside>
-      </div>
-    </section>
+<!-- 직접 입력 시트 -->
+<div class="sheet" id="manual-sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-label="직접 입력">
+    <div class="sheet-head"><b>직접 입력</b><button type="button" class="icon-btn" id="manual-close" aria-label="닫기">✕</button></div>
+    <p class="pane-help">입력 에이전트 없이 폼으로 바로 실행합니다. 실험 데이터는 대화의 ‘실험 데이터 입력’ 카드 값을 함께 씁니다.</p>
+    <div id="manual-slot"></div>
   </div>
+</div>
 
-  <!-- 규칙 근거 드릴다운 -->
-  <div id="modal" class="modal" hidden>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-label="규칙 근거">
-      <button class="close" id="modal-close" type="button" aria-label="닫기">✕</button>
-      <div id="modal-body"></div>
+<div id="modal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="규칙 근거">
+    <button class="close" id="modal-close" type="button" aria-label="닫기">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- 시스템 설명 오버레이 (explainer.js가 내용을 채운다) -->
+<div id="guide" class="guide" hidden>
+  <div class="guide-shell" role="dialog" aria-modal="true" aria-label="Formula 1 시스템 설명">
+    <nav class="guide-rail">
+      <div class="guide-rail-head">
+        <strong>어떻게 동작하나</strong>
+        <small id="guide-count"></small>
+      </div>
+      <ol id="guide-nav"></ol>
+      <button id="guide-close-rail" class="guide-skip" type="button">닫고 직접 실행하기 →</button>
+    </nav>
+    <div class="guide-main">
+      <button class="guide-x" id="guide-close" type="button" aria-label="닫기">✕</button>
+      <div class="guide-body" id="guide-body"></div>
+      <footer class="guide-foot">
+        <div class="guide-dots" id="guide-dots"></div>
+        <div class="guide-nav-btns">
+          <button id="guide-prev" class="ghost" type="button">← 이전</button>
+          <button id="guide-next" type="button">다음 →</button>
+        </div>
+      </footer>
     </div>
   </div>
+</div>
 
-  <!-- 시스템 설명 오버레이 (explainer.js가 내용을 채운다) -->
-  <div id="guide" class="guide" hidden>
-    <div class="guide-shell" role="dialog" aria-modal="true" aria-label="Formula 1 시스템 설명">
-      <nav class="guide-rail">
-        <div class="guide-rail-head">
-          <strong>어떻게 동작하나</strong>
-          <small id="guide-count"></small>
-        </div>
-        <ol id="guide-nav"></ol>
-        <button id="guide-close-rail" class="guide-skip" type="button">닫고 직접 실행하기 →</button>
-      </nav>
-      <div class="guide-main">
-        <button class="guide-x" id="guide-close" type="button" aria-label="닫기">✕</button>
-        <div class="guide-body" id="guide-body"></div>
-        <footer class="guide-foot">
-          <div class="guide-dots" id="guide-dots"></div>
-          <div class="guide-nav-btns">
-            <button id="guide-prev" class="ghost" type="button">← 이전</button>
-            <button id="guide-next" type="button">다음 →</button>
-          </div>
-        </footer>
-      </div>
-    </div>
-  </div>
-
-  <script src="static/explainer.js"></script>
-  <script src="static/app.js"></script>
-  <script src="static/studio.js"></script>
-  <script src="static/surface3d.js"></script>
-  <script src="static/doe7.js"></script>
-  <script src="static/doe7wizard.js"></script>
-  <script src="static/agent.js"></script>
+<script src="static/explainer.js"></script>
+<script src="static/app.js"></script>
+<script src="static/surface3d.js"></script>
+<script src="static/stage2.js"></script>
+<script src="static/agent.js"></script>
+<script src="static/flow.js"></script>
 </body>
 </html>

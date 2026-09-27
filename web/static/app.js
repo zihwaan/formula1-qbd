@@ -375,17 +375,13 @@ function renderCandidates() {
       ${readiness}${refinements}
       <div class="chips">${chips}</div>${judges}
       ${gate && gate.passed ? `<button type="button" class="dev-start" data-cand="${esc(id)}"
-         title="이 후보 버전을 불변 Handoff로 고정하고 CQA·FMEA·DoE 개발을 시작합니다">이 후보로 개발 착수 →</button>
-         <button type="button" class="dev-start dev-v7" data-cand="${esc(id)}"
-         title="DoE v7.0 실험개발 — 6단계를 단계마다 승인하며 진행합니다(샌드박스)">v7 실험개발로 시작 →</button>` : ""}`;
+         title="이 처방을 프로토타입으로 받아 2단계(QTPP · CQA · 위험평가 · DoE · 회귀식 · 곡면 · ANOVA)를 시작합니다">이 후보로 개발 착수 →</button>` : ""}`;
     card.querySelectorAll(".chip").forEach((chip) => {
       chip.onclick = () => showRule(chip.dataset.rule);
     });
     // 후보 1위가 자동으로 개발에 들어가지 않는다(명세 v6.1 §0 경계 1) — 연구자가 고른 후보만 넘어간다.
     const dev = card.querySelector(".dev-start");
-    if (dev) dev.onclick = () => window.F1Studio && window.F1Studio.startFromCandidate(runId, dev.dataset.cand);
-    const v7 = card.querySelector(".dev-v7");
-    if (v7) v7.onclick = () => window.F1Doe7Wizard && window.F1Doe7Wizard.startFromCandidate(runId, v7.dataset.cand);
+    if (dev) dev.onclick = () => window.F1Stage2 && window.F1Stage2.startFromCandidate(runId, dev.dataset.cand);
     box.appendChild(card);
   }
 }
@@ -596,10 +592,12 @@ function startRunWith(p) {
   $("request").value = p.request || "";
   $("smiles").value = p.smiles || "";
   $("pinned").value = (p.required_excipients || []).join(", ");
+  // 대화의 '실험 데이터 입력' 카드에 연구자가 넣은 값은 지우지 않는다 — 제안에 있는 키만 채운다
   $("inputs-body").querySelectorAll("input").forEach((el) => {
     const v = (p.measured_params || {})[el.dataset.key];
+    if (v === undefined) return;
     if (el.dataset.type === "bool") el.checked = v === true;
-    else el.value = v === undefined ? "" : String(v);
+    else el.value = String(v);
   });
   if (typeof updateInputCount === "function") updateInputCount();
   activeScenario = null;
@@ -607,7 +605,7 @@ function startRunWith(p) {
   return true;
 }
 window.F1Discovery = { startRunWith, submitMeasurements: (m, g) => submitMeasurements(m, g || "user_statement", "agent"),
-  runId: () => runId, running: () => running };
+  runId: () => runId, running: () => running, pending: () => pendingRequests.length };
 
 function resetView() {
   candidates.clear(); tokenBuffers.clear(); degraded.clear();
@@ -628,9 +626,7 @@ async function startRun() {
   if (running) return;
   const request = $("request").value.trim();
   if (!request) {
-    notice("설계 요구를 입력해 주세요 — 입력 에이전트에게 말로 요청하거나 직접 입력 폼을 채우세요.", "warn");
-    $("manual").open = true;
-    $("request").focus();
+    notice("설계 요구를 입력해 주세요 — 대화창에 말로 요청하거나 직접 입력 폼을 채우세요.", "warn");
     return;
   }
   resetView();
@@ -667,7 +663,7 @@ async function startRun() {
         + data.rejected_inputs.join(", "), "warn");
     }
     runId = data.run_id;
-    document.dispatchEvent(new CustomEvent("f1:runstart", { detail: { runId } }));
+    document.dispatchEvent(new CustomEvent("f1:runstart", { detail: { runId, request, scenario: activeScenario && activeScenario.title } }));
     connect(api(`/api/runs/${runId}/stream`));
   } catch (err) {
     setRunning(false);
@@ -1255,11 +1251,11 @@ const SCENARIOS = [
       시스템은 측정값을 대신 채우지 않습니다.`,
   },
   {
-    id: "studio",
-    title: "후보 이후 — 실험계획부터 확인배치까지",
-    proves: "② 개발 스튜디오 · 가이드 시연",
-    duration: "약 3분",
-    studio: true,
+    id: "stage2",
+    title: "후보 이후 — QTPP부터 ANOVA까지(CBD 구강붕해정)",
+    proves: "2단계 · Design Space 도출",
+    duration: "단계마다 승인",
+    stage2: true,
   },
 ];
 
@@ -1280,9 +1276,9 @@ function buildScenarios() {
         return;
       }
       const scenario = SCENARIOS[Number(btn.dataset.i)];
-      // ② 개발 스튜디오 시연 — 후보 탐색을 돌리지 않고 스튜디오 탭에서 가이드 시연을 연다
-      if (scenario.studio) {
-        if (window.F1Studio) window.F1Studio.startDemo();
+      // 2단계 시연 — 후보 탐색을 돌리지 않고 논문 프로토타입(Monton 2026 Table 1)으로 2단계를 연다
+      if (scenario.stage2) {
+        if (window.F1Stage2) window.F1Stage2.startCbd();
         return;
       }
       activeScenario = scenario;

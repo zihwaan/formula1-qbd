@@ -11,13 +11,22 @@ CHROME=<chrome 실행 파일 경로> node tests/browser/verify.mjs    http://loc
 CHROME=<chrome 실행 파일 경로> node tests/browser/audit.mjs     http://localhost:8000/
 CHROME=<chrome 실행 파일 경로> node tests/browser/evidence.mjs  http://localhost:8000/
 CHROME=<chrome 실행 파일 경로> node tests/browser/scenarios.mjs http://localhost:8000/
+CHROME=<chrome 실행 파일 경로> node tests/browser/agent.mjs     http://localhost:8000/
+CHROME=<chrome 실행 파일 경로> node tests/browser/stage2.mjs    http://localhost:8000/
 ```
+
+화면은 대화 하나다 — 처음엔 가운데 입력칸(`#hello #agent-form`), 첫 메시지 뒤 아래로 내려간다. 1단계 카드(`#card-inputs` → `#panel-chem` →
+`#drq` → `#panel-cands`)는 `flow.js`가 `#agent-log`에 순서대로 옮겨 놓으므로, 테스트는 `#agent-log #...`로 존재와 순서를 확인한다.
+직접 입력 폼은 `#manual-open` → 시트(`#manual-sheet`), 그래프·해설·트레이스는 오른쪽 서랍(`.rail-tab[data-pane]`).
+무료 Groq의 일일 토큰 한도가 바닥나면 후보가 비어 scenarios/agent가 실패한다 — `F1_LLM=dacon`(로컬 컨테이너에 대회 키)으로 같은 흐름을 확인한다.
 
 맥이면 `CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` 를 그대로 쓰면 된다.
 
-- `verify.mjs` — 상호작용 회귀 33건: 설명 오버레이 열기/닫기/ESC/배경클릭, 8단계 중 5개
-  레이아웃이 셸 안에 들어오는지, 설계 실행 → 규칙 모달 열고 닫기, 분자·그래프·트레이스·합의
-  렌더링, 테마 전환과 새로고침 유지, 모바일 뷰포트, 콘솔 오류 0건.
+- `verify.mjs` — 상호작용 회귀: 설명 오버레이 열기/닫기/ESC/배경클릭과 단계별 레이아웃, 직접 입력 시트 → 설계 실행 →
+  대화에 요청 말풍선·물리화학 카드(가로)·데이터 요청(있으면 건너뛰기) → 후보 → 규칙 모달, 오른쪽 탭(흐름·해설·트레이스, 크게/닫기),
+  테마 전환과 새로고침 유지, 모바일 뷰포트, 콘솔 오류 0건.
+- `agent.mjs` — 가운데 입력칸 → 미완성 카드(용량 되묻기) → 완성 카드 밑 “실험 데이터값을 입력하시겠습니까?” + 입력 카드 →
+  설계 실행 → 물리화학 → 데이터 요청 → 건너뛰기 → 후보 → 에이전트가 먼저 알림 → “1위 후보로 개발 착수” → 2단계 프로토타입 카드, XSS, 휴대폰.
 - `evidence.mjs` — **이중 루프 회귀 26건**: 실험 데이터 선택 입력(카탈로그 렌더·허용목록 거부),
   근거 게이트(실행 불가 초안 → 확인시험 → 승인 → 실행 가능), 확인시험 수치가 실측값 자리에
   반영되는지, 배치 결과 루프가 그대로 도는지, 4개 화면폭 가로 오버플로. 여기서 실제 결함
@@ -43,16 +52,10 @@ CHROME=<chrome 실행 파일 경로> node tests/browser/scenarios.mjs http://loc
 
 전부 실제 LLM 실행을 태우므로 한 번에 1~3분 걸린다.
 
-## DoE v7.0 (LLM 없음 — `FORMULA1_LLM_PROVIDER=none` 컨테이너로 충분)
+## 2단계 (LLM 없음 — 논문 값으로 진행)
 
-- `doe7wizard.mjs` — 실험개발 마법사로 CBD 문헌 재현 study를 클릭만으로 끝까지 간다(데스크톱·390px). 채우기는 폼만
-  채우는지, 채우기 전 승인이 판정과 함께 막히는지, 기준 처방값이 center로 들어가지 않는지, 사유 없는 플래그 승인이 거부되는지,
-  반응 3 × CCS 3수준 곡면 격자와 모형 전환, 플래그 승인 뒤 REGION_EMPTY(DR018) → RB18 LB012 → 재검토로 FMEA에 돌아가는지, 3D(또는 2D 대체) 곡면, 모든 단계 넘침 0.
-- `doe7dataset.mjs` — '데이터셋으로 시작'에 실데이터(CBD를 공통 형식으로 옮긴 `/datasets/cbd_odt`)를 붙여 넣고 형식 오류 목록 →
-  실행 행렬 가져오기 → 결과 CSV 붙여넣기(시험법 버전·독립성 열이 없으면 RB12가 막음) → 모델·곡면 격자 9칸.
-- `doe7full.mjs` — **로컬 컨테이너 전용**(테스트 전용 합성 데이터라 운영 주소에서는 스스로 멈춘다). 마법사의 모든 폼을 클릭으로:
-  feasibility 경계 실패 → LB002 → 재제출 → 통과 → FCCD → 결과 → 영역 → 확인계획 잠금 → 문헌 lot 거부(VR015) → 독립 확인 batch →
-  최종 승인 → VERIFIED(승인 지점 9개 모두), 이어서 요인 1개 데이터셋 → 예측 곡선.
-- `doe7.mjs` — 같은 탭의 검증 비교 하위 탭(CBD 재현 요약 · 범위 gate 계산기).
-- `doe7candidate.mjs` — **LLM 1회**: ① 설계 실행이 끝난 뒤 통과 후보의 "v7 실험개발로 시작" → 신규 API study, RB01이
-  설비·배치 규모·등급을 요청하는지.
+- `stage2.mjs` — CBD 시연 카드로 2단계 12단계를 클릭만으로 끝까지: 프로토타입(Table 1) 실행 → QTPP 행 추가·삭제와 목표를 비운
+  승인 차단(QTPP_FIELD) → 논문 값 채우기·승인 → 원료·제형 행렬이 논문 Table 5·7과 같음 → 변수 칩·빈 칸 행 만들기와 근거 없는 행 차단 →
+  DoE 변수 4개 제한 → 위험평가 PDF → 설계 표 요인·반응 열 추가/삭제·행 추가·빈 표 저장 차단 → Table 9(17 run) → Hardness coded 식 = Table 10 →
+  곡면 격자 9칸 → 그림 첨부 → ANOVA Model SS 10.73 · p 0.0005 → 최종 PDF → 설계 표 다시 열기(뒤 단계 stale), 사이드바·오른쪽 서랍.
+  1440과 390 두 폭, 가로 넘침 0, 콘솔 오류 0. `node tests/browser/stage2.mjs <url> [스크린샷 폴더]`.

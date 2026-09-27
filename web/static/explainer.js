@@ -118,17 +118,17 @@
     {
       nav: "전체 흐름 ★",
       kicker: "시스템 구조",
-      title: "요청 하나가 검증된 처방 영역이 되기까지 — 그래프 둘, 연결은 하나",
-      lead: `시스템은 <b>두 개의 그래프</b>로 나뉜다. ① <b>후보 탐색</b>은 요청을 받아 전략을 좁히고
-             후보 처방을 경쟁시켜 규칙으로 걸러 <b>후보 목록</b>을 낸다. ② <b>개발 스튜디오</b>는 연구자가
-             그중 <b>하나를 골랐을 때만</b> 시작해, 그 처방으로 실험계획을 세우고 결과를 받아
-             <b>검증된 운전 영역(design space)</b>까지 간다. 둘은 내부 상태를 공유하지 않고,
-             연구자가 고른 후보를 얼려 둔 <b>불변 Handoff</b> 하나로만 이어진다.`,
+      title: "요청 하나가 Design Space가 되기까지 — 두 단계, 연결은 후보 하나",
+      lead: `시스템은 <b>두 단계</b>로 나뉜다. ① <b>후보 탐색</b>은 요청을 받아 전략을 좁히고
+             후보 처방을 경쟁시켜 규칙으로 걸러 <b>후보 목록</b>을 낸다. ② <b>2단계</b>는 연구자가
+             그중 <b>하나를 골라 [이 후보로 개발 착수]를 눌렀을 때만</b> 시작해, 그 처방을 프로토타입으로
+             QTPP → CQA → 위험평가 → DoE 변수 → 실험 설계 → 회귀식 → 반응 곡면 → ANOVA까지 간다.
+             둘은 내부 상태를 공유하지 않고, 고른 후보의 <b>처방(프로토타입)</b> 하나로만 이어진다.`,
       art: `
         <div class="f1-arch f1-seq">
           <div class="f1-io">연구자 — 말 · 폼 입력 · 측정값 · 승인</div>
           <div class="f1-flowmark">▲▼</div>
-          <div class="f1-box f1-llm"><b>입력 에이전트</b><span>맥락(진행 중인 설계·남은 요청·스튜디오 상태)을 읽고 말을 <b>제안 카드</b>로 —
+          <div class="f1-box f1-llm"><b>입력 에이전트</b><span>맥락(진행 중인 설계·남은 요청)을 읽고 말을 <b>제안 카드</b>로 —
             숫자·구조식은 사용자 글과 공개 DB에서만, 빠진 값은 되묻고, 실행은 연구자가 누른다</span></div>
           <div class="f1-flowmark">▼ 확인한 카드만 — 사람이 누르는 것과 같은 경로</div>
           <div class="f1-tier t1">
@@ -147,71 +147,64 @@
               남는 전략이 없으면 목표 재검토 · 출력 = <b>권고 후보 처방 목록</b>(포장 사양 제외)</div>
           </div>
           <div class="f1-flowmark">▼ 연구자가 후보 카드에서 <b>이 후보로 개발 착수</b>를 누를 때만 (1위 자동 진입 없음)</div>
-          <div class="f1-io">불변 Handoff — <span class="f1-mono">candidate_id@version</span> · 조성 · 공정 · 고정 공정변수 · QTPP · fingerprint</div>
+          <div class="f1-io">프로토타입 — 연구자가 고른 후보의 조성(mg · % · 기능) · 공정 (Table 1 형식)</div>
           <div class="f1-flowmark">▼</div>
           <div class="f1-tier t3">
-            <header><span>② 개발 스튜디오 — ExperimentalDevelopmentGraph</span><span>주·월 단위 · 상태 저장</span></header>
+            <header><span>② 2단계 — Design Space 도출</span><span>12단계 · 단계마다 승인</span></header>
             <div class="f1-sub f1-chain">
-              <div class="f1-pill-sm">진입 Readiness</div><div class="f1-pill-sm">CQA 계약</div>
-              <div class="f1-pill-sm">FMEA</div><div class="f1-pill-sm">요인·수준</div>
-              <div class="f1-pill-sm">DoE 설계</div><div class="f1-pill-sm">결과 품질 게이트</div>
-              <div class="f1-pill-sm">모델 진단</div><div class="f1-pill-sm">잠정 영역</div>
-              <div class="f1-pill-sm">확인배치 2×2</div>
+              <div class="f1-pill-sm">QTPP</div><div class="f1-pill-sm">CQA 판별</div>
+              <div class="f1-pill-sm">원료 위험평가</div><div class="f1-pill-sm">제형·공정 위험평가</div>
+              <div class="f1-pill-sm">DoE 변수 ≤ 4</div><div class="f1-pill-sm">실험 설계 표</div>
+              <div class="f1-pill-sm">회귀식</div><div class="f1-pill-sm">반응 곡면</div><div class="f1-pill-sm">ANOVA</div>
             </div>
-            <div class="f1-cap">숫자는 결정론 엔진이, 판정은 07_doe 룰북 171개 규칙이, 승인은 연구자가 한다.
-              모든 <b>WAITING_*</b> 상태에서 멈추고 연구자의 입력을 기다린다.</div>
+            <div class="f1-cap">초안은 LLM이, 행렬·회귀·ANOVA는 결정론 코드가, 승인은 연구자가 한다.
+              지금 단계만 고칠 수 있고, 승인은 결정론 검사가 막는다.</div>
           </div>
           <div class="f1-flowmark">▼</div>
-          <div class="f1-cols c3">
-            <div class="f1-loop">⟲ 확인 실패 → 영역 무효화 → 진단·보강</div>
-            <div class="f1-loop">⟲ 후보 전제 붕괴 → child candidate → ①로</div>
-            <div class="f1-io win">✓ VERIFIED 영역 + 성립 조건(scope)</div>
+          <div class="f1-cols c2">
+            <div class="f1-io">위험평가 보고서 PDF — 8단계 승인 후</div>
+            <div class="f1-io win">✓ 최종 보고서 PDF — 회귀식 · 반응 곡면 · ANOVA</div>
           </div>
         </div>`,
       note: `뼈대는 <b>“누가 무엇을 정하는가”가 단계마다 고정돼 있다</b>는 점이다. 입력 에이전트는 말을
-             입력으로 <b>정리</b>하고, AI는 후보와 가설을 <b>제안</b>하고, 결정론 규칙과 엔진이 <b>판정·계산</b>하며, 연구자가 <b>선택·승인</b>한다.
-             ①은 “만들기 전에 실패를 걸러내는” 쪽이고, ②는 “만든 뒤 실제 데이터로 운전 영역을 증명하는” 쪽이다.
+             입력으로 <b>정리</b>하고, AI는 후보와 초안을 <b>제안</b>하고, 결정론 규칙과 코드가 <b>판정·계산</b>하며, 연구자가 <b>선택·승인</b>한다.
+             ①은 “만들기 전에 실패를 걸러내는” 쪽이고, ②는 “실험 데이터로 품질을 좌우하는 변수와 그 영향을 식으로 보이는” 쪽이다.
              ②는 ①의 1위를 자동으로 가져가지 않는다 — 어떤 후보를 개발할지는 연구자의 판단이다.`,
     },
 
     {
       nav: "화면도 같은 원칙을 따른다",
       kicker: "화면 구성",
-      title: "화면의 주인공은 결과가 아니라, 지금 연구자가 내릴 결정이다",
-      lead: `이 시스템은 연구자와 <b>주고받으며</b> 진행된다. 그래서 화면은 “결과를 보여 주는 대시보드”가
-             아니라 “시스템이 묻고 연구자가 답하는 작업대”로 짰다. 맨 위 두 개의 탭이 곧 두 그래프다 —
-             <b>① 후보 탐색</b>에서 후보를 고르면 <b>② 개발 스튜디오</b>로 넘어간다. 그리고 탭 바로 아래,
-             화면에서 가장 먼저 보이는 것이 <b>입력 에이전트</b>다 — 말로 요청하는 것이 주 입력이고,
-             폼에 숫자를 직접 넣는 것은 “직접 입력”에 접힌 보조 경로다.`,
+      title: "대화 하나에, 다음 단계가 아래로 쌓인다",
+      lead: `화면은 대화 하나다. 처음에는 가운데 입력칸만 있고, 말로 요청하면 <b>입력 에이전트</b>가
+             설계 실행 카드를 만든다. 그 아래에 <b>실험 데이터 입력</b> 카드가 붙고, [설계 실행]을 누르면
+             분자 카드 → 데이터 요청 → 후보 처방이 차례로 이어진다. 후보에서 개발을 시작하면 2단계의
+             열두 단계가 같은 대화에 한 장씩 쌓인다 — 지난 단계는 접힌 채 남아 언제든 펼쳐 볼 수 있다.`,
       art: `
         <div class="f1-arch f1-seq">
-          <div class="f1-io win">맨 위 · 입력 에이전트 — 말 → 제안 카드 → [실행] (두 탭 공용 · 상태가 바뀌면 먼저 알림)</div>
-          <div class="f1-flowmark">▼ ② 개발 스튜디오</div>
+          <div class="f1-io win">가운데 입력칸 — 약 이름(또는 SMILES) · 대상 환자 · 제형 · 1회 용량</div>
+          <div class="f1-flowmark">▼ 설계 실행 카드 + “실험 데이터값을 입력하시겠습니까?”</div>
           <div class="f1-cols c3">
-            <div class="f1-box"><b>왼쪽 · 단계 레일</b><span>Handoff → CQA → FMEA → 요인 → 설계 → 결과 → 모델 → 영역 → 확인배치 → VERIFIED 중 지금 위치</span></div>
-            <div class="f1-box f1-det"><b>가운데 · 질문 카드 (가장 크고 진함)</b><span>“지금 시스템이 묻는 것” + 입력 폼 + 승인·반려 버튼.
-              규칙이 막으면 <b>어느 규칙이 왜</b> 막았는지가 카드 안에 뜨고, 그게 곧 다음에 넣을 값이다</span></div>
-            <div class="f1-box"><b>오른쪽 · 결과와 근거</b><span>모델 표·영역 지도·확인점, 규칙 판정 전체, lineage —
-              대화가 진행되는 대로 채워지는 참고 화면</span></div>
+            <div class="f1-box f1-det"><b>API 물리화학</b><span>구조 · 구조 플래그 · descriptor · 물성 추정 — 가로 한 장</span></div>
+            <div class="f1-box"><b>데이터 요청</b><span>전략이 갈리는 값만 — [값 제출] 또는 [전부 건너뛰기]</span></div>
+            <div class="f1-box f1-llm"><b>후보 처방</b><span>게이트 판정 · 심사 점수 · [이 후보로 개발 착수]</span></div>
           </div>
-          <div class="f1-flowmark">▼ 질문 카드 아래</div>
-          <div class="f1-io">지금까지의 대화 — 시스템 판정과 연구자 결정이 번갈아 쌓인다 (최신이 위)</div>
-          <div class="f1-flowmark">▼ ① 후보 탐색 탭도 같은 원칙</div>
-          <div class="f1-io win">입력·행동 = 가운데 넓은 칸 · 관측(그래프·해설·트레이스) = 바깥 좁은 칸</div>
+          <div class="f1-flowmark">▼ 2단계 — 단계마다 한 장, 지금 단계만 펼쳐진다</div>
+          <div class="f1-io">프로토타입 → QTPP → CQA → 위험평가 → 정리 → DoE 변수 → 설계 표 → 회귀식 → 곡면 → ANOVA</div>
+          <div class="f1-flowmark">▶ 오른쪽 탭</div>
+          <div class="f1-io">에이전트 흐름 · 지금 무슨 일이 · 실행 트레이스 — 누르면 열리고, 크게/작게 바꿀 수 있다</div>
         </div>`,
-      note: `<b>가이드 시연</b>은 질문 카드 위에 장면마다 “무엇을 보여 주는가”를 띄우고, 다음 단계를
-             연구자가 하듯 진행한다 — 폼을 채워 보여 준 뒤 같은 버튼을 누른다. 한 단계씩 넘기거나 끝까지
-             자동으로 흘려 볼 수 있고, 판정과 계산은 매번 서버가 새로 한다. 휴대폰에서는 한 열로 쌓이고
-             편집 표는 행마다 카드로 바뀌며, 행동 버튼 줄은 항상 손 닿는 아래쪽에 붙어 있다.`,
+      note: `화면의 주인공은 결과가 아니라 <b>지금 연구자가 내릴 결정</b>이다. 그래서 행동 카드가 대화 한가운데에 오고,
+             그래프·해설·트레이스 같은 관측 정보는 오른쪽 탭으로 물러나 있다. 폼에 직접 넣는 길은 입력칸 아래
+             <b>직접 입력</b>에 있다. 휴대폰에서는 왼쪽 목록과 오른쪽 탭이 화면 전체를 덮는 시트로 열린다.`,
     },
 
     {
       nav: "입력 에이전트 ★",
       kicker: "사용자와 시스템 사이",
       title: "말로 요청하면, 맥락을 읽고 실행할 수 있는 입력으로 정리한다",
-      lead: `화면 맨 위의 <b>입력 에이전트</b>는 두 그래프 앞에 선 주 입력 창이다(폼은 그 아래 “직접 입력”에 접힌 보조 경로). 폼을 채우는 대신
-             말로 요청하면, 에이전트가 <b>지금 맥락</b> — 진행 중인 설계, 남은 실험 요청, 되돌림 기록,
-             개발 스튜디오의 상태와 막힌 규칙 — 을 서버에서 직접 읽고, 그 말을 <b>제안 카드</b>로 바꾼다.
+      lead: `화면 가운데 입력칸이 곧 <b>입력 에이전트</b>다(폼은 그 아래 “직접 입력”이 보조 경로). 폼을 채우는 대신
+             말로 요청하면, 에이전트가 <b>지금 맥락</b> — 진행 중인 설계, 남은 실험 요청, 되돌림 기록 — 을 서버에서 직접 읽고, 그 말을 <b>제안 카드</b>로 바꾼다.
              카드의 [실행]은 사람이 버튼을 누른 것과 똑같은 경로로 간다.`,
       art: `
         <div class="f1-story f1-seq">
@@ -224,16 +217,16 @@
           <div class="f1-beat win"><div class="who">에이전트</div><div class="what"><div class="card">
             <b>앞 대화와 합쳐 완성된 카드</b> <span class="f1-mono">[실행] → 폼을 채워 보여 준 뒤 같은 startRun()으로 시작</span></div></div></div>
           <div class="f1-beat jud"><div class="who">에이전트 (먼저)</div><div class="what"><div class="card">
-            설계가 끝나면 권고 후보와 가장 가벼운 남은 요청을 짚고 <b>개발 착수 카드</b>를 낸다 ·
-            스튜디오에서 “압축력은 몰라요” → 진입 자료 카드(압축력 UNKNOWN 기록)</div></div></div>
+            설계가 끝나면 권고 후보와 가장 가벼운 남은 요청을 짚고 <b>개발 착수 카드</b>를 낸다 —
+            [실행]은 후보 카드의 [이 후보로 개발 착수]와 같은 길로 2단계를 연다</div></div></div>
         </div>
         <div class="f1-cols c3" style="margin-top:10px">
           <div class="f1-box f1-det"><b>숫자는 사용자 글에서만</b><span>카드의 모든 숫자를 최근 발화의 숫자와 대조 — 없으면 빼고 알린다. LLM이 낸 값도 예외 없음</span></div>
           <div class="f1-box f1-det"><b>구조식은 출처가 있는 곳에서만</b><span>사용자 입력 · 내장 사전 · PubChem 조회. 기억으로 쓴 SMILES는 버린다</span></div>
-          <div class="f1-box f1-det"><b>지금 가능한 것만</b><span>허용목록 안의 측정 키, 현재 상태가 허용하는 스튜디오 행동, 통과한 후보만. 상태 버전이 바뀌면 실행 안 함</span></div>
+          <div class="f1-box f1-det"><b>지금 가능한 것만</b><span>허용목록 안의 측정 키, 지금 설계의 통과한 후보만. 다른 설계가 시작되면 이전 카드는 잠긴다</span></div>
         </div>`,
-      note: `에이전트 머리의 <b>모델</b>에서 쓸 LLM을 고른다 — 기본은 무료 모델(Groq)이고, 대회 API 모델은
-             비밀번호로 접속한 경우에만 고를 수 있다(게스트 접속은 무료 모델만). 고른 모델은 설계·심사·대화·개발 스튜디오에 함께 쓰인다.<br><br>
+      note: `왼쪽 목록 아래의 <b>모델</b>에서 쓸 LLM을 고른다 — 기본은 무료 모델(Groq)이고, 대회 API 모델은
+             비밀번호로 접속한 경우에만 고를 수 있다(게스트 접속은 무료 모델만). 고른 모델은 설계·심사·대화·2단계 초안에 함께 쓰인다.<br><br>
              측정값 제출은 LLM보다 <b>규칙이 먼저</b> 잡는다 — 열린 설계가 있고 “Tm 317도”처럼 측정 이름과 숫자가 있으면
              곧바로 제출 카드가 되고, 근거 등급(자체 실측·문헌·사용자 진술)을 골라 제출하면 설계를 다시 돌리지 않고 그 값에
              의존하는 판정만 다시 계산한다.<br><br>
@@ -444,154 +437,80 @@
     },
 
     {
-      nav: "② 개발 스튜디오 ★",
-      kicker: "개발 스튜디오 · ExperimentalDevelopmentGraph",
-      title: "고른 후보 하나를, 확인배치로 검증된 운전 영역까지",
-      lead: `후보 처방은 “이렇게 만들면 될 것 같다”까지다. 실제 개발은 <b>어떤 품질 특성(CQA)을
-             어떤 규격으로 볼지</b> 정하고, 실패 원인을 짚고(FMEA), 바꿀 변수와 범위를 정해
-             <b>실험계획(DoE)</b>을 세우고, 결과로 모델을 만들어 <b>규격을 동시에 만족하는 영역</b>을 찾은 뒤,
-             <b>새로 만든 독립 배치</b>가 그 예측대로 나오는지 확인해야 끝난다. 이 전 과정을 상태기계로 옮겼다.`,
+      nav: "② 2단계: QTPP부터 ANOVA까지 ★",
+      kicker: "2단계 · Design Space 도출",
+      title: "고른 후보 하나를, 회귀식과 반응 곡면까지",
+      lead: `후보 처방은 “이렇게 만들면 될 것 같다”까지다. 2단계는 그 처방을 <b>프로토타입</b>으로 받아
+             ICH Q8의 순서 그대로 간다 — 목표 제품 프로파일(<b>QTPP</b>)을 정하고, 품질특성마다 <b>CQA</b>인지 근거와 함께 가리고,
+             원료 물성과 제형·공정 변수가 각 CQA에 얼마나 위험한지 <b>기전으로</b> 평가한다. 위험이 높은 변수 중
+             최대 4개를 <b>DoE 변수</b>로 골라 실험하고, 그 결과로 <b>회귀식 · 반응 곡면 · ANOVA</b>를 만든다.`,
       art: `
-        <div class="f1-stack f1-seq">
-          <div class="f1-lvl"><span class="n">1</span>진입 Readiness — 조성 합계·원료 등급·공정 단계·설비·배치 규모. 모르는 고정 공정변수는 <em>UNKNOWN으로 기록</em>할 수 있고, 그 사실은 최종 영역의 한계로 따라간다</div>
-          <div class="f1-lvl"><span class="n">2</span>CQA 계약 — 역할(DoE 반응/모니터링/해당없음)과 <em>절대 규격</em>. 규격 없는 CQA는 DoE 반응이 될 수 없다 (CR001–CR006)</div>
-          <div class="f1-lvl"><span class="n">3</span>FMEA — 원인→실패모드→CQA. 관찰자료 없으면 발생도 O = UNKNOWN, <em>RPN 미계산</em>. 고심각도 행은 대체관리 없이 못 지운다 (FE012)</div>
-          <div class="f1-lvl"><span class="n">4</span>요인·수준 — center = 후보 현재값, 경계 = 근거 교집합. 근거 없는 경계는 만들지 않는다 (FR002)</div>
-          <div class="f1-lvl flow"><span class="n">5</span>설계 — 3요인 이하 + 사전근거 승인이면 RSM 직행(Box–Behnken 등), 아니면 Res IV screening. 행렬·seed·alias는 코드가</div>
-          <div class="f1-lvl flow"><span class="n">6</span>결과 — CSV 업로드 → 시스템이 읽은 값을 <em>연구자가 확인</em> → 품질 게이트(배치 ID·시험법 버전·반복 독립성)</div>
-          <div class="f1-lvl flow"><span class="n">7</span>모델 — 사전 계획한 전체 이차모형. 과적합 flag는 연구자가 <em>계층성 유지 축소</em> 또는 <em>사유 달고 수용</em> (자동 stepwise 금지)</div>
-          <div class="f1-lvl key"><span class="n">8</span>잠정 영역 — 미래 배치의 예측분포로 계산한 <em>공동 통과확률 ≥ 0.90</em> 영역 + 권장 setpoint (PROVISIONAL)</div>
-          <div class="f1-lvl key"><span class="n">9</span>확인배치 — 예측구간을 <em>첫 결과 전에 잠그고</em>, 독립 배치 3개(setpoint·경계·robustness)로 2×2 판정 → <em>VERIFIED</em></div>
+        <div class="f1-ladder f1-seq">
+          <div class="f1-lvl"><span class="n">1</span>프로토타입 (Table 1) — 성분 · mg · % · 기능. 확인하고 [실행]</div>
+          <div class="f1-lvl"><span class="n">2</span>QTPP (Table 3) — LLM 초안 → 행 추가·삭제·수정 → 승인</div>
+          <div class="f1-lvl"><span class="n">3</span>CQA (Table 4) — CQA 여부의 논리적 근거, 위험평가에 넣을 CQA 확정</div>
+          <div class="f1-lvl"><span class="n">4–5</span>원료 물성 위험평가 (Table 6 근거 → Table 5 행렬)</div>
+          <div class="f1-lvl"><span class="n">6–7</span>제형·공정 변수 위험평가 (Table 8 근거 → Table 7 행렬) — 처방의 모든 부형제 + 조절 가능한 공정 파라미터</div>
+          <div class="f1-lvl"><span class="n">8</span>종합 정리 · DoE 변수 추천 (≤ 4) → 위험평가 보고서 PDF</div>
+          <div class="f1-lvl"><span class="n">9</span>실험 설계 표 (Table 9) — 요인 1–3 · 반응 1–4 · 행은 필요한 만큼, 엑셀 붙여넣기</div>
+          <div class="f1-lvl"><span class="n">10</span>회귀식 (Table 10) — 평균·선형·2FI·2차를 순차 F와 예측 R²로 비교, coded · actual 식</div>
+          <div class="f1-lvl"><span class="n">11</span>반응 곡면 (Figure 1) — 실험점 · 잔차 · 설계 지지 영역</div>
+          <div class="f1-lvl"><span class="n">12</span>ANOVA (Table 11) — 부분 제곱합 · 적합결여 · 순수오차 → 최종 보고서 PDF</div>
         </div>`,
-      note: `원칙 세 가지: <b>숫자는 코드가, 설명은 LLM이.</b> 설계행렬·회귀·진단·영역·판정·상태 승격은 결정론이고,
-             LLM은 FMEA 누락 가설과 진단 가설만 낸다(근거 등급 <span class="f1-mono">LLM_HYPOTHESIS</span>로 고정).
-             <b>모든 판정은 룰북이.</b> 코드에 판정 로직이 없다 — 171개 규칙이 CSV 한 줄씩이고, Python
-             <span class="f1-mono">eval</span> 대신 AST 화이트리스트 평가기로 돈다. <b>연구자가 승인한다.</b>
-             모든 <span class="f1-mono">WAITING_*_APPROVAL</span>에 승인과 반려가 있고, override는 허용된 범위에서만 사유와 함께 기록된다.`,
+      note: `행렬(5·7단계)은 사람이 따로 칠하지 않는다 — <b>근거 표의 등급에서 코드가 만든다</b>. 그래서 행렬과 근거가 어긋날 수 없고,
+             근거가 빠진 칸이 있으면 승인이 막힌다. 같은 판단을 공유하는 CQA는 근거 한 줄로 묶는다(논문 Table 6·8의 형식).
+             회귀·ANOVA는 LLM 없이 계산하며, Monton 2026(CBD 구강붕해정)의 Table 10·11 값을 그대로 재현하는지 테스트로 고정했다.`,
     },
 
     {
-      nav: "누가 무엇을 바꿀 수 있나",
-      kicker: "권한 · override · 근거 등급",
-      title: "연구자는 판단을 바꿀 수 있지만, 근거 등급은 바꿀 수 없다",
-      lead: `규칙이 막았을 때 연구자가 할 수 있는 일은 <b>규칙의 판정 강도</b>가 정한다. 경고는 사유만 남기면
-             넘어갈 수 있지만, 차단·무효화는 누구도 뒤집지 못한다. 그리고 “이 값은 실측이다”라는
-             <b>근거 등급은 데이터가 들어와야만</b> 올라간다 — 사람이 올릴 수 없다.`,
+      nav: "누가 무엇을 정하나",
+      kicker: "2단계의 권한",
+      title: "LLM은 초안을, 코드는 계산과 검사를, 결정은 연구자가",
+      lead: `2단계의 모든 단계는 같은 길을 간다 — <b>초안</b>(LLM · 논문 값 · 연구자 입력) → <b>검사</b>(결정론) → <b>승인</b>(연구자).
+             지금 단계만 고칠 수 있고, 앞 단계를 다시 열면 뒤 단계는 지우지 않고 <b>“다시 확인 필요”</b>로 표시한다.`,
       art: `
-        <div class="f1-policy f1-seq">
-          <div class="f1-prow use"><span class="st">WARNING</span><span class="to">→</span><span class="act">사유 기록 후 진행 (예: 권고와 다른 설계 AA007, 통상 사용범위 밖 FR003)</span></div>
-          <div class="f1-prow prov"><span class="st">ROUTE · AUGMENT</span><span class="to">→</span><span class="act">사유 + 승인권자 (예: 과적합 flag MV006 → 수용 시 ACCEPTED_WITH_FLAGS)</span></div>
-          <div class="f1-prow down"><span class="st">REQUEST_DATA</span><span class="to">→</span><span class="act">대체 근거 제출 시만 — 원출처 등급은 그대로</span></div>
-          <div class="f1-prow drop"><span class="st">BLOCK_STAGE · INVALIDATE</span><span class="to">→</span><span class="act"><b>override 불가</b> (AA017) — 규격 없는 DoE 반응, 계층성 깨는 축소, 확인 실패한 영역</span></div>
-        </div>
-        <div class="f1-cols c3" style="margin-top:14px">
-          <div class="f1-box f1-det"><b>모델 적합에 쓸 수 있다</b><span>자체 실측(확인됨) · 문헌 표 수치</span></div>
-          <div class="f1-box"><b>수준값 근거로만</b><span>연구자 가정(EXPERT_ASSUMPTION, 표시됨) · 모델 예측(참고)</span></div>
-          <div class="f1-box f1-fail"><b>확인 판정에는 못 쓴다</b><span>문헌 · 디지타이징 · 미확인 — 새로 만든 독립 배치의 실측만</span></div>
+        <div class="f1-cols c3 f1-seq">
+          <div class="f1-box f1-llm"><b>LLM — 초안만</b><span>QTPP · CQA 근거 · 위험평가 근거 · DoE 변수 추천.
+            입력에 없는 수치를 쓰면 “출처 확인” 경고가 붙는다. 응답이 없으면 아무것도 채우지 않는다</span></div>
+          <div class="f1-box f1-det"><b>코드 — 계산과 검사</b><span>행렬 · 후보 변수(High·Medium) · 회귀 · 곡면 · ANOVA.
+            빠진 칸, 확정 CQA 밖의 열, 공정 이름을 공정 변수로 쓴 경우, 5개 이상 DoE 변수, 추정 불가 모형은 승인 불가</span></div>
+          <div class="f1-box"><b>연구자 — 선택과 승인</b><span>행 추가·삭제·수정, DoE 변수 선택, 회귀 모형 선택(제안과 다르면 기록),
+            단계마다 승인. 누가 언제 어떤 출처의 몇 번째 판을 승인했는지 이력으로 남는다</span></div>
         </div>`,
-      note: `집행 모드도 둘이다. <b>production</b>은 약학 담당 검토를 거쳐 <span class="f1-mono">APPROVED</span>된 규칙만 집행하는데,
-             지금 171개 규칙은 전부 <span class="f1-mono">DRAFT_PENDING_REVIEW</span>라서 <b>production에서는 아무것도 막지 않는 것이 정상</b>이다.
-             그래서 화면은 <b>demo(sandbox)</b> 모드로 돈다 — 규칙은 전부 집행되지만 결과는 운영으로 승격되지 않는다.
-             화면 왼쪽 아래에 지금 몇 개 규칙이 집행 중인지 항상 표시된다.`,
-    },
-
-    {
-      nav: "영역은 평균이 아니라 미래 배치로",
-      kicker: "가이드 시연 · Lornoxicam 분산정 (Almotairi 2022 실측 15 run)",
-      title: "평균으로는 77%가 규격 안이었지만, 미래 배치로 보면 48%다",
-      lead: `실험 15개의 실측값(논문 Table 3)을 결과 제출 화면으로 올리고, 논문의 회귀식·최적점은 쓰지 않은 채
-             엔진이 처음부터 다시 계산한다. 규격은 분산시간 ≤ 180 s, 마손도 ≤ 1.0 %, AV ≤ 15, 그리고
-             <b>DE30 ≥ 75 %(논문 기준이 아닌 프로젝트 목표값 — 화면에 가정으로 표시)</b>. 조성·공정·범위·
-             최적처방 관측값도 전부 논문에 적힌 값이다.`,
-      art: `
-        <div class="f1-story f1-seq">
-          <div class="f1-beat"><div class="who">설계</div><div class="what"><div class="card">3요인 + 사전근거 승인 — RSM 직행 → <b>Box–Behnken 15 run</b> (DS007·DS008). 꼭짓점 영역은 설계점 밖이라 영역 계산에서 뺀다 (DV010)</div></div></div>
-          <div class="f1-beat reject"><div class="who">모델</div><div class="what"><div class="card">과적합 flag 2건 — 마손도 이차모형 <b>예측 R² 0.25</b> → 연구자가 선형으로 축소 → 0.82 · 함량균일성 예측 R² 0.48 → 사유 달고 수용</div></div></div>
-          <div class="f1-beat"><div class="who">영역</div><div class="what"><div class="card">supported domain 7,501 격자 — 평균 예측이 전부 규격 안: <b>77.2%</b> → 공동 통과확률 ≥ 0.90: <b>47.6%</b>. 경계를 주도하는 CQA는 DE30</div></div></div>
-          <div class="f1-beat win"><div class="who">setpoint</div><div class="what"><div class="card">경계에서 0.1 이상 안쪽 — MCC:만니톨 <b>2.7</b> · 혼합 <b>12.5분</b> · 크로스포비돈 <b>6.8 %</b> — 공동확률 <b>0.991</b></div></div></div>
-          <div class="f1-beat jud"><div class="who">확인계획</div><div class="what"><div class="card">첫 결과 전에 잠금 — 3점 × 4반응 = 12개 비교 → Bonferroni 개별 <b>99.58%</b> 구간. setpoint DE30 예측 <b>82.3 (71.9–92.8)</b>.
-              논문 최적처방 배치는 결과가 이미 공개돼 있어 <b>참고 평가만</b></div></div></div>
-        </div>
-        <div class="f1-cols c2" style="margin-top:12px">
-          <div class="f1-box f1-pass"><b>규격 통과 · 예측구간 안</b><span>필수 3점 모두 → 최종 승인 요청 → VERIFIED</span></div>
-          <div class="f1-box f1-fail"><b>그 밖의 세 칸</b><span>규격 실패 → 영역 INVALIDATED + 진단 · 규격 통과인데 예측구간 밖 → INVALIDATED + 모델 보강</span></div>
-        </div>
-        <div class="guide-note warn" style="margin-top:14px">
-          <b>이 데이터에서 룰북이 실제로 잡아내는 것</b><br>
-          ① 함량균일성 모델은 예측력이 낮을 뿐 아니라 과적합 규칙(MV006: 조정 R² − 예측 R² &gt; 0.20)에도
-          걸린다(0.885 − 0.481). 연구자가 이를 알고 수용한다는 사유를 남겨야 다음으로 간다.<br>
-          ② 분산시간의 영향점은 <b>run 3과 run 12가 정확히 동률</b>(Cook's D 1.066)이다. 둘 다 표시하고, 어느 것도 지우지 않는다.<br>
-          ③ 논문 최적처방 배치의 공개 관측값(분산 4.4 s · DE 80.64 % · AV 4.65 …)은 잠근 예측구간 안에 들어온다 —
-          그래도 <b>참고 평가일 뿐 승격 근거가 아니다</b>(결과가 계획 전에 공개됐기 때문). VERIFIED는 새 독립 배치의 실측으로만 나온다.
-        </div>`,
-      note: `<b>VERIFIED는 “내부 사전계획을 통과했다”는 뜻이다.</b> 세 점에서 1배치씩 확인한 것은 세 위치의 확인이지
-             영역 전체의 증명이 아니며, 규제기관이 승인한 Design Space나 PPQ 완료를 의미하지 않는다. 최종 영역에는
-             성립 조건이 함께 붙는다 — 이 데모라면 “압축력 미기록(UNKNOWN)”, “경도·중량 등은 요인 효과 미평가”,
-             “BBD 꼭짓점 외삽 구역 제외”. 잔차 자유도 5인 모델이라 예측구간이 약 ±10 %p로 넓은 것도 버그가 아니라 한계로 표시한다.`,
-    },
-
-    {
-      nav: "v7 — 단계마다 승인, 어떤 DoE든",
-      kicker: "DoE v7.0 실험개발 탭 · 샌드박스(규칙은 모두 DRAFT)",
-      title: "여섯 단계마다 연구자가 승인해야 넘어가고, run 데이터가 있는 DoE는 무엇이든 같은 길을 간다",
-      lead: `<b>후보·CQA → FMEA·요인 → 범위·feasibility → 실험표 → 결과·모델 → 영역·확인.</b> 단계마다 질문 카드가 할 일을 묻고,
-             승인 지점 9개(CQA 선택 · FMEA · 요인·범위 · feasibility 계획 · DoE 계획 · 실행 프로토콜 · 플래그 모델 수용 · 확인 계획 · 확인 영역)는
-             연구자가 누르지 않으면 넘어가지 않는다. 시작은 ① 통과 후보, 또는 <b>run 단위 실험 데이터를 가진 DoE 데이터셋</b>(공통 JSON 형식) —
-             실제로 돌린 행렬이 표준 설계와 달라도 그 행렬을 가져와 같은 검사를 거치고, 결과는 CSV로 붙여 넣는다.`,
-      art: `
-        <div class="f1-story f1-seq">
-          <div class="f1-beat"><div class="who">범위</div><div class="what"><div class="card">경계 근거가 '제안'뿐이면 RSM으로 바로 가지 않는다 → <b>2k+1 feasibility</b>(2요인 5조건). 통과해야 근거가 <b>FEASIBILITY_CONFIRMED</b>로 바뀐다 — 사람이 등급을 올리는 버튼은 없다</div></div></div>
-          <div class="f1-beat"><div class="who">설계</div><div class="what"><div class="card">요인 수로 정해진다 — 1요인 7 · 2요인 FCCD 13 · 3요인 BBD 17 run. 조성 요인은 balance 성분으로 100%를 맞추고 음수면 차단(RS002)</div></div></div>
-          <div class="f1-beat reject"><div class="who">모델</div><div class="what"><div class="card">사람이 항을 고르지 않는다 — 계층 모형 전부를 LOOCV로 비교해 1-표준오차 안에서 가장 단순한 식. 경고가 붙은 모형은 연구자가 사유를 적어야 영역으로 간다</div></div></div>
-          <div class="f1-beat jud"><div class="who">확인</div><div class="what"><div class="card">결과 전에 SETPOINT·BOUNDARY·ROBUSTNESS 예측구간을 잠근다. 모델에 쓴 batch·같은 blend·문헌 lot은 확인이 아니다(VR003·RQ009·VR015)</div></div></div>
-        </div>
-        <div class="guide-note warn" style="margin-top:14px">
-          <b>CBD 구강붕해정 문헌 재현(Monton 2026, Table 9 원자료 17 run)</b><br>
-          반응 곡면은 논문 Figure 1과 같은 모양(반응 × CCS 1·3·5%)으로 그린다. 논문은 평균 예측으로 design space를 선언했지만,
-          잠근 기준(모든 규격을 동시에 만족할 확률 ≥ 0.90)에서 최대값이 <b>0.889</b>라 영역이 비고(DR018), 논문의 확인 lot 3개가 규격을 통과해도
-          <b>승격하지 않는다</b>. 시스템은 판별시험 후보(RB18)를 보여 주고 FMEA 재검토로 돌려보낸다.
-        </div>`,
-      note: `v7 규칙 18권은 모두 전문가 검토 전(DRAFT)이라 <b>운영 집행은 꺼져 있고</b> study는 샌드박스로만 만든다 — 판정은 study를 실제로 막고 보내지만
-             화면의 모든 판정에 DRAFT가 붙는다. 룰북 데이터와 명세가 어긋난 곳(예: 확인 용도로 허용된 근거 등급이 하나도 없음, 압축력 kN 단위 미등록)은
-             코드로 메우지 않고 결정과 함께 기록했다.`,
+      note: `CBD 논문으로 시작한 시연에서는 단계마다 <b>논문 값으로 채우기</b>와 <b>논문 표와 비교</b>가 열려,
+             LLM 초안이 논문과 어디서 갈리는지 칸 단위로 볼 수 있다. 수치는 모두 논문(PMC13519653)의 표에서 옮긴 값이다.`,
     },
 
     {
       nav: "실제로 참고한 연구가 있다",
       kicker: "이 설계의 출처 · Robin (FutureHouse)",
-      title: "진단 가설은 실제 연구의 지시문을 읽고 설계했다",
+      title: "심사관의 기준은 실제 연구의 지시문을 읽고 정했다",
       lead: `<b>Robin</b>은 비영리 연구소 FutureHouse가 만든 AI 시스템으로, 2026년 국제 학술지
              <b>Nature</b>에 발표됐다. 사람의 개입 없이 스스로 가설을 세우고 실험을 제안해서,
              노년 실명의 주요 원인인 <b>황반변성을 치료할 수 있는 약 후보(ripasudil)를 실제로
              찾아낸</b> 사례다. FutureHouse는 Robin이 AI에게 내리는 지시문(프롬프트) 원문을
-             공개했고, 그 원문을 문장 단위로 대조해 개발 스튜디오의 <b>진단</b>과 후보 탐색의
-             <b>심사</b>에 반영했다.`,
+             공개했고, 그 원문을 문장 단위로 대조해 후보 탐색의 <b>심사</b>에 반영했다.`,
       art: `
         <div class="f1-arch f1-seq">
           <div class="f1-tier">
             <header><span>Robin 프롬프트 원문</span>
               <span>GitHub Future-House/robin · robin/prompts.py</span></header>
-            <div class="f1-said f1-mono">"Generate exactly <b>{num_candidates}</b> distinct ideas"
-              <br>— CANDIDATE_GENERATION_SYSTEM_MESSAGE</div>
+            <div class="f1-said f1-mono">"Prioritize your evaluation based on these key criteria"
+              <br>— CANDIDATE_RANKING_SYSTEM_PROMPT</div>
             <div class="f1-said f1-mono">"It is not necessary to propose a follow-up experiment if there is
               nothing significant to follow up on" — FOLLOWUP_SYSTEM_MESSAGE</div>
           </div>
-          <div class="f1-flowmark">▼ 개발 스튜디오 — 확인배치가 실패하면</div>
+          <div class="f1-flowmark">▼ 후보 탐색의 심사관</div>
           <div class="f1-cols c3">
-            <div class="f1-box f1-llm"><b>서로 다른 원인가설 최대 3개</b>
-              <span>같은 원인을 바꿔 말한 문장은 별도 가설로 세지 않는다. 원인이 하나뿐이면 하나만</span></div>
-            <div class="f1-box f1-det"><b>가설마다 판별시험</b>
-              <span>그 가설만 지지·배제하는 시험을 확인시험 마스터의 실제 행에서만 고른다</span></div>
-            <div class="f1-box"><b>override·가정부터 의심</b>
-              <span>연구자가 넘긴 경고와 EXPERT_ASSUMPTION 근거를 우선 점검 대상으로 넣는다</span></div>
+            <div class="f1-box f1-llm"><b>평가 기준에 순서</b>
+              <span>근거 강도 → 잔여 위험 → 실현 가능성 → 참신성. 참신함만으로 점수를 올리지 않는다</span></div>
+            <div class="f1-box f1-det"><b>근거로 판단</b>
+              <span>표현의 설득력이 아니라 제시된 근거로 — 검증된 문헌 id가 없는 심사는 점수 없음</span></div>
+            <div class="f1-box"><b>억지로 채우지 않기</b>
+              <span>짚을 것이 없으면 제안을 비워 둔다</span></div>
           </div>
-          <div class="f1-flowmark">▼ 그리고 연구자가 방향을 고른다</div>
-          <div class="f1-io">모델 보강 · 요인·범위 재설정 · 시험법·공정 편차 개선 · 후보 개정(child candidate)
-            — 가설은 <span class="f1-mono">LLM_HYPOTHESIS</span>로 남고, 원인 확정은 판별시험 데이터로만 한다</div>
         </div>`,
-      note: `후보 탐색의 심사관에게는 Robin의 순위 지시문에서 <b>평가 기준의 우선순위</b>를 가져왔다 —
-             근거 강도 → 잔여 위험 → 실현 가능성 → 참신성 순이고, 참신함만으로 점수를 올리지 않으며
-             "표현의 설득력이 아니라 제시된 근거로" 판단한다. 반대로 <b>가져오지 않은 것</b>도 있다.
+      note: `반대로 <b>가져오지 않은 것</b>도 있다.
              Robin은 시험 이름을 AI가 자유롭게 짓게 하지만, 여기서는 목록 밖 시험을 버린다(재현 가능한
              출처와 판정 기준이 남지 않기 때문). 쌍대비교 순위 집계도 호출 수가 제곱으로 늘어 쓰지 않았다.`,
     },
@@ -632,14 +551,11 @@
   /* 마지막 단계 끝에 붙는 실행 유도 — 설명이 끝나면 바로 화면을 쓰게 만든다. */
   const CTA = `
     <div class="f1-cta">
-      <p><b>이제 직접 돌려 보세요.</b> 가장 쉬운 길은 화면 맨 위 <b>입력 에이전트</b>에게 말로 요청하는 것입니다 —
-        약 이름·대상·제형·용량을 말하면 실행 카드를 만들어 줍니다. 폼은 그 아래 <b>직접 입력</b>에 접혀 있습니다.
-        <b>① 후보 탐색</b>의 시연 시나리오는 각각 다른 경로를
-        밟습니다 — 규칙이 제약을 반려하는 경우, 인구군에 따라 심사관이 바뀌는 경우, 값을 몰라도 후보부터
-        나오고 갈리는 지점만 되묻는 경우, 후보 이후의 개발까지. 후보 카드의 <b>이 후보로 개발 착수</b>를 누르면 ②로 넘어갑니다.<br>
-        네 번째 카드 또는 <b>② 개발 스튜디오</b>의 <b>가이드 시연 — Lornoxicam 분산정</b>은 장면 9개를 따라
-        CQA부터 확인배치까지 걷습니다(한 단계씩 또는 자동 진행). <b>DoE v7.0 실험개발</b> 탭에서는 CBD 문헌 재현이나 직접 가진
-        run 데이터(데이터셋)로 여섯 단계를 승인하며 진행합니다. 규칙 ID를 누르면 <b>원본 CSV 행과 출처</b>가 열립니다.</p>
+      <p><b>이제 직접 돌려 보세요.</b> 가운데 입력칸에 약 이름·대상·제형·용량을 말하면 설계 실행 카드를 만들어 줍니다.
+        폼은 입력칸 아래 <b>직접 입력</b>에 있습니다. 시연 카드는 각각 다른 경로를 밟습니다 — 규칙이 제약을 반려하는 경우,
+        인구군에 따라 심사관이 바뀌는 경우, 값을 몰라도 후보부터 나오고 갈리는 지점만 되묻는 경우, 그리고
+        <b>CBD 구강붕해정</b>으로 2단계(QTPP부터 ANOVA까지)를 걷는 경우. 후보 카드의 <b>이 후보로 개발 착수</b>를 누르면 같은 2단계가
+        그 후보로 열립니다. 규칙 ID를 누르면 <b>원본 CSV 행과 출처</b>가 열립니다.</p>
       <button type="button" id="guide-finish">설명 닫고 실행하기 →</button>
     </div>`;
 
