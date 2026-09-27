@@ -193,12 +193,12 @@
   // ── 탭 ─────────────────────────────────────────────────────────────────
   function showTab(which) {
     const studio = which === "studio";
-    el("view-discovery").hidden = studio;
-    el("view-studio").hidden = !studio;
-    el("tab-discovery").classList.toggle("on", !studio);
-    el("tab-studio").classList.toggle("on", studio);
-    el("tab-discovery").setAttribute("aria-selected", String(!studio));
-    el("tab-studio").setAttribute("aria-selected", String(studio));
+    for (const t of ["discovery", "studio", "v7"]) {        // v7 = DoE v7.0 검증 모드(doe7.js)
+      if (!el(`view-${t}`)) continue;
+      el(`view-${t}`).hidden = t !== which;
+      el(`tab-${t}`).classList.toggle("on", t === which);
+      el(`tab-${t}`).setAttribute("aria-selected", String(t === which));
+    }
     try { localStorage.setItem("f1:tab", which); } catch (e) { /* 무시 */ }
     if (studio) refreshList();
     document.dispatchEvent(new CustomEvent("f1:tab", { detail: { tab: which } }));
@@ -1300,11 +1300,13 @@
   function init() {
     el("tab-discovery").onclick = () => showTab("discovery");
     el("tab-studio").onclick = () => showTab("studio");
+    if (el("tab-v7")) el("tab-v7").onclick = () => showTab("v7");
     el("studio-list").onchange = (e) => { if (e.target.value) { guide.auto = false; load(e.target.value).catch((err) => notice(err.message, "error")); } };
     document.querySelectorAll(".side-tab").forEach((b) => { b.onclick = () => { sideTab = b.dataset.tab; if (study) { renderSide(); } }; });
     let tab = "discovery", last = null;
     try { tab = localStorage.getItem("f1:tab") || "discovery"; last = localStorage.getItem("f1:study"); } catch (e) { /* 무시 */ }
     if (new URLSearchParams(location.search).get("studio") !== null) tab = "studio";
+    if (new URLSearchParams(location.search).get("v7") !== null) tab = "v7";
     showTab(tab);
     if (last) load(last).then(() => { if (study && study.demo_script === "lornoxicam") { guide.on = true; renderGuide(); } })
       .catch(() => { try { localStorage.removeItem("f1:study"); } catch (e) { /* 무시 */ } });

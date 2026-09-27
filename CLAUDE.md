@@ -23,7 +23,8 @@ The README.md (Korean) is the authoritative design doc — update it in the same
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 230 tests — run this first when changing the core
+.venv/bin/pytest                                  # 254 tests — run this first when changing the core
+python database/07_doe/v7_0/scripts/validate_package.py database/07_doe/v7_0   # v7.0 패키지 정적 검증(RESULT: PASS)
 python scripts/audit_conditions.py                # every CSV/manifest condition names a variable something actually sets (exit 1 on a dead name)
 python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.json   # 07_doe static check (errors=0)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
@@ -799,3 +800,32 @@ Source: `measurement_input_change_request.md` (tasks 1–4). Pinned by `tests/te
   `light_sensitive`, …) that only existed when intake set them — they fell to NameError = "didn't fire", which happened
   to equal False. `applies_when.PROPERTY_FLAG_DEFAULTS` now seeds them explicitly. If you add a name, the test fails
   until something sets it (add it to the context, `seed.py`, or `CODE_KEYS` with a reason).
+
+
+## DoE v7.0 — data package + deterministic core, validation mode only (2026-09-27)
+
+Source: `docs/doe_v7.0/formula1-experimental-development-architecture-v7.0.md` (spec) and `database/07_doe/v7_0/INSTALLATION.md`
+(install guide — its constraints are binding). Installed **side by side**: v6.1 folders, `config/rulebook_manifest.yaml` and the 66-row
+`database/reference/confirmation_test_master.csv` are untouched (`test_legacy_assets_untouched`). `scripts/validate_07_doe.py` skips `v7_0/`.
+
+- **Flag off**: `config/doe_module.yaml` `enabled=false · VALIDATION_ONLY · allow_draft_enforcement=false`. All 18 rulebooks are
+  `DRAFT_EXPERT_REVIEW_REQUIRED` + `enforcement_enabled=false`, so `DoePackage.can_enforce` is False for every row and every
+  `Decision.enforced` is False. Nothing in v7 creates or advances a study. Activation needs the §12 checklist (reviews, rollback rehearsal).
+- **Loader** (`formula/doe/package.py`) refuses the package on: version ≠ 7.0.0, counts ≠ 18/7, manifest row counts, SHA256SUMS mismatch,
+  duplicate IDs, unregistered source/test/reason code, any rule or M07 code routing to a forbidden state. RB14's `const.*` thresholds live
+  only in v6.1 `planning/statistical_policy_constants.csv` (not migrated) — the loader reads them from there via the config.
+- **Core** (`formula/doe/`, numpy+scipy, no LLM): `gates` (RB07 range evidence, RB08 2k+1 feasibility, RB09 design) — result codes, next
+  states and Korean messages come from the rule rows, never from code; `design` (1-factor 7 / FCCD 13 / BBD 17, piecewise coded↔actual so
+  asymmetric ranges round-trip exactly, seeded order, Validator); `models` (all strong-hierarchy candidates, LOOCV 1-SE → fewest terms →
+  AICc → adj R² → formula; RB14 gate); `region` (convex-hull domain, joint pass probability from locked constants 0.90 / grid 21,
+  pre-locked PI 2×2 verification); `replay` (CBD ODT). **Don't add gate logic that isn't in a rulebook row** — an earlier draft blocked on
+  pred R² ≤ 0, which RB14 only warns about (MV007); it was removed.
+- **CBD ODT replay** (`tests/fixtures/cbd_odt_monton2026.json` = Monton 2026 Tables 1/2/9/10/11/12 copied from Europe PMC PMC13519653;
+  Wiley blocks direct fetch). Result, pinned by `tests/test_doe_v7_core.py`: hardness `1 + X1 + X2`, DT and friability VALID_WITH_FLAGS
+  (MV007) → `WAITING_MODEL_APPROVAL` until the researcher accepts flags → then REGION_EMPTY under p_min 0.90 (max 0.889) →
+  `MODEL_INADEQUATE` (DR018); the 3 verification lots pass spec+PI 9/9 but are not promoted. `PUBLISHED_REPORT_INCONSISTENCY` (hardness
+  actual equation has X1X2, ANOVA is linear) is **not in M07** — recorded as an audit finding, not a reason code (catalog gap to raise).
+- **UI**: third tab `#tab-v7` / `#view-v7` (`web/static/doe7.{js,css}`, deep link `?v7`), read-only API `/api/doe-v7/*`. Browser test
+  `tests/browser/doe7.mjs` (no LLM). `studio.js showTab` now iterates `discovery|studio|v7`.
+- Not done yet (INSTALLATION PR 4–5): the 6-step wizard on real studies, Axes3D (the tab draws 2D slices), M06 adapter for labloop,
+  `V6_TO_V7_MIGRATION_MATRIX.csv`, archive of v6.1.

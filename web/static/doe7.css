@@ -1,0 +1,38 @@
+/* DoE v7.0 검증 모드 — 지환닷컴 토큰(styles.css) 재사용. 색은 판정(통과/경고/실패)에만. */
+#view-v7 { display: grid; gap: 14px; }
+.d7-banner { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-align: center; padding: 7px 10px; border: 1px dashed var(--status-warn); color: var(--status-warn); border-radius: var(--radius-s); }
+.d7-pkg { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); }
+.d7-sub { display: flex; gap: 6px; flex-wrap: wrap; }
+.d7-subtab { border: 1px solid var(--border); background: var(--surface-1); border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+.d7-subtab.on { background: var(--ink-1); color: var(--page); border-color: var(--ink-1); }
+.d7-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-m, 14px); padding: 16px 18px; display: grid; gap: 10px; min-width: 0; }
+.d7-card h3 { font-size: 15px; font-weight: 800; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; }
+.d7-card h4 { font-size: 13px; margin: 6px 0 0; }
+.d7-muted { color: var(--ink-muted); font-size: 12px; font-weight: 500; }
+.d7-small { font-size: 11px; }
+.d7-note { font-size: 13px; line-height: 1.6; background: var(--page); border-left: 3px solid var(--ink-2); padding: 10px 12px; border-radius: 6px; }
+.d7-steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13px; line-height: 1.55; }
+.d7-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 12.5px; }
+.d7-badge { display: inline-block; font-size: 11px; font-weight: 700; border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.d7-badge.ok { border-color: var(--status-good); color: var(--status-good); }
+.d7-badge.warn { border-color: var(--status-warn); color: var(--status-warn); }
+.d7-badge.bad { border-color: var(--status-critical); color: var(--status-critical); }
+.d7-badge.draft { border-style: dashed; color: var(--ink-muted); }
+.d7-decision { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.d7-wait { display: grid; gap: 10px; border: 1px dashed var(--status-warn); border-radius: var(--radius-s); padding: 12px; }
+.d7-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.d7-kpis > div { background: var(--page); border-radius: var(--radius-s); padding: 10px 12px; display: grid; gap: 2px; }
+.d7-kpis span { font-size: 11.5px; color: var(--ink-muted); font-weight: 600; }
+.d7-kpis b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.d7-kpis small { font-size: 11px; color: var(--ink-muted); }
+.d7-slicebar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 12.5px; }
+.d7-x3 { border: 1px solid var(--border); background: var(--surface-1); border-radius: 999px; padding: 3px 12px; cursor: pointer; font-size: 12px; }
+.d7-x3.on { background: var(--ink-1); color: var(--page); }
+.d7-maps { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.d7-map { margin: 0; display: grid; gap: 4px; }
+.d7-map svg { width: 100%; height: auto; border: 1px solid var(--grid); border-radius: 6px; background: var(--surface-1); }
+.d7-map figcaption { font-size: 11.5px; color: var(--ink-2); }
+.d7-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; font-size: 13px; }
+.d7-sbt input, .d7-sbt select { min-width: 70px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+@media (max-width: 760px) { .d7-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

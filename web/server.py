@@ -1286,6 +1286,123 @@ async def index() -> HTMLResponse:
     return HTMLResponse(html, headers={"Cache-Control": "no-cache, must-revalidate"})
 
 
+# ── DoE v7.0 검증 모드(읽기 전용) ─────────────────────────────────────────────
+# config/doe_module.yaml enabled=false · VALIDATION_ONLY — study 상태를 만들거나 옮기지 않는 계산만 연다(INSTALLATION §12).
+def _doe7():
+    from formula.doe.package import package as _pkg
+    return _pkg()
+
+
+def _jsonable(x):
+    import numpy as _np
+    if isinstance(x, dict):
+        return {str(k): _jsonable(v) for k, v in x.items() if k not in ("cov", "leverage", "cooks_d", "fitted", "residuals")}
+    if isinstance(x, (list, tuple)):
+        return [_jsonable(v) for v in x]
+    if isinstance(x, (_np.floating, float)):
+        v = float(x)
+        return None if v != v or v in (float("inf"), float("-inf")) else v
+    if isinstance(x, (_np.integer,)):
+        return int(x)
+    if isinstance(x, _np.bool_):
+        return bool(x)
+    return x
+
+
+@app.get("/api/doe-v7/package")
+def doe7_package() -> Dict[str, Any]:
+    return _doe7().summary()
+
+
+@app.get("/api/doe-v7/cbd-replay")
+def doe7_cbd_replay(accept_flags: bool = False) -> Dict[str, Any]:
+    from formula.doe.replay import run_replay
+    r = run_replay(_doe7(), accept_flags=accept_flags)
+    import json as _json
+    from formula.doe.replay import FIXTURE
+    fx = _json.loads(FIXTURE.read_text(encoding="utf-8"))
+    r["fixture"] = {k: fx[k] for k in ("runs", "factors", "responses", "verification", "optimum", "range_evidence", "prototype")}
+    return _jsonable(r)
+
+
+@app.get("/api/doe-v7/cbd-replay/slice")
+def doe7_slice(x3: float = 0.0, steps: int = 41) -> Dict[str, Any]:
+    """반응별 예측 평균·통과확률과 공동 통과확률 격자(X1×X2, X3 고정). 영역 밖은 domain=false(외삽 — 색칠하지 않음)."""
+    import numpy as _np
+    from formula.doe import region as RG
+    from formula.doe.models import predict
+    steps = max(11, min(int(steps), 61))
+    x3 = float(max(-1.0, min(1.0, x3)))
+    g = _np.linspace(-1, 1, steps)
+    X1, X2 = _np.meshgrid(g, g, indexing="ij")
+    pts = {"X1": X1.ravel(), "X2": X2.ravel(), "X3": _np.full(X1.size, x3)}
+    dom = RG.in_domain("BBD", _np.column_stack([pts["X1"], pts["X2"], pts["X3"]]))
+    import json as _json
+    from formula.doe.replay import FIXTURE, _raw_models
+    raw = _raw_models(_doe7())
+    fxd = _json.loads(FIXTURE.read_text(encoding="utf-8"))
+    out, joint = {}, _np.ones(X1.size)
+    for resp in fxd["responses"]:
+        m = raw[resp["id"]]
+        pr = predict(m, pts)
+        p = RG.pass_prob(resp, pr["mean"], pr["se_pred"], m["df_resid"])
+        joint *= p
+        out[resp["id"]] = {"mean": pr["mean"].reshape(steps, steps).tolist(), "p": p.reshape(steps, steps).tolist(),
+                           "mean_pass": RG.mean_pass(resp, pr["mean"]).reshape(steps, steps).tolist()}
+    return _jsonable({"x3": x3, "steps": steps, "grid": g.tolist(), "domain": dom.reshape(steps, steps).tolist(),
+                      "responses": out, "joint": joint.reshape(steps, steps).tolist(),
+                      "p_min": float(_doe7().constants.get("joint_pass_probability", 0.9))})
+
+
+class Doe7Factor(BaseModel):
+    factor_id: str = Field(..., max_length=12)
+    name: str = Field("", max_length=40)
+    unit: Optional[str] = Field(None, max_length=16)
+    low: Optional[float] = None
+    center: Optional[float] = None
+    high: Optional[float] = None
+    kind: str = Field("CMA", pattern="^(CMA|CPP|CATEGORICAL|MIXTURE_COMPONENT|HARD_TO_CHANGE)$")
+    quantity_kind: Optional[str] = Field(None, max_length=24)
+    reference_value: Optional[float] = None
+    evidence: str = Field("UNVERIFIED_PROPOSAL", pattern="^(MEASURED_PRIOR_BATCH|FEASIBILITY_CONFIRMED|VERIFIED_EXTERNAL_DATA|REPORTED_NO_RAW_DATA|EXPERT_PROPOSAL|UNVERIFIED_PROPOSAL)$")
+    applicability_confirmed: bool = False
+
+
+class Doe7RangeRequest(BaseModel):
+    mode: str = Field("NEW_API", pattern="^(NEW_API|LITERATURE_REPLAY)$")
+    factors: List[Doe7Factor] = Field(..., min_length=1, max_length=4)
+    feasibility_results: Optional[Dict[str, Dict[str, Optional[bool]]]] = None
+
+
+@app.post("/api/doe-v7/range-check")
+def doe7_range_check(req: Doe7RangeRequest) -> Dict[str, Any]:
+    """신규 API 범위 샌드박스 — 범위근거 gate → (필요하면) 2k+1 계획 → 결과를 넣으면 라우팅. 상태 저장 없음."""
+    from formula.doe import design as D
+    from formula.doe import gates as G
+    from formula.doe.contracts import FactorSpec
+    pkg = _doe7()
+    fs = [FactorSpec(f.factor_id, f.name or f.factor_id, f.unit, f.low, f.center, f.high, kind=f.kind, quantity_kind=f.quantity_kind,
+                     reference_value=f.reference_value, evidence_status={"low": f.evidence, "center": f.evidence, "high": f.evidence},
+                     applicability_confirmed=f.applicability_confirmed) for f in req.factors]
+    gate = G.range_evidence(pkg, fs, req.mode)
+    out: Dict[str, Any] = {"range_gate": gate, "banner": pkg.config.display_banner}
+    route = gate["route"]["next_state"]
+    if route in ("NEEDS_FEASIBILITY",) and len(fs) <= 3:
+        plan = G.feasibility_plan(pkg, fs)
+        out["feasibility_plan"] = plan
+        if req.feasibility_results:
+            out["feasibility_result"] = G.feasibility_evaluate(pkg, plan, req.feasibility_results)
+            route = out["feasibility_result"]["route"]["next_state"]
+    if route == "DOE_RANGE_READY":
+        d = G.select_design(pkg, fs)
+        out["design_decision"] = d.as_dict()
+        dt = G.DESIGN_OF_CODE.get(d.result_code)
+        if dt:
+            plan = D.generate(dt, fs, seed=int(pkg.rulebooks["RB15"].get("random_seed", 20260926)))
+            out["doe_plan"] = {k: plan[k] for k in ("design_type", "random_seed", "center_points", "runs", "validation", "matrix_hash")}
+    return _jsonable(out)
+
+
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon() -> FileResponse:
     """브라우저가 항상 찾는 경로 — 없으면 콘솔에 404가 남는다."""
