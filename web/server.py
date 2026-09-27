@@ -1286,8 +1286,9 @@ async def index() -> HTMLResponse:
     return HTMLResponse(html, headers={"Cache-Control": "no-cache, must-revalidate"})
 
 
-# ── DoE v7.0 검증 모드(읽기 전용) ─────────────────────────────────────────────
-# config/doe_module.yaml enabled=false · VALIDATION_ONLY — study 상태를 만들거나 옮기지 않는 계산만 연다(INSTALLATION §12).
+# ── DoE v7.0 ─────────────────────────────────────────────────────────────────
+# config/doe_module.yaml enabled=false(production 집행 꺼짐). 아래 읽기 전용 계산(package·cbd-replay·range-check)과
+# 샌드박스 study(/api/doe-v7/studies/*) — 모든 규칙이 DRAFT라 study는 SANDBOX로만 만든다(docs/doe_v7.0/IMPLEMENTATION_DESIGN.md).
 def _doe7():
     from formula.doe.package import package as _pkg
     return _pkg()
@@ -1401,6 +1402,117 @@ def doe7_range_check(req: Doe7RangeRequest) -> Dict[str, Any]:
             plan = D.generate(dt, fs, seed=int(pkg.rulebooks["RB15"].get("random_seed", 20260926)))
             out["doe_plan"] = {k: plan[k] for k in ("design_type", "random_seed", "center_points", "runs", "validation", "matrix_hash")}
     return _jsonable(out)
+
+
+_DOE7_SERVICE = None
+
+
+def doe7_service():
+    global _DOE7_SERVICE
+    if _DOE7_SERVICE is None:
+        from formula.doe.service import DoeStudyService
+        _DOE7_SERVICE = DoeStudyService(_doe7())
+    return _DOE7_SERVICE
+
+
+class Doe7StudyCreate(BaseModel):
+    source: str = Field(..., pattern="^(candidate|cbd_replay)$")
+    run_id: Optional[str] = None
+    candidate_id: Optional[str] = None
+    candidate_version: int = 1
+
+
+@app.post("/api/doe-v7/studies")
+async def doe7_create_study(req: Doe7StudyCreate, idempotency_key: Optional[str] = Header(None),
+                            actor_id: str = Header("researcher")) -> Dict[str, Any]:
+    """① 통과 후보 또는 CBD 문헌 재현 → 불변 handoff + 샌드박스 study. 후보가 자동으로 넘어오지 않는다 — 연구자가 고른다."""
+    from formula.doe import demo as doe_demo
+    from formula.doe import handoff as doe_handoff
+    svc = doe7_service()
+    if req.source == "cbd_replay":
+        h, study_type, demo = doe_handoff.from_fixture(doe_demo.fixture(), actor_id), "LITERATURE_REPLAY", "cbd_odt"
+    else:
+        execution = RUNS.get(req.run_id or "")
+        if execution is None or not execution.final:
+            raise HTTPException(404, "설계 실행이 없거나 아직 끝나지 않았습니다.")
+        result = next((r for r in execution.final.get("results", []) if r["candidate_id"] == req.candidate_id), None)
+        if result is None:
+            raise HTTPException(404, f"후보 {req.candidate_id} 없음")
+        if any(getattr(v.status, "value", v.status) == "hard_fail" for v in result["verdicts"]):
+            raise HTTPException(409, "룰북 반려(HARD_FAIL) 후보로는 실험개발을 시작할 수 없습니다.")
+        spec = execution.final.get("spec")
+        spec_d = spec.model_dump(mode="json") if hasattr(spec, "model_dump") else (spec or {})
+        recipe = result["recipe"].model_dump(mode="json")
+        recipe["version"] = req.candidate_version
+        verdicts = [d for d in (v.model_dump(mode="json") for v in result["verdicts"] if v.rule_id) if d.get("status") != "pass"]
+        h = doe_handoff.from_candidate(recipe, spec_d, verdicts, run_id=req.run_id, actor=actor_id)
+        study_type, demo = "NEW_API", None
+    try:
+        return _jsonable_state(await asyncio.to_thread(svc.create, h, study_type=study_type, actor=actor_id,
+                                                       idempotency_key=idempotency_key, demo=demo))
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
+def _jsonable_state(x):
+    """study 상태는 공분산을 포함해 그대로 — 화면 곡면은 서버 /surface가 계산하므로 여기서는 크기만 줄인다."""
+    if isinstance(x, dict):
+        return {k: _jsonable_state(v) for k, v in x.items() if k not in ("cov",)}
+    if isinstance(x, list):
+        return [_jsonable_state(v) for v in x]
+    return x
+
+
+@app.get("/api/doe-v7/studies")
+async def doe7_list_studies() -> Dict[str, Any]:
+    return {"studies": doe7_service().list()}
+
+
+@app.get("/api/doe-v7/studies/{study_id}")
+async def doe7_get_study(study_id: str) -> Dict[str, Any]:
+    try:
+        return _jsonable_state(doe7_service().view(study_id))
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
+@app.post("/api/doe-v7/studies/{study_id}/actions/{action}")
+async def doe7_study_action(study_id: str, action: str, body: StudyActionRequest,
+                            idempotency_key: Optional[str] = Header(None),
+                            expected_state_version: Optional[int] = Header(None),
+                            actor_id: str = Header("researcher")) -> Dict[str, Any]:
+    try:
+        return _jsonable_state(await asyncio.to_thread(doe7_service().act, study_id, action, body.payload, actor=actor_id,
+                                                       idempotency_key=idempotency_key, expected_version=expected_state_version))
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
+@app.get("/api/doe-v7/studies/{study_id}/fill/{action}")
+async def doe7_study_fill(study_id: str, action: str) -> Dict[str, Any]:
+    """문헌 재현 study의 폼 채우기 값(논문 표). 제출하지 않는다. 신규 API study는 채울 데이터가 없다(204 대신 null)."""
+    from formula.doe import demo as doe_demo
+    try:
+        st = doe7_service().view(study_id)["study"]
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+    return {"payload": _jsonable(doe_demo.fill(st, action))}
+
+
+@app.get("/api/doe-v7/studies/{study_id}/trace")
+async def doe7_study_trace(study_id: str) -> Dict[str, Any]:
+    try:
+        return doe7_service().trace(study_id)
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
+@app.get("/api/doe-v7/studies/{study_id}/surface")
+async def doe7_study_surface(study_id: str, response: Optional[str] = None, x3: float = 0.0, steps: int = 31) -> Dict[str, Any]:
+    try:
+        return doe7_service().surface(study_id, response, max(-1.0, min(1.0, x3)), max(11, min(int(steps), 51)))
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
 
 
 @app.get("/favicon.ico", include_in_schema=False)

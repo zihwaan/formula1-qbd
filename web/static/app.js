@@ -375,13 +375,17 @@ function renderCandidates() {
       ${readiness}${refinements}
       <div class="chips">${chips}</div>${judges}
       ${gate && gate.passed ? `<button type="button" class="dev-start" data-cand="${esc(id)}"
-         title="이 후보 버전을 불변 Handoff로 고정하고 CQA·FMEA·DoE 개발을 시작합니다">이 후보로 개발 착수 →</button>` : ""}`;
+         title="이 후보 버전을 불변 Handoff로 고정하고 CQA·FMEA·DoE 개발을 시작합니다">이 후보로 개발 착수 →</button>
+         <button type="button" class="dev-start dev-v7" data-cand="${esc(id)}"
+         title="DoE v7.0 실험개발 — 6단계를 단계마다 승인하며 진행합니다(샌드박스)">v7 실험개발로 시작 →</button>` : ""}`;
     card.querySelectorAll(".chip").forEach((chip) => {
       chip.onclick = () => showRule(chip.dataset.rule);
     });
     // 후보 1위가 자동으로 개발에 들어가지 않는다(명세 v6.1 §0 경계 1) — 연구자가 고른 후보만 넘어간다.
     const dev = card.querySelector(".dev-start");
     if (dev) dev.onclick = () => window.F1Studio && window.F1Studio.startFromCandidate(runId, dev.dataset.cand);
+    const v7 = card.querySelector(".dev-v7");
+    if (v7) v7.onclick = () => window.F1Doe7Wizard && window.F1Doe7Wizard.startFromCandidate(runId, v7.dataset.cand);
     box.appendChild(card);
   }
 }

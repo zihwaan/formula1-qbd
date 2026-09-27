@@ -1,0 +1,85 @@
+// DoE v7.0 실험개발 마법사 — CBD 문헌 재현 study를 클릭으로 끝까지 간다(LLM 없음).
+// 각 단계: "입력 채우기(논문 값)"는 폼만 채우고, 연구자가 행동 버튼을 누른다. 승인 없이 넘어가는 길이 없는지,
+// 막힌 승인이 판정(rule ID)을 보여 주는지, 끝에서 REGION_EMPTY → RB18 재검토가 나오는지, 곡면(3D 또는 2D)이 그려지는지 본다.
+import { chromium } from 'playwright-core';
+const URL = process.argv[2] || 'http://localhost:8000/';
+const b = await chromium.launch({ executablePath: process.env.CHROME, headless: true });
+let fail = 0;
+const ck = (n, ok, d = '') => { console.log(`${ok ? '  ✓' : '  ✗'} ${n}${d ? ' — ' + d : ''}`); if (!ok) fail++; };
+for (const [name, vp] of [['desktop', { width: 1440, height: 900 }], ['phone', { width: 390, height: 844 }]]) {
+  console.log(`\n[${name}]`);
+  const ctx = await b.newContext({ viewport: vp });
+  if (process.env.GUEST) await ctx.request.post(new globalThis.URL(URL).origin + '/api/formula1/guest');   // 허브 경유(zihwan.com) — 게스트 세션
+  const p = await ctx.newPage();
+  const errs = [];
+  p.on('pageerror', (e) => errs.push(e.message));
+  await p.addInitScript(() => { localStorage.setItem('f1_guide_seen_v1', '1'); localStorage.removeItem('f1:d7study'); });
+  await p.goto(URL + '?v7', { waitUntil: 'networkidle' });
+  await p.waitForSelector('#d7w-cbd', { timeout: 20000 });
+  const status = () => p.locator('#d7w-ask h3 .d7-badge').first().textContent();
+  const waitStatus = async (s) => { await p.waitForFunction((x) => document.querySelector('#d7w-ask h3 .d7-badge')?.textContent === x, s, { timeout: 30000 }).catch(() => {}); return status(); };
+  const click = async (action) => { await p.click(`#d7w-ask [data-act="${action}"]`); await p.waitForFunction(() => ![...document.querySelectorAll('#d7w-ask button')].some((x) => x.disabled), null, { timeout: 30000 }); };
+  const fill = async () => { await p.click('#d7w-fill'); await p.waitForFunction(() => /채웠습니다/.test(document.getElementById('d7w-msg').textContent), null, { timeout: 15000 }); };
+  const overflow = () => p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  let maxOver = 0;
+  const step = async () => { maxOver = Math.max(maxOver, await overflow()); };
+
+  await p.click('#d7w-cbd');
+  ck('study 생성 → HANDOFF_RECEIVED · 1단계', (await waitStatus('HANDOFF_RECEIVED')) === 'HANDOFF_RECEIVED' && (await p.locator('.d7w-steps li.on').textContent()).includes('후보'));
+  ck('DRAFT·샌드박스 표시', (await p.locator('#d7w-ask').textContent()).includes('DRAFT'));
+  await step();
+  await click('handoff_confirm');
+  ck('후보 확인 → CQA_REVIEW', (await waitStatus('CQA_REVIEW')) === 'CQA_REVIEW');
+  await click('cqa_approve');
+  ck('채우기 전 CQA 승인은 막힘(판정 표시)', (await status()) === 'CQA_REVIEW' && (await p.locator('.d7w-block').count()) > 0);
+  await fill();
+  ck('채우기는 제출하지 않음', (await status()) === 'CQA_REVIEW');
+  await step();
+  await click('cqa_approve');
+  ck('CQA 승인 → FMEA_REVIEW', (await waitStatus('FMEA_REVIEW')) === 'FMEA_REVIEW');
+  await click('fmea_approve');
+  ck('FMEA 승인 → FACTOR_SELECTION', (await waitStatus('FACTOR_SELECTION')) === 'FACTOR_SELECTION');
+  await fill();
+  ck('요인 3개 선택됨', (await p.locator('#d7w-form input[data-f="pick"]:checked').count()) === 3);
+  await step();
+  await click('factor_select');
+  ck('요인 확정 → RANGE_EVIDENCE_CHECK', (await waitStatus('RANGE_EVIDENCE_CHECK')) === 'RANGE_EVIDENCE_CHECK');
+  ck('기준 처방값은 center로 들어가지 않음', (await p.locator('#d7w-form tr[data-fid="X2"] [data-f="center"]').inputValue()) === '');
+  await fill();
+  await step();
+  await click('range_approve');
+  ck('범위 승인 → DOE_PLAN_REVIEW (BBD 17)', (await waitStatus('DOE_PLAN_REVIEW')) === 'DOE_PLAN_REVIEW' && (await p.locator('#d7w-body').textContent()).includes('BBD 17 run'));
+  await fill();
+  await step();
+  await click('plan_approve');
+  ck('실험표 승인 → WAITING_FOR_RESULTS', (await waitStatus('WAITING_FOR_RESULTS')) === 'WAITING_FOR_RESULTS');
+  await fill();
+  ck('결과 17 run 채움', (await p.locator('#d7w-form tr[data-run]').count()) === 17);
+  await step();
+  await click('results_submit');
+  ck('결과 제출 → RESULT_QUALITY_REVIEW(RQ006 미확인)', (await waitStatus('RESULT_QUALITY_REVIEW')) === 'RESULT_QUALITY_REVIEW' && (await p.locator('#d7w-ask').textContent()).includes('RQ006'));
+  await click('results_confirm');
+  ck('대조 확인 → MODEL_FIT(플래그 승인 대기)', (await waitStatus('MODEL_FIT')) === 'MODEL_FIT');
+  await p.waitForSelector('#d7w-surf .d7-map', { timeout: 20000 }).catch(() => {});
+  ck('2D 곡면 단면', (await p.locator('#d7w-surf .d7-map').count()) >= 1);
+  await p.waitForFunction(() => document.querySelector('#d7w-3d .main-svg, #d7w-3d canvas') || /불러오지 못해/.test(document.getElementById('d7w-3d')?.textContent || ''), null, { timeout: 60000 }).catch(() => {});
+  const three = await p.evaluate(() => (document.querySelector('#d7w-3d canvas, #d7w-3d .main-svg') ? '3D' : document.getElementById('d7w-3d')?.textContent || ''));
+  ck('3D 곡면(Plotly) 또는 2D 대체 안내', three === '3D' || /2D 단면만/.test(three), three.slice(0, 60));
+  await click('model_accept_flags');
+  ck('사유 없이 플래그 승인 불가', (await status()) === 'MODEL_FIT' && /사유/.test(await p.locator('#d7w-msg').textContent()));
+  await fill();
+  await click('model_accept_flags');
+  ck('플래그 승인 → MODEL_INADEQUATE (REGION_EMPTY · DR018)', (await waitStatus('MODEL_INADEQUATE')) === 'MODEL_INADEQUATE' && (await p.locator('#d7w-body').textContent()).includes('DR018'));
+  ck('RB18 LB012 판별시험 제안', (await p.locator('#d7w-ask').textContent()).includes('LB012'));
+  await fill();
+  await step();
+  await click('revise');
+  ck('재검토 → FMEA_REVIEW', (await waitStatus('FMEA_REVIEW')) === 'FMEA_REVIEW');
+  const hist = await p.locator('#d7w-body').textContent();
+  ck('승인 이력 6건', hist.includes('승인 6'));
+  ck('가로 넘침 없음(모든 단계)', maxOver === 0 && (await overflow()) === 0, `max ${maxOver}`);
+  ck('페이지 오류 없음', errs.length === 0, errs.join(' | '));
+}
+await b.close();
+console.log(fail ? `\n${fail}건 실패` : '\nALL PASS');
+process.exit(fail ? 1 : 0);

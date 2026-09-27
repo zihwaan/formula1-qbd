@@ -193,7 +193,7 @@
   // ── 탭 ─────────────────────────────────────────────────────────────────
   function showTab(which) {
     const studio = which === "studio";
-    for (const t of ["discovery", "studio", "v7"]) {        // v7 = DoE v7.0 검증 모드(doe7.js)
+    for (const t of ["discovery", "studio", "v7"]) {        // v7 = DoE v7.0 실험개발(doe7wizard.js · doe7.js)
       if (!el(`view-${t}`)) continue;
       el(`view-${t}`).hidden = t !== which;
       el(`tab-${t}`).classList.toggle("on", t === which);

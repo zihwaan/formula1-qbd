@@ -1,4 +1,4 @@
-/* DoE v7.0 검증 모드 — 지환닷컴 토큰(styles.css) 재사용. 색은 판정(통과/경고/실패)에만. */
+/* DoE v7.0 탭 — 실험개발 마법사(doe7wizard.js)와 검증 비교 보기(doe7.js). 지환닷컴 토큰(styles.css) 재사용. 색은 판정(통과/경고/실패)에만. */
 #view-v7 { display: grid; gap: 14px; }
 .d7-banner { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-align: center; padding: 7px 10px; border: 1px dashed var(--status-warn); color: var(--status-warn); border-radius: var(--radius-s); }
 .d7-pkg { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); }
@@ -36,3 +36,59 @@
 .d7-sbt input, .d7-sbt select { min-width: 70px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
 @media (max-width: 760px) { .d7-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ── 실험개발 마법사(doe7wizard.js) ─────────────────────────────────── */
+.d7-wizard { display: grid; gap: 12px; min-width: 0; }
+.d7-wizard[hidden] { display: none !important; }
+.d7w-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.d7w-bar button { border: 1px solid var(--ink-1); background: var(--ink-1); color: var(--page); border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: 13px; cursor: pointer; }
+.d7w-bar select { max-width: 100%; min-width: 0; flex: 1 1 220px; }
+.d7w-msg { font-size: 13px; padding: 8px 12px; border-radius: var(--radius-s); background: var(--surface-1); border: 1px solid var(--border); }
+.d7w-msg.bad { border-color: var(--status-critical); color: var(--status-critical); }
+.d7w-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 14px; }
+.d7w-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.d7w-steps li { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; color: var(--ink-muted); border: 1px solid var(--border); border-radius: var(--radius-s); padding: 6px 8px; min-width: 0; word-break: keep-all; }
+.d7w-steps li span { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; border: 1px solid currentColor; font-size: 11px; }
+.d7w-steps li.done { color: var(--ink-2); border-style: solid; }
+.d7w-steps li.done span { background: var(--ink-2); color: var(--page); border-color: var(--ink-2); }
+.d7w-steps li.on { color: var(--ink-1); border-color: var(--ink-1); box-shadow: inset 0 0 0 1px var(--ink-1); }
+.d7w-steps li.on span { background: var(--ink-1); color: var(--page); border-color: var(--ink-1); }
+.d7w-ask { border: 1.5px solid var(--ink-1); }
+.d7w-ask h3 { line-height: 1.45; word-break: keep-all; }
+.d7w-block { display: grid; gap: 6px; border: 1px dashed var(--status-critical); border-radius: var(--radius-s); padding: 10px 12px; }
+.d7w-lab { display: grid; gap: 6px; border: 1px dashed var(--status-warn); border-radius: var(--radius-s); padding: 10px 12px; font-size: 13px; }
+.d7w-check { display: flex; gap: 6px; align-items: baseline; font-size: 13px; flex-wrap: wrap; }
+.d7w-form { display: grid; gap: 8px; min-width: 0; }
+.d7w-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.d7w-grid label, .d7w-full { display: grid; gap: 4px; font-size: 12.5px; font-weight: 650; color: var(--ink-2); }
+.d7w-form input, .d7w-form select, .d7w-form textarea { font: inherit; font-size: 12.5px; border: 1px solid var(--border); border-radius: 6px; padding: 5px 7px; background: var(--page); color: var(--ink-1); min-width: 0; width: 100%; box-sizing: border-box; }
+.d7w-form input[type="checkbox"] { width: auto; }
+.d7w-tbl td { vertical-align: top; }
+.d7w-tbl input:not([type="checkbox"]) { min-width: 90px; }
+.d7w-tbl input.d7w-num { min-width: 64px; max-width: 96px; }
+.d7w-tbl input.d7w-s { min-width: 60px; max-width: 90px; }
+.d7w-tbl select { min-width: 88px; }
+.d7w-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.d7w-acts button { border: 1px solid var(--ink-1); border-radius: 999px; padding: 8px 14px; font-weight: 700; font-size: 13px; cursor: pointer; background: var(--surface-1); color: var(--ink-1); }
+.d7w-acts button.primary { background: var(--ink-1); color: var(--page); }
+.d7w-acts button small { font-weight: 600; font-size: 10.5px; opacity: .8; margin-left: 4px; }
+.d7w-acts button:disabled { opacity: .5; cursor: wait; }
+.d7w-body { display: grid; gap: 10px; min-width: 0; }
+.d7w-sec > summary { cursor: pointer; list-style: none; }
+.d7w-sec > summary::-webkit-details-marker { display: none; }
+.d7w-sec > summary h3::before { content: "▸"; font-size: 11px; color: var(--ink-muted); }
+.d7w-sec[open] > summary h3::before { content: "▾"; }
+.d7w-decs { display: grid; gap: 4px; }
+.d7w-surf { display: grid; gap: 10px; min-width: 0; }
+.d7w-3d { min-height: 60px; width: 100%; min-width: 0; }
+.d7w-2d { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+@media (max-width: 760px) {
+  .d7w-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .d7w-steps li { font-size: 11px; padding: 5px 6px; }
+}
+/* 폭은 부모를 넘지 않는다 — select 옵션·긴 코드 문자열이 그리드 열을 min-content로 밀어내지 않게 */
+#view-v7, .d7-wizard, #d7w-main, .d7w-body, .d7-card { grid-template-columns: minmax(0, 1fr); }
+#d7w-main { display: grid; gap: 12px; min-width: 0; }
+.d7w-bar select { width: 100%; flex: 1 1 220px; }
+.d7w-sec, .d7w-sec > summary, .d7w-ask { min-width: 0; }
+.d7-decision, .d7w-msg, .d7w-head, .d7w-lab, .d7w-ask p { overflow-wrap: anywhere; }

@@ -1,4 +1,4 @@
-// DoE v7.0 검증 탭 — CBD 문헌 재현(플래그 승인 대기 → 승인 → 잠근 기준에서 REGION_EMPTY)과 신규 API 범위 gate
+// DoE v7.0 탭의 검증 비교 보기("CBD 재현 요약" · "범위 gate 계산기" 하위 탭) — CBD 문헌 재현(플래그 승인 대기 → 승인 → 잠근 기준에서 REGION_EMPTY)과 신규 API 범위 gate
 // (NEEDS_FEASIBILITY 7조건 → 경계 실패 RANGE_REVISION_REQUIRED → 모두 통과 BBD 17 run). LLM을 쓰지 않는다.
 import { chromium } from 'playwright-core';
 const URL = process.argv[2] || 'http://localhost:8000/';
@@ -7,11 +7,14 @@ let fail = 0;
 const ck = (n, ok, d = '') => { console.log(`${ok ? '  ✓' : '  ✗'} ${n}${d ? ' — ' + d : ''}`); if (!ok) fail++; };
 for (const [name, vp] of [['desktop', { width: 1440, height: 900 }], ['phone', { width: 390, height: 844 }]]) {
   console.log(`\n[${name}]`);
-  const p = await (await b.newContext({ viewport: vp })).newPage();
+  const ctx = await b.newContext({ viewport: vp });
+  if (process.env.GUEST) await ctx.request.post(new globalThis.URL(URL).origin + '/api/formula1/guest');   // 허브 경유(zihwan.com) — 게스트 세션
+  const p = await ctx.newPage();
   const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
   await p.addInitScript(() => localStorage.setItem('f1_guide_seen_v1', '1'));
   await p.goto(URL + '?v7', { waitUntil: 'networkidle' });
+  await p.click('.d7-subtab[data-v="replay"]');
   await p.waitForSelector('#d7-accept', { timeout: 30000 });
   ck('DRAFT 배너', (await p.locator('#d7-banner').textContent()).includes('DRAFT'));
   ck('집행 규칙 0개', (await p.locator('#d7-pkg').textContent()).includes('집행 규칙 0개'));

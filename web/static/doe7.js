@@ -1,6 +1,6 @@
-/* DoE v7.0 검증 모드 — 읽기 전용 화면(명세 docs/doe_v7.0, 데이터 database/07_doe/v7_0).
-   config/doe_module.yaml enabled=false · VALIDATION_ONLY 동안 판정은 '권고(DRAFT)'이고 study 상태를 만들거나 옮기지 않는다.
-   ① CBD ODT 문헌 재현(Monton 2026, Table 9 원자료) ② 신규 API 범위근거 gate 샌드박스(명세 §13 예시). */
+/* DoE v7.0 탭 머리(패키지 요약)와 검증 비교 보기 — 저장 없는 계산 화면(명세 docs/doe_v7.0, 데이터 database/07_doe/v7_0).
+   ① CBD 재현 요약(Monton 2026, Table 9 원자료 한 번에) ② 범위근거 gate 계산기(명세 §13 예시).
+   단계별 승인으로 진행하는 저장형 study(마법사)는 doe7wizard.js. */
 (() => {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -230,15 +230,18 @@
 
   function subtab(v) {
     document.querySelectorAll(".d7-subtab").forEach((b) => { b.classList.toggle("on", b.dataset.v === v); b.setAttribute("aria-selected", String(b.dataset.v === v)); });
+    $("d7-wizard").hidden = v !== "wizard";
     $("d7-replay").hidden = v !== "replay";
     $("d7-sandbox").hidden = v !== "sandbox";
     if (v === "sandbox" && !$("d7-sandbox").innerHTML) sandbox();
+    if (v === "replay" && !$("d7-replay").innerHTML) replay().catch(showErr);
+    if (v === "wizard" && window.F1Doe7Wizard) window.F1Doe7Wizard.mount();
   }
 
   async function open() {
     if (loaded) return;
     loaded = true;
-    try { await header(); await replay(); } catch (e) { loaded = false; showErr(e); }
+    try { await header(); } catch (e) { loaded = false; showErr(e); }
   }
 
   document.addEventListener("DOMContentLoaded", () => {

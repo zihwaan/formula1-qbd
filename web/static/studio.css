@@ -372,3 +372,4 @@ table.mini.cqa-mini td:nth-child(2) { white-space: nowrap; }
 .rb-past { margin: 14px 0 6px; font-size: 11px; font-weight: 700; color: var(--ink-muted); border-top: 1px dashed var(--border); padding-top: 8px; }
 
 .sub.upstream { color: var(--status-warn); font-weight: 600; }
+.dev-start.dev-v7 { margin-top: 6px; background: transparent; color: var(--ink-1); }

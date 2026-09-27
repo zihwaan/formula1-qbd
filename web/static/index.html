@@ -54,7 +54,7 @@
       </button>
       <span class="flow-arrow" aria-hidden="true">·</span>
       <button class="flow-tab" id="tab-v7" role="tab" aria-selected="false" aria-controls="view-v7" type="button">
-        <span class="flow-num">v7</span><span class="flow-text"><b>DoE v7.0 검증</b><small>CBD 문헌 재현 · 범위근거 gate · DRAFT</small></span>
+        <span class="flow-num">v7</span><span class="flow-text"><b>DoE v7.0 실험개발</b><small>6단계 · 단계별 승인 · CBD 문헌 재현 · DRAFT</small></span>
       </button>
     </nav>
 
@@ -225,15 +225,17 @@
     <!-- ② 개발 스튜디오 — ExperimentalDevelopmentGraph (명세 v6.1).
          화면의 주인공은 "지금 시스템이 연구자에게 묻는 것"이다(가운데 질문 카드).
          결과(모델·영역·확인점)는 그 대화의 흐름을 따라 오른쪽에 쌓인다. studio.js가 채운다. -->
-    <!-- DoE v7.0 검증 모드 — 읽기 전용(설정 enabled=false · VALIDATION_ONLY). study 상태를 만들거나 옮기지 않는다. doe7.js가 채운다. -->
+    <!-- DoE v7.0 — 실험개발 study(샌드박스, 단계마다 연구자 승인) = doe7wizard.js. 검증 비교(CBD 재현 요약 · 범위 gate) = doe7.js. -->
     <section id="view-v7" role="tabpanel" aria-labelledby="tab-v7" hidden>
       <div class="d7-banner" id="d7-banner">DRAFT / RESEARCH USE ONLY / NOT A GMP INSTRUCTION</div>
       <div class="d7-pkg" id="d7-pkg"></div>
       <div class="d7-sub" role="tablist" aria-label="v7 보기">
-        <button type="button" class="d7-subtab on" data-v="replay" aria-selected="true">CBD ODT 문헌 재현</button>
-        <button type="button" class="d7-subtab" data-v="sandbox" aria-selected="false">신규 API 범위 gate</button>
+        <button type="button" class="d7-subtab on" data-v="wizard" aria-selected="true">실험개발 study</button>
+        <button type="button" class="d7-subtab" data-v="replay" aria-selected="false">CBD 재현 요약</button>
+        <button type="button" class="d7-subtab" data-v="sandbox" aria-selected="false">범위 gate 계산기</button>
       </div>
-      <div id="d7-replay"></div>
+      <div id="d7-wizard" class="d7-wizard"></div>
+      <div id="d7-replay" hidden></div>
       <div id="d7-sandbox" hidden></div>
     </section>
 
@@ -319,6 +321,7 @@
   <script src="static/app.js"></script>
   <script src="static/studio.js"></script>
   <script src="static/doe7.js"></script>
+  <script src="static/doe7wizard.js"></script>
   <script src="static/agent.js"></script>
 </body>
 </html>
