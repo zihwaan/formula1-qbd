@@ -130,3 +130,15 @@ def final_state(blocked, waiting, region, verdict, opt) -> Dict[str, Any]:
     if verdict["promote"]:
         return {"state": "VERIFIED_OPERATING_REGION", "reason_code": "VERIFICATION_PASSED", "rule": "RB17"}
     return {"state": "REGION_REVISION_REQUIRED", "reason_code": verdict["route"], "rule": "RB17"}
+
+
+def _raw_models(pkg: DoePackage = None) -> Dict[str, Dict[str, Any]]:
+    """화면 곡면용 — 재현에서 자동 선택된 모형 그대로(공분산 포함). 부적합 모형도 설명용으로 그릴 수 있지만 영역은 만들지 않는다(§4 화면 6)."""
+    pkg = pkg or package()
+    fx = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    factors = factors_from(fx)
+    ids = [f.factor_id for f in factors]
+    coded = {i: np.array([D.to_coded(r[KEY[i]], f) for r in fx["runs"]]) for i, f in zip(ids, factors)}
+    center = np.all(np.stack([coded[i] for i in ids]) == 0, axis=0)
+    return {resp["id"]: select_model(coded, np.array([_y(r, resp["id"]) for r in fx["runs"]]), center_mask=center,
+                                     constants=pkg.constants)["selected"] for resp in fx["responses"]}
