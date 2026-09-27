@@ -35,6 +35,7 @@ python scripts/validate_07_doe.py database/07_doe tests/fixtures/rule_fixtures.j
 # 기술 보고서(논문 PDF, zihwan.com/pdf): 수치는 엔진으로 계산 → HTML → 헤드리스 Chrome PDF → hub/reports/ 복사 → hub 재배포
 docker run --rm -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1-dev python scripts/report/figdata.py
 python3 scripts/report/demo_cards.py <url> dacon 2 [card1,card3…]   # 시연 쿼리 카드 3장 → docs/report/demo_cards.json(보고서 7.5)
+node scripts/report/surfaces_png.mjs http://localhost:<port>/ published docs/report/cbd_surfaces.png   # 그림 12(v7 곡면 격자) — 엔진 화면 그대로 캡처
 python3 scripts/report/build_report.py --tests <pytest 통과 수> --browser "<브라우저 스위트 요약>"
 "<Chrome>" --headless=new --no-pdf-header-footer --virtual-time-budget=15000 --print-to-pdf=docs/report/Formula1_report.pdf "file://$PWD/docs/report/report.html"
 cp docs/report/Formula1_report.pdf ~/zihwan/hub/reports/formula1_report.pdf
@@ -197,7 +198,7 @@ The whole system is **data-driven, not code-driven**. Rules live in CSVs; a sing
 - **`formula/chem/`** — RDKit input pipeline. `build_profile(api_name|smiles)` → `ApiProfile` (descriptors, SMARTS structural flags, advisory estimates, 2D SVG). Salts are stripped before SMARTS matching; `fr_*` counts cross-check every pattern. **Solubility/permeability estimates are `confidence=low` and must never set `bcs_class`** — the manifest gates `bcs_classification` behind measured values.
 - **`formula/orchestrator/`** — LangGraph `StateGraph` (`graph.py`), shared state with a reset-aware `accumulate` reducer (`state.py`; return `None` to clear a fan-out list between reflection rounds), and the `TraceEvent` bus (`events.py`). Every node emits events; the web UI consumes only that stream.
 - **`formula/agents/`** — Claude nodes. All use structured output (`messages.parse`) and **all have deterministic fallbacks**; `consensus.py` is pure Python driven by `severity_scoring_config.csv` (B model: judge scores rank, never block).
-- **`web/`** — FastAPI + SSE + a no-build SPA. Two result inputs, deliberately separate: `POST /api/runs/{id}/confirmation` (pre-experiment — returns into the input/evidence layer and re-runs the assessment) and `POST /api/runs/{id}/wetlab` (post-batch — returns into design/protocol revision). Merging them into one box erases *where* a result goes back to, which is the point of the dual loop. `POST /api/runs/{id}/approve` is the human gate; it 409s while evidence is missing. `/api/rules/{rule_id}` powers the evidence drill-down that shows the originating CSV row and its SOURCES document. `static/explainer.{js,css}` is the 16-step visual walkthrough of the README (auto-opens on first visit, reopened from the masthead, deep-linkable via `?guide=N`); its content mirrors README.md chapters, so **update it when the design story changes** — it's what a first-time visitor reads instead of the README.
+- **`web/`** — FastAPI + SSE + a no-build SPA. Two result inputs, deliberately separate: `POST /api/runs/{id}/confirmation` (pre-experiment — returns into the input/evidence layer and re-runs the assessment) and `POST /api/runs/{id}/wetlab` (post-batch — returns into design/protocol revision). Merging them into one box erases *where* a result goes back to, which is the point of the dual loop. `POST /api/runs/{id}/approve` is the human gate; it 409s while evidence is missing. `/api/rules/{rule_id}` powers the evidence drill-down that shows the originating CSV row and its SOURCES document. `static/explainer.{js,css}` is the 17-step visual walkthrough of the README (auto-opens on first visit, reopened from the masthead, deep-linkable via `?guide=N`); its content mirrors README.md chapters, so **update it when the design story changes** — it's what a first-time visitor reads instead of the README.
 
 ### Front-end rules (learned the hard way — don't regress these)
 
@@ -673,7 +674,10 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
   (`F1Discovery.startRunWith` fills the form first, `submitMeasurements`, `F1Studio.runAction` = `act()`,
   `startFromCandidate`); `app.js`/`studio.js` dispatch `f1:run` / `f1:study` / `f1:tab` for nudges.
   Tests: `tests/test_input_agent.py`, `tests/browser/agent.mjs`.
-- **Report** — `scripts/report/{figdata,build_report}.py` → `docs/report/`. Every number in the PDF comes from
+- **Report** — `scripts/report/{figdata,build_report}.py` → `docs/report/`. §7.6 + figures 11–12 + table 9 are v7: `figdata.v7_block()` runs
+  the package loader, the CBD replay and a real CBD study walk through `DoeStudyService` (approvals/events counted, not typed); figure 12 is
+  `cbd_surfaces.png` from `surfaces_png.mjs` (it forces sticky headers static — otherwise the app masthead is baked into the figure).
+  The browser-test sentence in §7.7 must list only suites actually run on that build. Every number in the PDF comes from
   `figdata.json` (engine run on the Lornoxicam fixture, CSV row counts) or the CLI args (actual test counts). Served by the hub
   at `zihwan.com/pdf` from `hub/reports/formula1_report.pdf`.
 
@@ -849,6 +853,10 @@ Source: `docs/doe_v7.0/formula1-experimental-development-architecture-v7.0.md` (
   timeline `DOE_PLAN_REPLACED`. Results for **any** study can be pasted as CSV (`POST …/results-csv`): matched by `run_id` or factor actual
   values; columns may be CQA IDs/names but values land under the study's response key; missing `test_method_version` /
   `replicate_independence` columns are then blocked by RB12 (RQ003/RQ008) — correct, not a bug.
+- **Design Validator lesson (2026-09-27):** the 1-factor standard design (7 runs) replicates low/high twice *by design*; counting those as
+  duplicate runs and mapping it to DV016 (BLOCK) made **every 1-factor plan unapprovable**. `design.validate` now subtracts the design's
+  own replicates, `unique_run_ids` feeds DV016 (duplicate/missing run *records*), and extra duplicate points map to **DV012 (WARNING)** —
+  which is what RB10 actually says. Found only by walking a 1-factor dataset end to end; pinned by `test_one_factor_dataset_line_surfaces`.
 - **Data gaps decided in IMPLEMENTATION_DESIGN §8** — keep these, they're the rulebook being honest: M05 `VERIFICATION` is DENY for
   every status → `VERIFICATION_BATCH` (outside M05) allowed only when VR003/VR013/VR019/RQ009 independence holds; `MEASURED_IN_STUDY`
   = alias of `MEASURED_PRIOR_BATCH` (MODEL_FIT only with a locked plan); M04 `force` has N·kgf only — **kN is RE009** (don't add a
@@ -863,7 +871,7 @@ Source: `docs/doe_v7.0/formula1-experimental-development-architecture-v7.0.md` (
   exactly floor height render dotted via z-fighting), observed points with residual stems (dark red above / pink below the surface),
   dashed design-support outline (outside = extrapolation; the surface is drawn over the full square like the paper). Data from
   `formula/doe/surfaces.py` via `GET …/surfaces?source=selected|published&slice=` (and `/cbd-replay/surfaces`). Axis order follows the
-  dataset's factor order, slice factor selectable. Long axis titles are shortened (3D titles clip at the canvas edge). Plotly =
+  dataset's factor order, slice factor selectable. Long axis titles are shortened (3D titles clip at the canvas edge). One-factor studies get 2D prediction lines + points (`kind: LINE`). Plotly =
   `plotly.js-strict-dist-min` from jsdelivr (strict bundle: hub CSP has no `unsafe-eval`); only one grid keeps WebGL contexts (~16 per
   page) — the other becomes a "다시 그리기" button; 2D SVG fallback if Plotly fails. The joint-probability 2D slices stay below the grid. `.d7-card`/wizard grids pin `grid-template-columns: minmax(0,1fr)` — without it a long `<select>` option or a
   details table pushed the phone page 145 px wide. ① candidate cards have **v7 실험개발로 시작** next to the v6.1 button
@@ -872,7 +880,10 @@ Source: `docs/doe_v7.0/formula1-experimental-development-architecture-v7.0.md` (
   feasibility boundary failure → FCCD → VR015/VR003/VR013 blocks → VERIFIED, HITL 409s, idempotency, version conflict, key-based fill);
   `tests/test_doe_v7_dataset.py` (validation errors, second test-only dataset → plan_import → region, CSV matching, CBD as instance);
   browser `tests/browser/doe7wizard.mjs` (CBD by clicks incl. 3×3 surface grid + source toggle, desktop + 390 px, no LLM),
-  `doe7dataset.mjs` (paste real CBD dataset JSON → plan_import → CSV paste → RB12 block → full CSV → model grid), `doe7candidate.mjs` (one real LLM run →
+  `doe7dataset.mjs` (paste real CBD dataset JSON → plan_import → CSV paste → RB12 block → full CSV → model grid),
+  `doe7full.mjs` (**local container only** — test-only synthetic dataset; every wizard form: feasibility fail → LB002 → resubmit → pass →
+  FCCD → results → region → vplan_lock → VR015 → VERIFICATION_BATCH → final approve → VERIFIED with all 9 approval points; then a
+  1-factor dataset → line plots), `doe7candidate.mjs` (one real LLM run →
   candidate → v7 study → RB01 asks for equipment/scale/grade), `doe7.mjs` (comparison sub-tabs).
 - `database/07_doe/V6_TO_V7_MIGRATION_MATRIX.csv` — per v6.1 file status from rule-ID comparison (not guessed); pinned by
   `test_migration_matrix_covers_every_legacy_file`. `scripts/validate_07_doe.py` skips it. Not done: archive of v6.1 (gated on

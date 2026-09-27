@@ -321,6 +321,74 @@ def fig_states():
     return svg(720, 262, b)
 
 
+def fig_v7_flow():
+    """v7 실험개발 6단계 — 단계마다 연구자 승인 지점(RB00 human_approval_required 9개). 괄호 = 승인 지점."""
+    steps = [("① 후보·CQA", "handoff 확인 → CQA 승인", "CQA 선택"), ("② FMEA·요인", "FMEA 승인 → 요인 ≤ 3", "FMEA 검토"),
+             ("③ 범위·feasibility", "근거 약하면 2k+1 축점", "요인·범위 · feasibility 계획"), ("④ 실험표", "설계·run sheet 검사", "DoE 계획 · 실행 프로토콜"),
+             ("⑤ 결과·모델", "대조 확인 → 자동 모형 선택", "플래그 모델 수용"), ("⑥ 영역·확인", "결과 전 확인계획 잠금", "확인 계획 · 확인 영역")]
+    b = ""
+    for i, (t, sub, ap) in enumerate(steps):
+        x = 8 + i * 119
+        b += box(x, 10, 111, 46, t, sub, "hi" if i == 5 else "det", r=6)
+        for k, part in enumerate(ap.split(" · ")):
+            b += f'<text x="{x + 55.5}" y="{70 + k * 10}" class="bs">{"승인: " if k == 0 else ""}{E(part)}</text>'
+        if i < 5:
+            b += arrow(x + 111, 33, x + 119, 33)
+    b += box(8, 98, 230, 40, "시작 경로", "① 통과 후보 · DoE 데이터셋(run 단위) · CBD", "io", r=6)
+    b += box(250, 98, 230, 40, "실패하면 RB18 재검토", "판별시험 후보(M06) → FMEA 검토로", "llm", r=6)
+    b += box(492, 98, 222, 40, "금지 상태", "관리전략 · PPQ · 상업 출하 — 범위 밖", "io", r=6)
+    b += '<text x="8" y="156" class="al">상태에 없는 행동은 서버가 409로 거부한다. 막힌 승인은 승인으로 기록하지 않는다. 규칙은 모두 DRAFT — study는 샌드박스로만 만든다.</text>'
+    return svg(722, 164, b)
+
+
+def v7_abstract(v) -> str:
+    if not v:
+        return ""
+    rp = v["replay"]
+    return (f" 다음 판 실험개발 명세(v7.0)는 룰북 {v['package']['rulebooks']}권·참조 마스터 {v['package']['masters']}종으로 설치해, 여섯 단계마다 연구자 승인"
+            f"(승인 지점 {v['approval_points']}개)을 거치는 저장형 study와 run 단위 실험 데이터를 공통 형식으로 받는 DoE 데이터셋 엔진을 구현했다."
+            f" CBD 구강붕해정 문헌 재현(Monton 등, 2026)에서는 평균 예측 기준으로 지지 영역의 {rp['region']['mean_ok_fraction'] * 100:.1f}%가 규격을 만족했지만"
+            f" 결과 전에 잠근 공동 통과확률 {rp['region']['p_min']:.2f} 기준의 최대값은 {rp['region']['setpoint_joint_p']:.3f}로 영역이 비었고,"
+            f" 논문의 확인 lot {rp['verification_rows']}건이 규격·예측구간을 모두 통과({rp['verification_pass']}/{rp['verification_rows']})했음에도 승격하지 않았다.")
+
+
+def v7_section(v) -> str:
+    if not v:
+        return ""
+    rp, m, w = v["replay"], v["replay"]["models"], v["study_walk"]
+    lof = lambda x: "—" if x["lof_p"] is None else f"{x['lof_p']:.2f}"  # noqa: E731
+    r2 = lambda v: f"{v:.2f}" if abs(v) >= 0.005 else f"{v:.3f}"  # noqa: E731  (−0.001을 −0.00으로 뭉개지 않는다)
+    pko = {"CQA_SELECTION": "CQA 선택", "FMEA_REVIEW": "FMEA 검토", "FACTOR_AND_RANGE_SELECTION": "요인·범위", "FEASIBILITY_PLAN": "feasibility 계획",
+           "DOE_PLAN": "DoE 계획", "EXECUTION_PROTOCOL": "실행 프로토콜", "MODEL_ACCEPTANCE_WITH_FLAGS": "플래그 모델 수용",
+           "VERIFICATION_PLAN": "확인 계획", "VERIFIED_OPERATING_REGION": "확인 영역"}
+    ko = {"hardness_kgf": "경도 (kgf, 4–6)", "dt_s": "붕해시간 (s, ≤ 30)", "friability_pct": "마손도 (%, ≤ 1)"}
+    rows = "".join(
+        f"<tr><td>{ko.get(k, k)}</td><td class='mono'>{E(x['formula'])}</td><td>{r2(x['r2'])} · {r2(x['adj_r2'])} · {r2(x['pred_r2'])}</td>"
+        f"<td>{lof(x)}</td><td>{E(x['status'])}{(' (' + ', '.join(x['flags']) + ')') if x['flags'] else ''}</td>"
+        f"<td class='mono'>{E(x['published_terms'] or '')}</td><td>{x['published_model_p']}</td></tr>" for k, x in m.items())
+    walk = f"행동 {len(w['steps'])}번 — 후보 확인부터 플래그 모델 수용까지, 막힌 단계 없이 최종 상태 {E(w['final_status'])}"
+    return f"""<h3>7.6 CBD 구강붕해정 — v7 실험개발 study와 반응 곡면</h3>
+<p>v7 study는 여섯 단계를 연구자 승인으로만 넘어간다(그림 11). 상태 {v['states']}개, 상태별 허용 행동 {v['actions']}개가 표로 고정되어 있고 표 밖 행동은 거부된다.
+시작 경로는 ① 후보 탐색의 통과 후보, 또는 run 단위 실험 데이터를 가진 DoE 데이터셋이다. 데이터셋은 출처·요인 1–3개(FMEA 후보 요인 {v['fmea_factor_keys']}종 중)·반응 1–4개(CQA와 판정 기준)·run별 요인값과 반응값을
+공통 JSON 형식으로 받고, 데이터셋에 없는 값은 만들지 않는다 — 단계별 규칙이 요청한다. 실제로 실행한 행렬이 표준 설계와 다르면 그 행렬을 가져와 같은 설계 검사를 다시 거치고,
+결과는 CSV로 붙여 넣으면 run ID나 요인값으로 계획 run에 짝지어진다. CBD 재현도 이 데이터셋 형식의 한 사례로 들어간다.</p>
+<figure>{fig_v7_flow()}
+<figcaption><b>그림 11.</b> v7 실험개발 study의 여섯 단계와 승인 지점. 근거 등급은 연구자가 올릴 수 없고(범위 근거는 feasibility 결과로만 FEASIBILITY_CONFIRMED), 확인은 결과 전에 잠근 계획과 모델 적합에 쓰지 않은 독립 batch로만 한다.</figcaption></figure>
+<p>Monton 등[18]의 CBD 구강붕해정 Box–Behnken 17 run(요인: 압축력 1250–1750 psi, MCC 30–50%, CCS 1–5%; 반응: 경도·붕해시간·마손도)을 데이터셋으로 넣어
+study를 실제로 진행했다({walk}). 논문의 회귀식은 입력하지 않고 Table 9 원자료에서 다시 적합했다. 설계 검사는 {rp['design']['runs']} run·seed {rp['design']['seed']}로 통과했고, 논문 17행이 설계 17점과 정확히 연결되었다.</p>
+<table><thead><tr><th>반응 (규격)</th><th>자동 선택 식(coded)</th><th>R² · 수정 · 예측</th><th>적합결여 p</th><th>상태</th><th>논문 ANOVA 항</th><th>논문 모형 p</th></tr></thead><tbody>{rows}</tbody></table>
+<div class="tcap"><b>표 9.</b> CBD 재현의 모형 — 계층 모형 전부를 LOOCV로 비교해 1-표준오차 안에서 가장 단순한 식을 골랐다. 붕해시간은 논문도 모형이 유의하지 않았고(p = {m['dt_s']['published_model_p']}), 재적합의 예측 R²도 {r2(m['dt_s']['pred_r2'])}다(0보다 작으면 평균으로 예측하는 것보다 못하다). 경고(MV007)가 붙은 두 모형은 연구자가 사유를 적어 수용해야 영역 계산으로 넘어간다.</div>
+<figure><img src="cbd_surfaces.png" style="width:100%" alt="CBD 반응 곡면 격자">
+<figcaption><b>그림 12.</b> 반응 곡면 격자 — 논문 Figure 1과 같은 배치(반응 × CCS 1·3·5%). 논문 ANOVA 항 구성으로 Table 9 원자료를 재적합한 곡면이며(계수는 논문에서 베끼지 않음), 화면에서는 자동 선택 모형과 전환해 비교한다.
+빨간 점은 관측값이 곡면 위, 연분홍은 아래, 세로줄은 잔차, 바닥 점선은 Box–Behnken 지지 영역(밖은 외삽)이다.</figcaption></figure>
+<p>잠근 기준(공동 통과확률 ≥ {rp['region']['p_min']:.2f}, 격자 21³ 중 지지 영역 {rp['region']['grid_points_in_domain']:,}점)에서 평균 예측으로는 {rp['region']['mean_ok_fraction'] * 100:.1f}%가 모든 규격 안이었지만,
+공동 통과확률의 최대값은 {rp['region']['setpoint_joint_p']:.3f}로 기준에 못 미쳐 영역이 비었다(DR018 → MODEL_INADEQUATE). 논문 최적점(1400 psi · MCC 35% · CCS 1%)의 공동확률은 {rp['optimum_joint_p']:.3f}이고,
+논문 Table 12의 확인 lot은 {rp['verification_pass']}/{rp['verification_rows']} 비교 모두 규격과 잠근 예측구간 안이었다. 그래도 승격하지 않는다 — 영역이 없고, 문헌 lot은 근거 등급표(M05)상 확인 근거가 될 수 없으며,
+확인점도 설정점 하나뿐이다(VR001은 설정점·경계·강건성 세 점을 요구). 시스템은 실패 패턴 {E(w['labloop'] or '')}의 판별시험({', '.join(E(t) for t in w['labloop_tests'])})을 제시하고 FMEA 재검토로 돌려보낸다.
+논문 표끼리의 불일치(경도 실제 단위 식의 교호작용 항과 ANOVA의 선형 모형)는 고치지 않고 감사 기록으로 남겼다. 진행 중 기록된 승인은 {len(w['approvals'])}건({' · '.join(E(pko.get(a, a)) for a in w['approvals'])}), 이벤트는 {w['events']}건이다.</p>
+"""
+
+
 def exp_narrative(x, same, tot) -> str:
     """실험 결과 서술 — 문장은 전부 experiments.json에서 계산한다(재실험하면 문장도 따라 바뀐다)."""
     runs = x["runs"]
@@ -812,7 +880,7 @@ ol.refs li {{ margin-bottom: 2pt; }}
 DOI·PMID 인용을 요구한다.
 공개 논문(Almotairi 등, 2022)의 Lornoxicam 분산정 Box–Behnken 실측 15 run에 적용한 결과, 평균 예측 기준으로는 지지 영역의
 {r['mean_ok_fraction'] * 100:.1f}%가 규격을 만족했으나 미래 배치 공동 통과확률 0.90 기준으로는 {r['feasible_fraction'] * 100:.1f}%만 남았고,
-권장 설정점(비 {sp['actual']['x1']} · 혼합 {sp['actual']['x2']}분 · 크로스포비돈 {sp['actual']['x3']}%)의 공동확률은 {sp['joint_probability']:.3f}였다.{demo_abstract(dm)}
+권장 설정점(비 {sp['actual']['x1']} · 혼합 {sp['actual']['x2']}분 · 크로스포비돈 {sp['actual']['x3']}%)의 공동확률은 {sp['joint_probability']:.3f}였다.{demo_abstract(dm)}{v7_abstract(data.get('v7'))}
 <div class="kw"><b>주제어</b> 제형 설계 · Quality by Design · 다중 에이전트 · 결정론적 검증 · 환각 억제 · 실험계획법 · 설계공간 · lab-in-the-loop</div>
 </div>
 
@@ -964,6 +1032,10 @@ CSV에 들어오면 로드 자체가 실패한다. 값이 없으면 “미발화
 <div class="eq">P<sub>joint</sub>(x) = ∏<sub>k</sub> Pr[ Y<sub>k</sub><sup>new</sup>(x) ∈ Spec<sub>k</sub> ],&nbsp;&nbsp; Y<sub>k</sub><sup>new</sup>(x) ~ ŷ<sub>k</sub>(x) + t<sub>ν</sub>·√(SE<sub>k</sub>(x)² + σ̂<sub>k</sub>²)</div>
 <p>확인점은 설정점·영역 경계 최저 확률점·설정점 주변 허용 변동 최악점의 세 개가 필수이며, 예측구간은 첫 결과 전에 Bonferroni 동시구간으로 잠긴다.
 판정은 규격 통과 × 예측구간 포함의 2×2이고, VERIFIED는 내부 사전계획 통과를 뜻할 뿐 규제 승인 설계공간을 의미하지 않는다.</p>
+<p><b>다음 판(v7.0) 실험개발.</b> 개정 명세의 룰북 {data['v7']['package']['rulebooks']}권·마스터 {data['v7']['package']['masters']}종(확인시험 {data['v7']['package']['confirmation_tests']}종, 사유 코드 {data['v7']['package']['reason_codes']}개, 출처 {data['v7']['package']['sources']}건)을
+기존 판과 나란히 설치하고, 로더가 버전·건수·해시·금지 상태를 검사한다. v7은 후보 처방값을 중심점으로 옮기지 않고(기준값일 뿐), 범위 근거가 약하면 먼저 좁은 feasibility를 요구하며,
+설계는 요인 수로(1요인 7 · 2요인 FCCD 13 · 3요인 BBD 17 run), 회귀식은 사람이 아니라 교차검증 규칙으로 고른다. 이를 여섯 단계 승인 study와 DoE 데이터셋 엔진으로 구현했고(7.6절),
+룰북 데이터와 명세가 어긋나는 곳 — 확인(VERIFICATION) 용도로 허용된 근거 등급이 하나도 없음, 압축력 kN 단위 미등록 등 — 은 코드로 메우지 않고 결정과 함께 기록했다.</p>
 
 <h2>7. 적용 결과</h2>
 <h3>7.1 Lornoxicam 분산정 (공개 실측 데이터)</h3>
@@ -999,10 +1071,10 @@ AV ≤ 15, DE30 ≥ 75%이며, DE30 기준은 논문 기준이 아니라 프로�
 {exp_section(x)}
 {devfix_section(fx)}
 {demo_section(dm)}
-<h3>7.6 소프트웨어 검증</h3>
+{v7_section(data.get('v7'))}
+<h3>7.7 소프트웨어 검증</h3>
 <p>단위·통합 테스트 {tests}개(pytest)가 구조 패턴 진리표, 검사 방향, 근거 정책, 페이즈 게이트, 되돌림·계획 불변식, 입력 에이전트 가드레일, 조건식 이름 전수검사, 측정 필드 타입·첨부, 07_doe 규칙
-fixture 48건, 통계 골든 값, 스터디 흐름을 고정한다. 실제 브라우저 테스트({E(browser)})는 화면 상호작용, 다섯 렌더 경로의 스크립트 주입 차단, 9개 뷰포트
-폭의 반응형, 시연 시나리오의 실제 경로, 개발 스튜디오 9장면, 입력 에이전트의 대화→카드→실행 흐름을 검사한다.</p>
+fixture 48건, 통계 골든 값, 스터디 흐름을 고정한다. 이 빌드에서 돌린 실제 브라우저 테스트({E(browser)})는 화면 상호작용과 가이드, 개발 스튜디오 9장면의 자동 진행과 휴대폰 폭, ① 설계 실행에서 v7 study로 넘어가는 경로, v7 study의 모든 폼(feasibility → 확인계획 잠금 → 확인 → 최종 승인)과 데이터셋·실행 행렬·결과 CSV 경로, 반응 곡면 격자(3D·요인 1개 곡선)를 검사한다.</p>
 
 <h2>8. 논의와 한계</h2>
 <p><b>판정 권한의 위치.</b> 이 시스템의 안전성은 LLM의 정확도가 아니라 판정 권한이 어디에 있는가에서 나온다. 설계·심사·가설 LLM이 틀려도 반려와
@@ -1014,12 +1086,13 @@ fixture 48건, 통계 골든 값, 스터디 흐름을 고정한다. 실제 브�
 (2) 신경망 물성 예측기는 연결하지 않았다. (3) 스터디 저장소는 임시 SQLite로 재시작 시 사라진다. (4) LLM 출력은 반복마다 달라 권고 후보가 바뀔 수 있다(표 5) —
 결정론 계층은 같은 판정을 내지만 순위는 심사 LLM 점수에 기댄다. 대회 API 한도가 소진되어 무료 모델로 넘어가면 분당 토큰 한도로 설계·심사가 빌 수 있고,
 이때 결과를 채우지 않고 “응답 없음”으로 표시한다. (5) 다변량 공동확률(반응 간 상관), mixture·D-optimal 설계, 스케일업은 범위 밖이다.
-(6) 입력 에이전트의 구조식 조회는 영문 표준명에 기대며, 대화 기록은 브라우저 탭 안에만 있다.</p>
+(6) 입력 에이전트의 구조식 조회는 영문 표준명에 기대며, 대화 기록은 브라우저 탭 안에만 있다.
+(7) v7 룰북도 전부 전문가 검토 전(DRAFT)이라 운영 집행 규칙은 {data['v7']['package']['enforceable_rules']}개이고 study는 샌드박스로만 만든다. 근거 등급표에 새 확인 batch용 등급이 없어 독립성 조건을 모두 만족할 때만 확인 근거로 인정하는 해석을 두었으며, 이는 약학·통계 검토 질문으로 남아 있다.</p>
 
 <h2>9. 결론</h2>
 <p>Formula 1은 제형 설계에서 LLM의 창의와 결정론 검증을 분리하고, 후보 탐색에서 검증된 운전 영역까지를 두 그래프와 하나의 불변 연결로 구성했다.
 값을 모르면 멈추지 않고 필요한 실측만 묻고, 반려되면 사유가 가리키는 지점으로 돌아가며, 영역은 미래 배치의 공동 통과확률로 계산한다. 공개 실측
-사례에서 평균 기준 영역이 공동확률 기준보다 크게 과대평가됨을 정량적으로 보였고, 사용자와 시스템 사이의 입력 에이전트가 맥락을 활용해 상호작용을
+사례에서 평균 기준 영역이 공동확률 기준보다 크게 과대평가됨을 정량적으로 보였고, 다음 판 명세를 단계별 연구자 승인 study와 run 단위 데이터를 받는 공통 DoE 엔진으로 구현해 문헌 재현에서 같은 결론(평균으로는 영역이 있어 보여도 잠근 기준에서는 없음)을 재확인했으며, 사용자와 시스템 사이의 입력 에이전트가 맥락을 활용해 상호작용을
 능동적으로 이끌면서도 판정 권한과 데이터 출처 원칙을 유지할 수 있음을 구현으로 보였다.</p>
 
 <h2>참고문헌</h2>
@@ -1041,6 +1114,7 @@ fixture 48건, 통계 골든 값, 스터디 흐름을 고정한다. 실제 브�
 <li>Thompson S.A., Davis D.A., Miller D.A., Kucera S.U., et al. Pre-processing a polymer blend into a polymer alloy by KinetiSol enables increased ivacaftor amorphous solid dispersion drug loading and dissolution. <i>Biomedicines</i> 11(5):1281, 2023. doi:10.3390/biomedicines11051281</li>
 <li>Corrie L., Ajjarapu S., Banda S., Parvathaneni M., Bolla P.K., et al. HPMCAS-based amorphous solid dispersions in clinic: a review on manufacturing techniques (hot melt extrusion and spray drying), marketed products and patents. <i>Materials</i> 16(20):6616, 2023. doi:10.3390/ma16206616</li>
 <li>ICH Q1A(R2) Stability Testing of New Drug Substances and Products. International Council for Harmonisation, Step 4, 2003.</li>
+<li>Monton C., et al. Quality by Design–Driven Formulation Development of Cannabidiol Orally Disintegrating Tablets. <i>Scientifica</i> 2026:3553253, 2026. doi:10.1155/sci5/3553253 (PMC13519653)</li>
 </ol>
 </body></html>"""
 

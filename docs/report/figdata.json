@@ -2077,5 +2077,209 @@
    "persona_name": "고체상 안정성 심사관"
   }
  ],
- "cook_max": 1.0657894736842346
+ "cook_max": 1.0657894736842346,
+ "v7": {
+  "package": {
+   "rulebooks": 18,
+   "masters": 7,
+   "confirmation_tests": 90,
+   "reason_codes": 167,
+   "sources": 32,
+   "enforceable_rules": 0
+  },
+  "states": 20,
+  "actions": 26,
+  "approval_points": 9,
+  "approval_actions": 8,
+  "fmea_factor_keys": 11,
+  "replay": {
+   "models": {
+    "hardness_kgf": {
+     "formula": "1 + X1 + X2",
+     "status": "VALID",
+     "r2": 0.7167502720718268,
+     "adj_r2": 0.676286025224945,
+     "pred_r2": 0.5892205706708419,
+     "lof_p": 0.4243727602918661,
+     "flags": [],
+     "published_terms": "1 + X1 + X2 + X3",
+     "published_model_p": 0.0005
+    },
+    "dt_s": {
+     "formula": "1 + X2",
+     "status": "VALID_WITH_FLAGS",
+     "r2": 0.17049984042263544,
+     "adj_r2": 0.11519982978414445,
+     "pred_r2": -0.001313038322605209,
+     "lof_p": 0.311651183881103,
+     "flags": [
+      "MV007"
+     ],
+     "published_terms": "1 + X1 + X2 + X3 + X1:X2 + X1:X3 + X2:X3 + X1^2 + X2^2 + X3^2",
+     "published_model_p": 0.2463
+    },
+    "friability_pct": {
+     "formula": "1 + X2",
+     "status": "VALID_WITH_FLAGS",
+     "r2": 0.45746647006544405,
+     "adj_r2": 0.421297568069807,
+     "pred_r2": 0.29203508464416805,
+     "lof_p": 0.22847299040336005,
+     "flags": [
+      "MV007"
+     ],
+     "published_terms": "1 + X1 + X2 + X3 + X1:X2 + X1:X3 + X2:X3",
+     "published_model_p": 0.0112
+    }
+   },
+   "region": {
+    "status": "EMPTY",
+    "setpoint_joint_p": 0.8891512511445581,
+    "mean_ok_fraction": 0.48033595520597255,
+    "joint_ok_fraction": 0.0,
+    "grid_points_in_domain": 7501,
+    "p_min": 0.9
+   },
+   "verification_rows": 9,
+   "verification_pass": 9,
+   "optimum_joint_p": 0.8414620441599084,
+   "final_state": {
+    "state": "MODEL_INADEQUATE",
+    "reason_code": "REGION_EMPTY",
+    "rule": "RB16 DR018"
+   },
+   "design": {
+    "type": "BBD",
+    "runs": 17,
+    "validation": {
+     "ok": true,
+     "checks": [
+      {
+       "check": "run_count",
+       "ok": true,
+       "detail": "17 runs (기대 17)"
+      },
+      {
+       "check": "coded_actual_round_trip",
+       "ok": true,
+       "detail": "최대 오차 0.0e+00"
+      },
+      {
+       "check": "full_quadratic_estimable",
+       "ok": true,
+       "detail": "rank 10/10"
+      },
+      {
+       "check": "no_duplicate_noncenter_runs",
+       "ok": true,
+       "detail": "설계 밖 중복 0개"
+      },
+      {
+       "check": "unique_run_ids",
+       "ok": true,
+       "detail": "run ID 중복 없음"
+      },
+      {
+       "check": "center_replicates",
+       "ok": true,
+       "detail": "중심점 5개 → pure error df 4"
+      },
+      {
+       "check": "within_low_high",
+       "ok": true,
+       "detail": ""
+      },
+      {
+       "check": "randomized",
+       "ok": true,
+       "detail": "seed 20260926"
+      }
+     ],
+     "pure_error_df": 4
+    },
+    "seed": 20260926,
+    "matrix_hash": "cc977bf462f400d9313f9a38833c6ed615baf8f8f631adc82143d30dcbf40e58",
+    "fixture_linked": true
+   },
+   "audit": [
+    "PUBLISHED_REPORT_INCONSISTENCY",
+    "REFIT_DIFFERS_FROM_PUBLISHED",
+    "REFIT_DIFFERS_FROM_PUBLISHED",
+    "REFIT_DIFFERS_FROM_PUBLISHED"
+   ]
+  },
+  "study_walk": {
+   "steps": [
+    {
+     "action": "handoff_confirm",
+     "status": "CQA_REVIEW",
+     "blocked": null
+    },
+    {
+     "action": "cqa_edit",
+     "status": "CQA_REVIEW",
+     "blocked": null
+    },
+    {
+     "action": "cqa_approve",
+     "status": "FMEA_REVIEW",
+     "blocked": null
+    },
+    {
+     "action": "fmea_approve",
+     "status": "FACTOR_SELECTION",
+     "blocked": null
+    },
+    {
+     "action": "factor_select",
+     "status": "RANGE_EVIDENCE_CHECK",
+     "blocked": null
+    },
+    {
+     "action": "range_submit",
+     "status": "RANGE_EVIDENCE_CHECK",
+     "blocked": null
+    },
+    {
+     "action": "range_approve",
+     "status": "DOE_PLAN_REVIEW",
+     "blocked": null
+    },
+    {
+     "action": "plan_approve",
+     "status": "WAITING_FOR_RESULTS",
+     "blocked": null
+    },
+    {
+     "action": "results_submit",
+     "status": "RESULT_QUALITY_REVIEW",
+     "blocked": null
+    },
+    {
+     "action": "results_confirm",
+     "status": "MODEL_FIT",
+     "blocked": null
+    },
+    {
+     "action": "model_accept_flags",
+     "status": "MODEL_INADEQUATE",
+     "blocked": null
+    }
+   ],
+   "final_status": "MODEL_INADEQUATE",
+   "approvals": [
+    "CQA_SELECTION",
+    "FMEA_REVIEW",
+    "FACTOR_AND_RANGE_SELECTION",
+    "DOE_PLAN",
+    "EXECUTION_PROTOCOL",
+    "MODEL_ACCEPTANCE_WITH_FLAGS"
+   ],
+   "labloop": "LB012",
+   "labloop_tests": [
+    "T_CONFIRMATORY_RUN"
+   ],
+   "events": 12
+  }
+ }
 }

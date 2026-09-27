@@ -106,11 +106,55 @@ manifest = [{"id": e["id"], "priority": e.get("trigger_priority"), "eval_type": 
 jury = [{"reviewer_id": r["reviewer_id"], "name": r["reviewer_name_kr"], "condition": r["summon_condition"],
          "weight": r["base_weight"]} for r in rows("database/06_config/reviewer_registry.csv")]
 
+def v7_block() -> dict:
+    """DoE v7.0 — 패키지 건수, CBD 문헌 재현(자동 선택 모형 · 보고 항 구성 재적합), 저장형 study를 실제로 끝까지 돌린 승인 기록."""
+    import tempfile
+    from formula.development.store import StudyStore
+    from formula.doe import dataset as DS
+    from formula.doe.contracts import ACTIONS, APPROVAL_POINT, STATES
+    from formula.doe.package import package
+    from formula.doe.replay import run_replay, surfaces
+    from formula.doe.service import DoeStudyService
+    pkg = package()
+    summ = pkg.summary()
+    rp = run_replay(pkg, accept_flags=True)
+    pub = {r["id"]: r["formula"] for r in surfaces(pkg, source="published")["responses"]}
+    models = {k: {"formula": m["formula"], "status": m["status"], "r2": m["r2"], "adj_r2": m["adj_r2"], "pred_r2": m["pred_r2"],
+                  "lof_p": m["lack_of_fit"].get("p"), "flags": [f["rule_id"] for f in m["gate"]["flags"]],
+                  "published_terms": pub.get(k), "published_model_p": m["published"].get("model_p")} for k, m in rp["models"].items()}
+    ver = rp["verification"] or {}
+    svc = DoeStudyService(pkg, StudyStore(Path(tempfile.mkdtemp()) / "doe7.db"))
+    ds = DS.validate(pkg, DS.cbd())
+    sid = svc.create(DS.handoff(ds, "report"), study_type=ds["study_type"], dataset=ds)["study"]["study_id"]
+    walk = []
+    for a in ["handoff_confirm", "cqa_edit", "cqa_approve", "fmea_approve", "factor_select", "range_submit", "range_approve",
+              "plan_approve", "results_submit", "results_confirm", "model_accept_flags"]:
+        st = svc.view(sid)["study"]
+        pl = {k: v for k, v in (DS.fill(st, a) or {}).items() if k not in ("note", "unmatched")}
+        out = svc.act(sid, a, pl, actor="report")
+        walk.append({"action": a, "status": out["study"]["status"], "blocked": (out.get("action_result") or {}).get("blocked")})
+    st = svc.view(sid)["study"]
+    return {"package": {k: summ[k] for k in ("rulebooks", "masters", "confirmation_tests", "reason_codes", "sources", "enforceable_rules")},
+            "states": len(STATES), "actions": sum(len(v) for v in ACTIONS.values()), "approval_points": len(pkg.policy["human_approval_required"]),
+            "approval_actions": len(APPROVAL_POINT), "fmea_factor_keys": len(DS.fmea_factor_keys(pkg)),
+            "replay": {"models": models, "region": {k: rp["region"][k] for k in ("status", "setpoint_joint_p", "mean_ok_fraction", "joint_ok_fraction",
+                                                                                 "grid_points_in_domain")} | {"p_min": rp["region"]["policy"]["p_min"]},
+                       "verification_rows": len(ver.get("rows", [])), "verification_pass": sum(1 for r in ver.get("rows", []) if r["code"] == "VERIFICATION_PASSED"),
+                       "optimum_joint_p": (rp.get("optimum_in_region") or {}).get("joint_p"), "final_state": rp["final_state"],
+                       "design": rp["design"], "audit": [a["kind"] for a in rp["audit"]]},
+            "study_walk": {"steps": walk, "final_status": st["status"], "approvals": [a["point"] for a in st["approvals"]],
+                           "labloop": (st["labloop"].get("current") or {}).get("pattern_id"),
+                           "labloop_tests": [t["test_id"] for t in (st["labloop"].get("current") or {}).get("tests", [])],
+                           "events": len(svc.trace(sid)["events"])}}
+
+
 out = {"manifest": manifest, "jury": jury, "region": {k: s[k] for k in ("grid_points_total", "grid_points_in_domain", "mean_ok_fraction",
                                     "feasible_fraction", "feasible_points", "binding_cqa_counts")},
        "setpoint": sp, "slice": sl, "fits": fits, "counts": counts, "backtrack": bt,
        "strategies": strategies, "reviewers": reviewers,
-       "cook_max": float(full["Y1"].cooks_distance().max())}
+       "cook_max": float(full["Y1"].cooks_distance().max()), "v7": v7_block()}
+
+
 (ROOT / "docs" / "report").mkdir(parents=True, exist_ok=True)
 (ROOT / "docs" / "report" / "figdata.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
-print(json.dumps({k: out[k] for k in ("region", "setpoint", "fits", "counts")}, ensure_ascii=False, indent=1))
+print(json.dumps({k: out[k] for k in ("region", "setpoint", "fits", "counts", "v7")}, ensure_ascii=False, indent=1, default=str))
