@@ -49,7 +49,7 @@ CHROME=<chrome 실행 파일 경로> node tests/browser/stage2.mjs    http://loc
 
 - `stage2.mjs` — CBD 시연 카드로 2단계 1–13단계를 클릭만으로: 프로토타입(Table 1) 실행 → QTPP 행 추가·삭제와 목표를 비운
   승인 차단(QTPP_FIELD) → 논문 값 채우기·승인 → 원료·제형 행렬이 논문 Table 5·7과 같음 → 변수 칩·빈 칸 행 만들기와 근거 없는 행 차단 →
-  8단계 종합 정리(고르는 칸·LLM 추천 없음, 위험평가 PDF가 DoE 변수 후보 목록 바로 아래 · 확인만으로 다음) → 설계 표 빈 요인 열 + High 변수 이름 제안 · 논문 값 채우기(로르녹시캄 Table 3 15 run, CBD Table 9는 중복 없이) · 요인·반응 열 추가/삭제·행 추가·빈 표 저장 차단 → Table 9(17 run) → Hardness coded 식 = Table 10 →
+  8단계 종합 정리(고르는 칸·LLM 추천 없음, 위험평가 PDF가 DoE 변수 후보 목록 바로 아래 · 확인만으로 다음) → 설계 표 빈 요인·반응 열(placeholder "요인 이름") + High 변수 · CQA 이름 제안 · 논문 값 채우기(로르녹시캄 Table 3 15 run, CBD Table 9는 중복 없이) · 요인·반응 열 추가/삭제·행 추가·빈 표 저장 차단 → Table 9(17 run) → Hardness coded 식 = Table 10 →
   논문 모형의 과적합 표시와 사유 없는 승인 차단 → 곡면 격자 9칸 → ANOVA Model SS 10.73 · p 0.0005 → 13단계 논문 규격에서 공동확률 영역 0 %
   (SPACE_EMPTY로 멈춤 — 규격 완화 안 함) → 최종 PDF → 설계 표 다시 열기(뒤 단계 stale), 2단계 기록 메뉴 · 오른쪽 관측 칼럼.
   1440과 390 두 폭, 가로 넘침 0, 콘솔 오류 0. `node tests/browser/stage2.mjs <url> [스크린샷 폴더]`.

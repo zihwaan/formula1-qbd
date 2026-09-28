@@ -177,14 +177,9 @@ class Stage2Service:
             self._set(st, step, {"candidates": candidates(ctx["fp_matrix"]), "watch": watch_list(ctx["fp_matrix"]),
                                  "material_controls": material_controls(ctx["rm_matrix"])}, source="code", actor="system")
         elif step == "design" and s["data"] is None:
-            # 요인은 연구자가 정한다(8단계에서 고르지 않는다) — 빈 요인 열 하나로 시작하고, 반응은 High 변수가 걸린 CQA부터
-            hi = {}
-            for c in (ctx["recommend"] or {}).get("candidates") or []:
-                for q in c["high"]:
-                    hi[q] = hi.get(q, 0) + 1
-            resp = [q for q, _ in sorted(hi.items(), key=lambda kv: -kv[1])][:MAX_RESPONSES] or cq[:1]
-            self._set(st, step, {"factors": [{"name": "", "unit": ""}], "responses": [{"name": q, "unit": ""} for q in resp],
-                                 "rows": [{"std": 1, "run": 1, "x": [None], "y": [None] * len(resp)}], "note": ""},
+            # 요인·반응 모두 연구자가 정한다 — 이름 없는 요인 열 하나 · 반응 열 하나로 시작(High 변수 · CQA는 이름칸의 제안 목록으로만)
+            self._set(st, step, {"factors": [{"name": "", "unit": ""}], "responses": [{"name": "", "unit": ""}],
+                                 "rows": [{"std": 1, "run": 1, "x": [None], "y": [None]}], "note": ""},
                       source="code", actor="system")
         elif step == "regression":
             chosen = {r["response"]: r["family"] for r in (s["data"] or {}).get("responses") or [] if s["source"] and "user" in s["source"]}

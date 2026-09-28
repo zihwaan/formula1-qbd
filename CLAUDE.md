@@ -574,7 +574,8 @@ UI `web/static/stage2.{js,css}`.
 
 - **15 steps** (`model.STEPS`): prototype(T1) → qtpp(T3) → cqa(T4) → rm_just(T6) → rm_matrix(T5) → fp_just(T8) → fp_matrix(T7) →
   recommend(= 종합 정리, **derived**: merged matrix + High-only DoE-variable candidates as a list, **no selection** — user 2026-09-28; risk PDF is available
-  as soon as step 8 is entered and its link sits right under the candidate list) → design(T9: factors typed by the researcher, High variables only as a datalist hint; CSV import; demo action `use_paper` fills a whole cited table in any study —
+  as soon as step 8 is entered and its link sits right under the candidate list) → design(T9: starts with one unnamed factor and one unnamed response column — both typed by the researcher, High variables / risk CQAs only as datalist hints,
+  both name inputs use the placeholder "요인 이름" (user wording); CSV import; demo action `use_paper` fills a whole cited table in any study —
   `formula/stage2/paper_designs.py`: Monton 2026 Table 9 (stage-2 deck slide 9) and Almotairi 2022 Table 3 (presentation p.10), same-API table first, citation kept in `design.paper` and the report) → regression(T10 + overfit flag) → surface(Fig 1) → anova(T11, final PDF)
   → space(joint P ≥ 0.90) → vplan(lock) → verify(2×2). Entry only from a gate-passed candidate (`[이 후보로 개발 착수]` / agent
   `develop_candidate`, both through `app.js startDevelopment` → evidence gate → waiver textarea when gaps remain) or the CBD demo

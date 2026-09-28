@@ -145,7 +145,7 @@ def test_summary_step_needs_no_selection_and_design_factors_are_researchers(svc)
     out = svc.act(sid, "approve", {})                                # 확인만으로 다음 단계
     assert out["current"] == "design" and not out["action_result"].get("blocked")
     d = out["study"]["steps"]["design"]["data"]
-    assert [f["name"] for f in d["factors"]] == [""] and d["responses"][0]["name"]      # 요인은 연구자가 적는다
+    assert [f["name"] for f in d["factors"]] == [""] and [r["name"] for r in d["responses"]] == [""]   # 요인·반응 모두 연구자가 적는다
     assert "DESIGN_NAMES" in {c["code"] for c in out["study"]["steps"]["design"]["checks"]}
     bad = {"factors": [{"name": "MCC", "unit": "%"}], "responses": [{"name": "H", "unit": ""}],
            "rows": [{"std": 1, "run": 1, "x": [40], "y": [5]}, {"std": 2, "run": 2, "x": [40], "y": ["a"]}]}

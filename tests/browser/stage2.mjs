@@ -115,7 +115,10 @@ async function walk(page, label, { edits }) {
   if (edits) {
     const f0 = await heads('f');
     const n0 = await page.locator('#s2 .s2-step.current th.f input[data-k="name"]').first().inputValue();
+    const rn0 = await page.locator('#s2 .s2-step.current th.r input[data-k="name"]').evaluateAll((xs) => xs.map((x) => `${x.value}|${x.placeholder}`));
     check(`[${label}] 설계 표 초안 = 빈 요인 열 1개(요인은 연구자가 정함)`, f0 === 1 && n0 === '', `요인 ${f0} · "${n0}"`);
+    check(`[${label}] 반응 열도 이름 없이 1개 · placeholder '요인 이름'`, rn0.length === 1 && rn0[0] === '|요인 이름', rn0.join(','));
+    check(`[${label}] 반응 이름칸에 위험평가 CQA 제안 목록`, await page.locator('#s2-resp-hints option').count() >= 1);
     check(`[${label}] 요인 이름칸에 High 변수 제안 목록`, await page.locator('#s2-factor-hints option').count() >= 1);
     await page.click('#s2 .s2-step.current [data-col-add="f"]');
     await page.click('#s2 .s2-step.current [data-col-add="f"]');
@@ -123,10 +126,10 @@ async function walk(page, label, { edits }) {
     check(`[${label}] 요인 3개면 [+ 요인] 잠김`, await page.locator('#s2 .s2-step.current [data-col-add="f"]').isDisabled());
     await page.locator('#s2 .s2-step.current th.f [data-col-del]').last().click();
     check(`[${label}] 요인 열 삭제`, await heads('f') === 2);
-    const r1 = await heads('r');
+    for (let i = 0; i < 3; i++) await page.click('#s2 .s2-step.current [data-col-add="r"]');
+    check(`[${label}] 반응 열 추가(최대 4) · 4개면 잠김`, await heads('r') === 4 && await page.locator('#s2 .s2-step.current [data-col-add="r"]').isDisabled());
     await page.locator('#s2 .s2-step.current th.r [data-col-del]').last().click();
-    await page.click('#s2 .s2-step.current [data-col-add="r"]');
-    check(`[${label}] 반응 열 삭제·추가(최대 4)`, await heads('r') === r1, `반응 ${r1}`);
+    check(`[${label}] 반응 열 삭제`, await heads('r') === 3);
     await page.click('#s2 .s2-step.current [data-rows-add5]');
     check(`[${label}] 행 5개 추가`, await page.locator('#s2 .s2-step.current [data-edit] table[data-rows="rows"] tbody tr').count() >= 5);
     await act(page, 'save');

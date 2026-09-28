@@ -387,11 +387,12 @@
     const F = d.factors || [], R = d.responses || [];
     // 요인은 연구자가 정한다 — 8단계 종합 정리의 High 변수는 이름 입력칸의 제안 목록으로만 보인다
     const hints = ((V.study.steps.recommend || {}).data || {}).candidates || [];
+    const cqas = ((V.study.steps.fp_matrix || {}).data || {}).cqas || [];          // 반응 이름 제안 — 위험평가에 넣은 CQA
     // 시연용 — 출처가 붙은 논문 실측 설계 표로 한 번에 채운다(같은 약물 표가 앞 · 검은 버튼)
     const papers = V.paper_designs || [];
     const filled = (d.rows || []).some((r) => (r.x || []).concat(r.y || []).some((v) => v !== null && v !== undefined && v !== ""));
     const colHead = (x, kind, i) => ro ? `<th class="${kind}">${E(x.name)}${x.unit ? `<small>${E(x.unit)}</small>` : ""}</th>`
-      : `<th class="${kind}"><div class="s2-colh"><input data-col="${kind}" data-i="${i}" data-k="name" value="${E(x.name)}" placeholder="${kind === "f" ? "요인" : "반응"} 이름" ${kind === "f" ? 'list="s2-factor-hints"' : ""} aria-label="${kind === "f" ? "요인" : "반응"} ${i + 1} 이름">
+      : `<th class="${kind}"><div class="s2-colh"><input data-col="${kind}" data-i="${i}" data-k="name" value="${E(x.name)}" placeholder="요인 이름" list="${kind === "f" ? "s2-factor-hints" : "s2-resp-hints"}" aria-label="${kind === "f" ? "요인" : "반응"} ${i + 1} 이름">
         <button type="button" class="icon-btn" data-col-del="${kind}" data-i="${i}" aria-label="열 삭제" ${(kind === "f" ? F : R).length <= 1 ? "disabled" : ""}>✕</button>
         <input data-col="${kind}" data-i="${i}" data-k="unit" value="${E(x.unit)}" placeholder="단위" class="unit" aria-label="단위"></div></th>`;
     const cellI = (v, a) => ro ? `<td class="n">${E(v ?? "")}</td>` : `<td class="n"><input ${a} value="${E(v ?? "")}" inputmode="decimal"></td>`;
@@ -415,8 +416,9 @@
         <textarea data-paste rows="4" placeholder="Std,Run,X: 요인1 (단위),Y: 반응1 (단위)&#10;1,5,1500,4.97"></textarea>
         <div data-map></div>
         <button type="button" class="ghost sm" data-paste-read>열 읽기</button> <button type="button" class="primary sm" data-paste-apply hidden>표에 넣기</button></details>`}
-      ${ro || !hints.length ? "" : `<p class="s2-muted">요인은 직접 정합니다 — 참고: 위험평가에서 High인 변수 ${E(hints.map((c) => c.variable).join(" · "))}</p>
+      ${ro || !(hints.length || cqas.length) ? "" : `<p class="s2-muted">요인·반응 이름은 직접 적습니다(이름칸을 누르면 제안 목록)${hints.length ? ` — 요인 참고: 위험평가에서 High인 변수 ${E(hints.map((c) => c.variable).join(" · "))}` : ""}${cqas.length ? ` · 반응 참고: 위험평가 CQA ${E(cqas.join(" · "))}` : ""}</p>
         <datalist id="s2-factor-hints">${hints.map((c) => `<option value="${E(c.variable)}">`).join("")}</datalist>`}
+      ${ro || !cqas.length ? "" : `<datalist id="s2-resp-hints">${cqas.map((c) => `<option value="${E(c)}">`).join("")}</datalist>`}
       ${d.note ? `<p class="s2-note">${E(d.note)}</p>` : ""}`;
   }
 
