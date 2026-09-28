@@ -576,8 +576,8 @@ UI `web/static/stage2.{js,css}`.
   recommend(= 종합 정리, **derived**: merged matrix + High-only DoE-variable candidates as a list, **no selection** — user 2026-09-28; risk PDF is available
   as soon as step 8 is entered and its link sits right under the candidate list) → design(T9: starts with one unnamed factor and one unnamed response column — both typed by the researcher, High variables / risk CQAs only as datalist hints,
   both name inputs use the placeholder "요인 이름" (user wording); CSV import; demo action `use_paper` fills a whole cited table in any study —
-  `formula/stage2/paper_designs.py`: Monton 2026 Table 9 (stage-2 deck slide 9) and Almotairi 2022 Table 3 (presentation p.10), same-API table first, citation kept in `design.paper` and the report) → regression(T10 + overfit flag) → surface(Fig 1) → anova(T11, final PDF)
-  → space(joint P ≥ 0.90) → vplan(lock) → verify(2×2). Entry only from a gate-passed candidate (`[이 후보로 개발 착수]` / agent
+  `formula/stage2/paper_designs.py`: Monton 2026 Table 9 (stage-2 deck slide 9) and Almotairi 2022 Table 3 (presentation p.10), same-API table first, citation kept in `design.paper` and the report) → regression(T10, selector + validation gate) → surface(Fig 1) → anova(T11, final PDF)
+  → space(Overlay plot · control space) → vplan(lock) → verify(2×2). Entry only from a gate-passed candidate (`[이 후보로 개발 착수]` / agent
   `develop_candidate`, both through `app.js startDevelopment` → evidence gate → waiver textarea when gaps remain) or the CBD demo
   (`source: cbd_paper`, enables "논문 값으로 채우기" + "참고 · 논문의 판단"). **Papers are reference, not ground truth** (user, 2026-09-28):
   judgement cells that differ from the paper are review points, not errors; only computed values (matrix-from-justification, regression/ANOVA,
@@ -591,16 +591,25 @@ UI `web/static/stage2.{js,css}`.
 - **Matrices are derived, never entered** — `matrix_of(just, cqas)`; a missing cell blocks (JUST_MISSING). Pinned: Table 6/8 → Table 5/7, 84/84.
 - **LLM drafts (agent.py)**: grid (variable × confirmed CQA levels) → code groups same-level cells → mechanism text per group (batches of 8,
   one retry). Recommend names are matched back to candidates ("Name (kind)" stripped). Unknown numbers → `LLM_NUMBERS` warning. No response → 503, nothing filled.
-- **Toolkit (doe.py)**: fit summary (seq F, LOF, adj/pred R²) → suggestion; partial-SS ANOVA; actual-unit equation; surfaces.
-  **Overfit** = pred R² < adj R² − 0.2 or < 0 → `REG_OVERFIT` warning; approving a chosen overfit model needs an approval note
-  (`REG_OVERFIT_REASON`), which lands in the approvals ledger and the PDF.
-- **Design Space (space.py)**: per-response t predictive distribution (df = resid df, scale √(SE² + MSE)) → pass probabilities multiplied
-  (independence assumption, stated) over a 21-per-axis grid inside the design points' convex hull; setpoint = max joint P with hull edge ≥ 0.1
-  coded; empty region → `SPACE_EMPTY` blocks (**never relax specs**). vplan = SETPOINT · BOUNDARY · ROBUSTNESS(± delta corners) + optional
-  REFERENCE point, Bonferroni PIs over 3 × (#spec responses); approve = lock (`locked_at`, `plan_hash`). verify = observed values →
-  (spec pass × inside PI); all three required points PASS_IN → VERIFIED, else INVALIDATED with advice. This is the old v6.1 engine's
-  math ported 1:1 — pinned golden values: Lornoxicam 7,501/9,261, mean-ok 0.772, joint 0.476, setpoint 2.7/12.5/6.8 (P 0.991), DE30 PI 71.9–92.8;
-  CBD with paper specs → mean-ok 0.479, joint 0 (max 0.883, Hardness binds) → stops at step 13 (that is correct, not a bug).
+- **Step 10 = Automatic Hierarchical Model Selector → Model Validation Gate** (`doe.select`, user-supplied overlay pipeline, numbers in
+  `config/stage2_design_space.yaml`): candidates Mean · Linear · 2FI · Pure quadratic · Quadratic · Reduced quadratic (backward-hierarchical from Quadratic,
+  drop the largest-p term > 0.05 that is nobody's parent; ties broken by the pipeline's term names) ranked by AICc (statsmodels-identical llf/AIC, within
+  min + 2 → fewer terms first); gate = model p < 0.05 · LOF p ≥ 0.05 (skipped if not computable) · adj R² − pred R² ≤ 0.2 · pred R² > 0; first pass wins,
+  reaching Mean → `status: UNEXPLAINED` ("요인으로 설명되지 않음": no equation/surface/region, observed range + target only). A researcher-chosen model
+  must pass the same gate. **All responses failing → `REG_GATE_NONE` blocks** (user, 2026-09-28); single failures are `REG_GATE_FAIL` warnings.
+  The old overfit-with-reason flow (REG_OVERFIT/REG_OVERFIT_REASON) is gone — overfit is a gate condition. Partial-SS ANOVA / equations / surfaces
+  accept any term list; UNEXPLAINED responses are skipped there. The numpy port matches the pipeline's statsmodels reference to the 4th decimal
+  (every candidate's model p, LOF p, adj/pred R², AICc) — pinned in `tests/test_stage2.py`.
+- **Step 13 = Overlay plot** (`space.py`, paper Figure 2 format): region = mean predictions of gate-passed responses inside all targets (yellow) ∩ design
+  hull (hatched outside); k = 3 → slice factor = smallest Σ|main-effect coef| at −1/0/+1 (researcher can override, saved as `space.slice`), 41-point grid;
+  control space = largest axis-aligned rectangle with **both sides ≥ 3 cells**, best slice; optimum = max new-batch joint pass probability inside it with
+  hull edge ≥ 0.1. That probability is **auxiliary** (dotted contours, `SPACE_AUX_LOW` warning < 0.9). **Step 13 blocks only for `SPACE_NO_MEAN_REGION`
+  and `SPACE_NO_CONTROL`** (user, 2026-09-28; plus form checks SPACE_NO_SPEC/SPACE_SPEC). The figure is drawn server-side with matplotlib
+  (`space.render` → `GET /api/stage2/studies/{id}/overlay.svg|png?caption=1&slice=`; NanumGothic registered from `formula/stage2/fonts`), embedded as
+  PNG in the final PDF. vplan = SETPOINT(optimum) · BOUNDARY(lowest-P control-space corner) · ROBUSTNESS(± delta) + optional REFERENCE, Bonferroni over
+  3 × gate-passed responses; UNEXPLAINED responses are judged on target only (cells PASS_NA/FAIL_NA). Golden values (= pipeline): CBD paper specs →
+  Hardness only, control Force 1250–1425 × MCC 30–44.5 @ CCS 3, optimum 1312.5/35.5/3 (P 0.883) → approvable; Lornoxicam → all four Reduced quadratic,
+  control MCC:Mannitol 1.1–3.0 × Crospovidone 4.6–9.2 @ 10 min, optimum 2.9/10/7.0 (P 0.998).
 - **Measured LLM quality** (`scripts/report/stage2_llm.py` → `docs/report/stage2_llm.json`): steps 2–7 drafted by the contest API pass every check but only 21/35
   (material) and 21/35 (formulation/process) same-name risk cells match the paper (22 of 28 differing cells rated higher) — the reason steps are
   "draft + approve". The paper is a reference, not the answer key; the match rate is not a quality score.

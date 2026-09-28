@@ -116,13 +116,16 @@ class Stage2Service:
         out["factor_choices"] = [{"id": i, "name": f["name"]} for i, f in enumerate(design["factors"])] if k == 3 else []
         return _plain(out)
 
-    def space_slice(self, sid: str, fixed: Optional[int] = None, level: Optional[float] = None) -> Dict[str, Any]:
+    def overlay(self, sid: str, fixed: Optional[int] = None, fmt: str = "svg", caption: bool = False) -> bytes:
+        """13단계 Overlay plot(논문 Figure 2 형식) — 저장된 목표와 10단계 회귀식으로 그때그때 그린다."""
         st, _ = self._load(sid)
         d = st["steps"]["space"]["data"]
         if not d or not st["steps"]["regression"]["data"]:
             raise StudyError("영역을 아직 계산하지 않았습니다.", status=409)
-        return _plain(SP.slice_map(st["steps"]["design"]["data"], st["steps"]["regression"]["data"], d.get("specs") or [],
-                                   fixed=fixed, level=level))
+        if fixed is None:
+            fixed = d.get("slice")
+        return SP.render(st["steps"]["design"]["data"], st["steps"]["regression"]["data"], _complete(d.get("specs") or []),
+                         fixed=fixed, fmt=fmt, caption=caption)
 
     def images(self, sid: str) -> Dict[str, bytes]:
         st, _ = self._load(sid)
@@ -185,14 +188,17 @@ class Stage2Service:
             chosen = {r["response"]: r["family"] for r in (s["data"] or {}).get("responses") or [] if s["source"] and "user" in s["source"]}
             self._set(st, step, _plain(T.regression(ctx["design"], chosen)), source=s["source"] if chosen else "code", actor="system")
         elif step == "surface":
-            self._set(st, step, {"responses": [r["response"] for r in ctx["regression"]["responses"] if not r.get("aliased")]}, source="code", actor="system")
+            # 곡면은 검증 게이트를 통과한 반응만(요인으로 설명되지 않는 반응은 회귀식이 없다)
+            self._set(st, step, {"responses": [r["response"] for r in ctx["regression"]["responses"] if not r.get("aliased") and r.get("status") == "SELECTED"],
+                                 "unexplained": [r["response"] for r in ctx["regression"]["responses"] if r.get("aliased") or r.get("status") != "SELECTED"]},
+                      source="code", actor="system")
         elif step == "anova":
             self._set(st, step, _plain(self._anova(ctx)), source="code", actor="system")
         elif step == "space":
             old = {x["response"]: x for x in ((s["data"] or {}).get("specs") or [])}
             specs = [old.get(r["response"]) or {"response": r["response"], "unit": r.get("unit") or "", "op": "", "lower": None, "upper": None, "basis": ""}
                      for r in ctx["regression"]["responses"] if not r.get("aliased")]
-            self._set(st, step, self._space(ctx, specs), source=s["source"] or "code", actor="system")
+            self._set(st, step, self._space(ctx, specs, (s["data"] or {}).get("slice")), source=s["source"] or "code", actor="system")
         elif step == "vplan":
             old = s["data"] or {}
             self._set(st, step, self._vplan(ctx, old.get("delta", SP.ROBUST_DELTA), old.get("reference")), source=s["source"] or "code", actor="system")
@@ -201,13 +207,15 @@ class Stage2Service:
             self._set(st, step, self._verify(ctx, old.get("observations") or [], bool(old.get("independent")), old.get("batches") or {}),
                       source=s["source"] or "code", actor="system")
 
-    def _space(self, ctx, specs) -> Dict[str, Any]:
+    def _space(self, ctx, specs, fixed=None) -> Dict[str, Any]:
         specs = [_spec(x) for x in specs]
-        ok = any(x["op"] in SP.OPS for x in specs) and all(
-            x["op"] not in SP.OPS or all(v is not None for v in ({"LE": [x["upper"]], "GE": [x["lower"]], "BETWEEN": [x["lower"], x["upper"]]}[x["op"]]))
-            for x in specs)
-        region = _plain(SP.region(ctx["design"], ctx["regression"], specs)) if ok else None
-        return {"specs": specs, "region": region}
+        try:
+            fixed = None if fixed in (None, "") else int(fixed)
+        except (TypeError, ValueError):
+            fixed = None
+        done = _complete(specs)
+        region = _plain(SP.region(ctx["design"], ctx["regression"], done, fixed)) if done else None
+        return {"specs": specs, "slice": fixed, "region": region}
 
     def _vplan(self, ctx, delta, reference) -> Dict[str, Any]:
         try:
@@ -231,8 +239,12 @@ class Stage2Service:
         x = T.to_coded(X, T.coding(X))
         out = []
         for j, r in enumerate(ctx["regression"]["responses"]):
+            if r.get("aliased") or r.get("status") != "SELECTED":      # 요인으로 설명되지 않음 — 분산분석할 회귀식이 없다
+                out.append({"response": r["response"], "unit": r.get("unit"), "family": r["family"], "unexplained": True,
+                            "gate_why": (r.get("gate") or {}).get("why") or [], "observed": {k: v for k, v in (r.get("observed") or {}).items() if k != "values"}})
+                continue
             ok = ~np.isnan(Y[:, j])
-            a = T.anova(r["family"], x[ok], Y[ok, j], fn)
+            a = T.anova(r["family"], x[ok], Y[ok, j], fn, terms=r.get("terms"))
             out.append({"response": r["response"], "unit": r.get("unit"), **a})
         return {"responses": out, "factors": fn}
 
@@ -295,7 +307,7 @@ class Stage2Service:
             chosen = {k: v for k, v in (data.get("chosen") or {}).items() if v in T.FAMILIES}
             norm = _plain(T.regression(self._ctx(st)["design"], chosen))
         elif step == "space":
-            norm = self._space(self._ctx(st), data.get("specs") or [])
+            norm = self._space(self._ctx(st), data.get("specs") or [], data.get("slice"))
         elif step == "vplan":
             ref = data.get("reference")
             ref = ({"label": str(ref.get("label") or "참고 배치")[:80], "settings": {str(k): _f(v) for k, v in (ref.get("settings") or {}).items()}}
@@ -317,11 +329,6 @@ class Stage2Service:
             raise StudyError("승인할 내용이 없습니다 — 초안을 만들거나 입력하세요.", status=409)
         s["checks"] = check(step, s["data"], self._ctx(st)) + [c for c in s["checks"] if c["code"] == "LLM_NUMBERS"]
         blocking = [c for c in s["checks"] if c["level"] == "blocking"]
-        note = (p.get("note") or "").strip()
-        if step == "regression" and any(c["code"] == "REG_OVERFIT" for c in s["checks"]) and not note:
-            s["checks"].append({"level": "blocking", "code": "REG_OVERFIT_REASON",
-                                "message": "과적합 의심 모형을 그대로 쓰려면 수용 사유를 적어 주세요(또는 차수를 낮추세요)."})
-            blocking = [c for c in s["checks"] if c["level"] == "blocking"]
         if blocking:
             return {"blocked": [c["code"] for c in blocking]}
         if step == "vplan":            # 승인 = 결과 전에 확인계획을 잠근다(잠근 뒤에는 다시 열어야만 바뀐다)
@@ -406,6 +413,12 @@ def _f(v) -> Optional[float]:
         return None if v in (None, "") else float(v)
     except (TypeError, ValueError):
         return None
+
+
+def _complete(specs) -> list:
+    """값이 다 찬 목표만(영역 계산용) — 빈 칸이 있는 행은 검사가 따로 알린다."""
+    need = {"LE": ("upper",), "GE": ("lower",), "BETWEEN": ("lower", "upper")}
+    return [x for x in specs if x.get("op") in need and all(x.get(k) is not None for k in need[x["op"]])]
 
 
 def _spec(x: Dict[str, Any]) -> Dict[str, Any]:

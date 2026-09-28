@@ -59,22 +59,30 @@ def test_derived_matrices_equal_paper_tables_5_and_7():
 
 
 def test_full_walk_with_paper_values(svc):
+    """CBD 논문 값으로 끝까지 — 10단계는 논문 모형 차수를 골라도 게이트를 통과한 경도만 쓰이고(DT·마손도는 요인으로 설명되지 않음),
+    13단계는 overlay 기준(평균 예측 영역 + control space)이라 논문 규격에서 승인된다(공동확률 최대 0.883 < 0.9는 경고만)."""
     sid = cbd(svc)
     out = walk(svc, sid)
     assert out["current"] == "space" and len(out["study"]["approvals"]) == 12
+    reg = {r["response"]: r for r in out["study"]["steps"]["regression"]["data"]["responses"]}
+    assert reg["Hardness"]["status"] == "SELECTED" and reg["DT"]["status"] == reg["Friability"]["status"] == "UNEXPLAINED"
     svc.act(sid, "use_reference", {})                                # 논문 규격: 경도 4–6 kgf · 붕해 ≤ 30 s · 마손도 ≤ 1 %
     out = svc.act(sid, "approve", {})
-    reg13 = out["study"]["steps"]["space"]["data"]["region"]
-    # 평균 예측으로는 영역이 있어 보이지만 미래 배치 공동확률 ≥ 0.90은 없다(경도 4–6 kgf 폭이 잔차에 비해 좁다) — 규격을 완화하지 않는다
-    assert out["action_result"]["blocked"] == ["SPACE_EMPTY"] and reg13["status"] == "EMPTY"
-    assert reg13["mean_ok_fraction"] > 0.4 and reg13["max_joint"] < 0.9 and next(iter(reg13["binding"])) == "Hardness"
+    assert not out["action_result"].get("blocked") and out["current"] == "vplan"
+    r13 = out["study"]["steps"]["space"]["data"]["region"]
+    assert r13["approval"]["approvable"] and r13["slice"]["name"] == "CCS"
+    assert r13["control_space"] == {"Force": [1250.0, 1425.0], "MCC": [30.0, 44.5], "CCS": 3.0}
+    assert r13["optimum"]["actual"] == {"Force": 1312.5, "MCC": 35.5, "CCS": 3.0} and round(r13["optimum"]["joint"], 3) == 0.883
+    assert [round(x["ds_fraction"], 3) for x in r13["slices"]] == [0.572, 0.481, 0.377]
+    assert [(n["response"], n["level"]) for n in r13["unexplained"]] == [("DT", "note"), ("Friability", "note")]
+    assert "SPACE_AUX_LOW" in {c["code"] for c in out["study"]["steps"]["space"]["checks"]}   # 보조 지표 — 막지 않는다
     st = svc.raw(sid)
     rec = st["steps"]["recommend"]["data"]                            # 8단계는 코드가 만든 종합 정리 — 고르는 칸이 없다
     assert [c["variable"] for c in rec["candidates"]][:3] == ["MCC", "Compression force", "CCS"] and "selected" not in rec
     assert st["steps"]["recommend"]["source"] == "code"
-    reg = {r["response"]: r for r in st["steps"]["regression"]["data"]["responses"]}
-    assert reg["Hardness"]["family"] == reg["Hardness"]["suggested"] == "Linear"
-    assert st["steps"]["surface"]["data"]["responses"] == ["Hardness", "DT", "Friability"]
+    assert st["steps"]["surface"]["data"]["responses"] == ["Hardness"] and st["steps"]["surface"]["data"]["unexplained"] == ["DT", "Friability"]
+    an = {x["response"]: x for x in st["steps"]["anova"]["data"]["responses"]}
+    assert an["DT"]["unexplained"] and "rows" in an["Hardness"]
     risk = report.risk_report(st)
     final = report.final_report(st, {})
     assert risk[:4] == final[:4] == b"%PDF" and len(final) > len(risk) > 20000
@@ -153,15 +161,23 @@ def test_summary_step_needs_no_selection_and_design_factors_are_researchers(svc)
     assert {"DESIGN_TOO_FEW", "DESIGN_ONE_LEVEL"} <= set(out["action_result"]["blocking"])
 
 
-def test_regression_overfit_needs_reason(svc):
+def test_regression_gate_blocks_only_when_every_response_fails(svc):
+    """검증 게이트(모형 p < 0.05 · 적합결여 p ≥ 0.05 · 조정 R² − 예측 R² ≤ 0.2 · 예측 R² > 0). 하나라도 통과하면 승인 가능, 전부 못 넘으면 승인 불가."""
     sid = cbd(svc)
-    walk(svc, sid, upto="regression")
-    svc.act(sid, "use_reference", {})                                 # 논문 차수: DT 2차 · 마손도 2FI → 예측 R²가 수정 R²보다 한참 낮다
+    out = walk(svc, sid, upto="regression")
+    rg = out["study"]["steps"]["regression"]
+    rows = {r["response"]: r for r in rg["data"]["responses"]}
+    assert rows["Hardness"]["family"] == "Linear" and rows["Hardness"]["status"] == "SELECTED"
+    assert rows["DT"]["family"] == rows["Friability"]["family"] == "Mean"               # 평균 모형까지 내려감 → 요인으로 설명되지 않음
+    assert rows["Friability"]["summary"]["log"][0].startswith("Reduced quadratic 불합격: 조정 R² − 예측 R² = 0.35")
+    assert {c["response"] for c in rg["checks"] if c["code"] == "REG_GATE_FAIL"} == {"DT", "Friability"}
+    out = svc.act(sid, "save", {"data": {"chosen": {"Hardness": "Quadratic"}}})          # 2차는 과적합(조정 0.757 − 예측 0.250) → 게이트 불합격
+    assert "REG_GATE_NONE" in out["action_result"]["blocking"]
     out = svc.act(sid, "approve", {})
-    assert "REG_OVERFIT_REASON" in out["action_result"]["blocked"]
-    assert {c["response"] for c in out["study"]["steps"]["regression"]["checks"] if c["code"] == "REG_OVERFIT"} >= {"DT"}
-    out = svc.act(sid, "approve", {"note": NOTE})
-    assert out["current"] == "surface" and out["study"]["approvals"][-1]["note"] == NOTE
+    assert "REG_GATE_NONE" in out["action_result"]["blocked"]
+    svc.act(sid, "save", {"data": {"chosen": {"Hardness": "Linear"}}})
+    out = svc.act(sid, "approve", {})
+    assert not out["action_result"].get("blocked") and out["current"] == "surface"
 
 
 def test_regression_choice_aliased_blocks_and_reopen_marks_stale(svc):
@@ -241,28 +257,43 @@ LX_SPECS = [{"response": "DT", "op": "LE", "upper": 180, "basis": "분산정 분
 
 
 def test_lornoxicam_design_space_reproduces_golden_values():
-    """발표 자료 10쪽: 평균 반응면 77.2 % → 공동확률 ≥ 0.90 47.6 %, 설정점 2.7 · 12.5분 · 6.8 %(P 0.991), DE30 예측구간 71.9–92.8."""
+    """overlay 파이프라인 골든 값(Almotairi 2022 Table 3): 네 반응 모두 축소 2차로 게이트 통과, Mixing time 단면, control space
+    MCC:Mannitol 1.1–3.0 × Crospovidone 4.6–9.2 @ 10분, 최적 2.9 · 10분 · 7.0 %(새 배치 통과확률 0.998)."""
     from formula.stage2 import space as SP
-    from formula.stage2.model import check as chk
     d = lornoxicam_design()
     auto = T.regression(d)
-    assert {r["response"]: r["suggested"] for r in auto["responses"]} == {"DT": "Quadratic", "Friability": "Linear", "DE30": "Quadratic", "AV": "Quadratic"}
-    flags = {c["response"] for c in chk("regression", auto, {}) if c["code"] == "REG_OVERFIT"}
-    assert flags == {"AV"}                                             # AV 2차: 수정 R² 0.884 vs 예측 R² 0.481
-    fr = next(r for r in auto["responses"] if r["response"] == "Friability")
-    quad = next(x for x in fr["summary"]["rows"] if x["model"] == "Quadratic")
-    assert round(quad["pred_r2"], 3) == 0.251 and round(fr["pred_r2"], 3) == 0.824   # 마손도는 2차 과적합 → 선형으로 제안
+    fams = {r["response"]: (r["suggested"], r["status"], r["summary"]["rows"][0]["term_names"]) for r in auto["responses"]}
+    assert fams == {"DT": ("Reduced quadratic", "SELECTED", ["a", "b", "c", "b2", "c2"]), "Friability": ("Reduced quadratic", "SELECTED", ["a", "c"]),
+                    "DE30": ("Reduced quadratic", "SELECTED", ["a", "c", "c2"]), "AV": ("Reduced quadratic", "SELECTED", ["b", "b2"])}
+    av = {x["model"]: x for x in next(r for r in auto["responses"] if r["response"] == "AV")["summary"]["rows"]}
+    assert round(av["Quadratic"]["adj_r2"] - av["Quadratic"]["pred_r2"], 2) == 0.40 and not av["Quadratic"]["gate"]["passed"]   # 2차는 과적합
+    assert round(av["Reduced quadratic"]["aicc"], 3) == 55.232
     R = SP.region(d, auto, LX_SPECS)
-    assert (R["grid_points_total"], R["grid_points_in_domain"]) == (9261, 7501)
-    assert round(R["mean_ok_fraction"], 3) == 0.772 and round(R["feasible_fraction"], 3) == 0.476 and next(iter(R["binding"])) == "DE30"
-    sp = R["setpoint"]
-    assert sp["actual"] == {"MCC:Mannitol": 2.7, "Mixing time": 12.5, "Crospovidone": 6.8} and round(sp["joint"], 3) == 0.991
+    assert R["approval"]["approvable"] and R["slice"]["name"] == "Mixing time" and R["slice"]["auto"]
+    assert R["control_space"] == {"MCC:Mannitol": [1.1, 3.0], "Crospovidone": [4.6, 9.2], "Mixing time": 10.0}
+    assert R["optimum"]["actual"] == {"MCC:Mannitol": 2.9, "Mixing time": 10.0, "Crospovidone": 7.0} and round(R["optimum"]["joint"], 4) == 0.9984
+    assert [round(x["ds_fraction"], 3) for x in R["slices"]] == [0.874, 0.716, 0.874]
     V = SP.plan(d, auto, LX_SPECS, R, reference={"label": "논문 최적", "settings": {"MCC:Mannitol": 3, "Mixing time": 11, "Crospovidone": 6.23}})
     assert [p["role"] for p in V["points"]] == ["SETPOINT", "BOUNDARY", "ROBUSTNESS", "REFERENCE"] and V["pi_policy"]["comparisons"] == 12
-    de = V["points"][0]["predicted"]["DE30"]
-    assert (round(de["mean"], 1), round(de["pi_lower"], 1), round(de["pi_upper"], 1)) == (82.3, 71.9, 92.8)
-    sl = SP.slice_map(d, auto, LX_SPECS, fixed=1, level=0.5)
-    assert sl["kind"] == "MAP" and sl["fixed"]["actual"] == 12.5 and len(sl["P"]) == 21 and len(sl["P"][0]) == 21
+    assert V["points"][0]["settings"] == R["optimum"]["actual"]
+    svg = SP.render(d, auto, LX_SPECS, fmt="svg")
+    assert svg.startswith(b"<?xml") and b"Overlay plot" in svg
+
+
+def test_space_blocks_only_without_mean_region_or_control_space():
+    """13단계 승인 불가는 두 경우뿐 — 평균 기준 영역 없음 · control space(3×3 이상 직사각형) 없음. 공동확률 < 0.9는 막지 않는다."""
+    from formula.stage2 import space as SP
+    from formula.stage2.model import check as chk
+    d = REF.design()
+    auto = T.regression(d)
+    none = SP.region(d, auto, [{"response": "Hardness", "op": "BETWEEN", "lower": 9, "upper": 10}])
+    assert none["status"] == "NO_MEAN_REGION" and none["approval"]["code"] == "SPACE_NO_MEAN_REGION" and "Hardness 미달 100%" in none["approval"]["reason"]
+    thin = SP.region(d, auto, [{"response": "Hardness", "op": "BETWEEN", "lower": 5.95, "upper": 6.0}])
+    assert thin["status"] == "NO_CONTROL_SPACE" and thin["approval"]["code"] == "SPACE_NO_CONTROL"
+    ok = SP.region(d, auto, list(REF.specs().values()))
+    codes = lambda r: {c["code"]: c["level"] for c in chk("space", {"specs": list(REF.specs().values()), "region": r}, {})}   # noqa: E731
+    assert codes(ok) == {"SPACE_AUX_LOW": "warning"}
+    assert codes(none)["SPACE_NO_MEAN_REGION"] == "blocking" and codes(thin)["SPACE_NO_CONTROL"] == "blocking"
 
 
 def test_space_vplan_verify_steps(svc):
@@ -271,16 +302,19 @@ def test_space_vplan_verify_steps(svc):
     walk(svc, sid, upto="design")
     svc.act(sid, "save", {"data": lornoxicam_design()})
     svc.act(sid, "approve", {})
-    out = svc.act(sid, "approve", {})                                  # 10 회귀 — AV 과적합이라 사유 없이는 막힌다
-    assert "REG_OVERFIT_REASON" in out["action_result"]["blocked"]
-    svc.act(sid, "approve", {"note": "AV는 예측 R² 0.48 — 사유를 기록하고 수용"})
+    out = svc.act(sid, "approve", {})                                  # 10 회귀 — 네 반응 모두 게이트 통과(축소 2차)
+    assert not out["action_result"].get("blocked") and out["current"] == "surface"
     svc.act(sid, "approve", {})
     svc.act(sid, "approve", {})
     assert svc.view(sid)["current"] == "space"
     out = svc.act(sid, "approve", {})
     assert "SPACE_NO_SPEC" in out["action_result"]["blocked"]
     out = svc.act(sid, "save", {"data": {"specs": LX_SPECS}})
-    assert round(out["study"]["steps"]["space"]["data"]["region"]["feasible_fraction"], 3) == 0.476
+    assert out["study"]["steps"]["space"]["data"]["region"]["optimum"]["actual"] == {"MCC:Mannitol": 2.9, "Mixing time": 10.0, "Crospovidone": 7.0}
+    out = svc.act(sid, "save", {"data": {"specs": LX_SPECS, "slice": 0}})              # 단면 고정 요인을 바꿀 수 있다
+    assert out["study"]["steps"]["space"]["data"]["region"]["slice"]["name"] == "MCC:Mannitol"
+    out = svc.act(sid, "save", {"data": {"specs": LX_SPECS, "slice": None}})
+    assert svc.overlay(sid)[:5] == b"<?xml" and svc.overlay(sid, fmt="png")[:4] == b"\x89PNG"
     out = svc.act(sid, "approve", {})
     assert out["current"] == "vplan"
     plan = out["study"]["steps"]["vplan"]["data"]["plan"]
@@ -336,6 +370,6 @@ def test_step9_paper_fill_buttons_use_real_cited_tables(svc):
     assert [r["name"] for r in d["responses"]] == ["Dispersion time", "Friability", "DE30", "AV"] and d["rows"][0]["y"] == [11, 0.7, 75.3, 14.82]
     assert "Almotairi" in d["paper"]["citation"] and not out["action_result"]["blocking"]
     out = svc.act(sid, "approve", {})
-    fams = {r["response"]: r["suggested"] for r in out["study"]["steps"]["regression"]["data"]["responses"]}
-    assert fams == {"Dispersion time": "Quadratic", "Friability": "Linear", "DE30": "Quadratic", "AV": "Quadratic"}   # 발표 10쪽과 같은 제안 모형
+    fams = {r["response"]: (r["suggested"], r["status"]) for r in out["study"]["steps"]["regression"]["data"]["responses"]}
+    assert set(fams.values()) == {("Reduced quadratic", "SELECTED")} and len(fams) == 4                              # overlay 파이프라인과 같은 선택
     assert PD.options("Lornoxicam")[0]["key"] == "almotairi2022_t3"

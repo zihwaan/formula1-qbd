@@ -661,49 +661,134 @@
     "n": 17,
     "summary": [
      {
-      "model": "Mean",
-      "seq_p": null,
-      "lof_p": 0.07302002179251821,
-      "r2": 0.0,
-      "adj_r2": 0.0,
-      "pred_r2": -0.12890625,
-      "aliased": false,
-      "suggested": false
-     },
-     {
       "model": "Linear",
-      "seq_p": 0.0005349147654233333,
+      "n_terms": 3,
+      "model_p": 0.0005349147654233551,
       "lof_p": 0.40426318334555533,
-      "r2": 0.7300350292477213,
       "adj_r2": 0.6677354206125801,
       "pred_r2": 0.5112907044791477,
-      "aliased": false,
-      "suggested": true
+      "aicc": 36.968676768696184,
+      "rank": 1,
+      "term_names": [
+       "a",
+       "b",
+       "c"
+      ],
+      "gate": true,
+      "why": []
+     },
+     {
+      "model": "Reduced quadratic",
+      "n_terms": 4,
+      "model_p": 0.0002937728800980917,
+      "lof_p": 0.5580504524208634,
+      "adj_r2": 0.7438783838933477,
+      "pred_r2": 0.5596220738927685,
+      "aicc": 36.12865917583051,
+      "rank": 2,
+      "term_names": [
+       "a",
+       "b",
+       "c",
+       "a:c"
+      ],
+      "gate": true,
+      "why": []
+     },
+     {
+      "model": "Mean",
+      "n_terms": 0,
+      "model_p": null,
+      "lof_p": 0.07302002179251821,
+      "adj_r2": 0.0,
+      "pred_r2": null,
+      "aicc": 48.63214629932828,
+      "rank": 3,
+      "term_names": [],
+      "gate": false,
+      "why": [
+       "평균 모형(요인 없음)"
+      ]
      },
      {
       "model": "2FI",
-      "seq_p": 0.12369562022465952,
+      "n_terms": 6,
+      "model_p": 0.0014508351436879371,
       "lof_p": 0.5649760054727224,
-      "r2": 0.8444225275472724,
       "adj_r2": 0.7510760440756359,
       "pred_r2": 0.5182623831649883,
-      "aliased": false,
-      "suggested": false
+      "aicc": 46.14460868507321,
+      "rank": 4,
+      "term_names": [
+       "a",
+       "b",
+       "c",
+       "a:b",
+       "a:c",
+       "b:c"
+      ],
+      "gate": false,
+      "why": [
+       "조정 R² − 예측 R² = 0.23 > 0.2"
+      ]
+     },
+     {
+      "model": "Pure quadratic",
+      "n_terms": 6,
+      "model_p": 0.0073343115154882186,
+      "lof_p": 0.3457164394279163,
+      "adj_r2": 0.6468747109236838,
+      "pred_r2": 0.27778788600190396,
+      "aicc": 52.08909165121223,
+      "rank": 5,
+      "term_names": [
+       "a",
+       "b",
+       "c",
+       "a2",
+       "b2",
+       "c2"
+      ],
+      "gate": false,
+      "why": [
+       "조정 R² − 예측 R² = 0.37 > 0.2"
+      ]
      },
      {
       "model": "Quadratic",
-      "seq_p": 0.41712863494067653,
+      "n_terms": 9,
+      "model_p": 0.010810608145045099,
       "lof_p": 0.5475221875087272,
-      "r2": 0.8936841926268534,
       "adj_r2": 0.7569924402899506,
       "pred_r2": 0.2501998027479241,
-      "aliased": false,
-      "suggested": false
+      "aicc": 80.47220135252039,
+      "rank": 6,
+      "term_names": [
+       "a",
+       "b",
+       "c",
+       "a:b",
+       "a:c",
+       "b:c",
+       "a2",
+       "b2",
+       "c2"
+      ],
+      "gate": false,
+      "why": [
+       "조정 R² − 예측 R² = 0.51 > 0.2"
+      ]
      }
     ],
+    "log": [
+     "Linear 통과 → 채택"
+    ],
+    "status": "SELECTED",
     "suggested": "Linear",
-    "reason": "순차 F 검정이 유의한(p = 0.0005 < 0.05) 가장 높은 차수",
+    "reason": "AICc 순위대로 검증 게이트(모형 p < 0.05 · 적합결여 p ≥ 0.05 · 조정 R² − 예측 R² ≤ 0.2 · 예측 R² > 0)를 처음 통과한 모형",
     "paper_family": "Linear",
+    "paper_gate": "SELECTED",
+    "paper_gate_why": [],
     "coded_eq": "Y1 = 6.040 + 1.002X1 + 0.5587X2 + 0.1562X3",
     "actual_eq": "Y1 = -2.444 + 0.00401X1 + 0.05587X2 + 0.07812X3",
     "paper_coded": "Y1 = 6.04 + 1.00X1 + 0.56X2 + 0.16X3",
@@ -746,48 +831,128 @@
     "summary": [
      {
       "model": "Mean",
-      "seq_p": null,
+      "n_terms": 0,
+      "model_p": null,
       "lof_p": 0.2637013461549953,
-      "r2": 2.220446049250313e-16,
-      "adj_r2": 2.220446049250313e-16,
-      "pred_r2": -0.12890625,
-      "aliased": false,
-      "suggested": false
+      "adj_r2": 0.0,
+      "pred_r2": null,
+      "aicc": 85.7198581004125,
+      "rank": 1,
+      "term_names": [],
+      "gate": false,
+      "why": [
+       "평균 모형(요인 없음)"
+      ]
      },
      {
       "model": "Linear",
-      "seq_p": 0.13602217398982086,
+      "n_terms": 3,
+      "model_p": 0.13602217398982072,
       "lof_p": 0.33968958630433366,
-      "r2": 0.33745551905134274,
       "adj_r2": 0.1845606388324218,
       "pred_r2": -0.06319076105992227,
-      "aliased": false,
-      "suggested": true
+      "aicc": 89.31891179835736,
+      "rank": 2,
+      "term_names": [
+       "a",
+       "b",
+       "c"
+      ],
+      "gate": false,
+      "why": [
+       "모형 p 0.136 ≥ 0.05",
+       "조정 R² − 예측 R² = 0.25 > 0.2",
+       "예측 R² -0.06 ≤ 0.0"
+      ]
+     },
+     {
+      "model": "Pure quadratic",
+      "n_terms": 6,
+      "model_p": 0.04983371889970588,
+      "lof_p": 0.5575944490774943,
+      "adj_r2": 0.45441273136573024,
+      "pred_r2": -0.015589272608080629,
+      "aicc": 96.57248092131638,
+      "rank": 3,
+      "term_names": [
+       "a",
+       "b",
+       "c",
+       "a2",
+       "b2",
+       "c2"
+      ],
+      "gate": false,
+      "why": [
+       "조정 R² − 예측 R² = 0.47 > 0.2",
+       "예측 R² -0.02 ≤ 0.0"
+      ]
      },
      {
       "model": "2FI",
-      "seq_p": 0.9286628883390227,
+      "n_terms": 6,
+      "model_p": 0.4966049077714313,
       "lof_p": 0.220790865954696,
-      "r2": 0.3656086530848598,
       "adj_r2": -0.015026155064224334,
       "pred_r2": -0.9137836837108164,
-      "aliased": false,
-      "suggested": false
+      "aicc": 107.12619801795692,
+      "rank": 4,
+      "term_names": [
+       "a",
+       "b",
+       "c",
+       "a:b",
+       "a:c",
+       "b:c"
+      ],
+      "gate": false,
+      "why": [
+       "모형 p 0.497 ≥ 0.05",
+       "조정 R² − 예측 R² = 0.90 > 0.2",
+       "예측 R² -0.91 ≤ 0.0"
+      ]
      },
      {
       "model": "Quadratic",
-      "seq_p": 0.15357000292081513,
+      "n_terms": 9,
+      "model_p": 0.24626956569636302,
       "lof_p": 0.3254106402472128,
-      "r2": 0.6871610911370984,
       "adj_r2": 0.2849396368847965,
       "pred_r2": -1.9419475247852915,
-      "aliased": false,
-      "suggested": false
+      "aicc": 135.9075781285909,
+      "rank": 5,
+      "term_names": [
+       "a",
+       "b",
+       "c",
+       "a:b",
+       "a:c",
+       "b:c",
+       "a2",
+       "b2",
+       "c2"
+      ],
+      "gate": false,
+      "why": [
+       "모형 p 0.246 ≥ 0.05",
+       "조정 R² − 예측 R² = 2.23 > 0.2",
+       "예측 R² -1.94 ≤ 0.0"
+      ]
      }
     ],
-    "suggested": "Linear",
-    "reason": "순차 F 검정에서 유의한 차수가 없음 — 예측 R²가 가장 큰 모형(해석 주의)",
+    "log": [
+     "평균 모형 도달 → 요인으로 설명되지 않음"
+    ],
+    "status": "UNEXPLAINED",
+    "suggested": "Mean",
+    "reason": "게이트를 통과한 모형 없이 평균 모형까지 내려감 — 요인으로 설명되지 않음",
     "paper_family": "Quadratic",
+    "paper_gate": "UNEXPLAINED",
+    "paper_gate_why": [
+     "모형 p 0.246 ≥ 0.05",
+     "조정 R² − 예측 R² = 2.23 > 0.2",
+     "예측 R² -1.94 ≤ 0.0"
+    ],
     "coded_eq": "Y2 = 15.62 + 1.065X1 + 1.666X2 + 1.259X3 + 0.16X1X2 + 0.915X1X3 − 0.2325X2X3 + 1.732X1² + 0.6347X2² + 2.395X3²",
     "actual_eq": "Y2 = 89.26 − 0.08694X1 − 0.4023X2 − 5.243X3 + 2.77×10⁻5X1² + 6.4×10⁻5X1X2 + 0.00183X1X3 + 0.006347X2² − 0.01163X2X3 + 0.5987X3²",
     "paper_coded": "Y2 = 15.62 + 1.07X1 + 1.67X2 + 1.26X3 + 0.16X1X2 + 0.92X1X3 − 0.23X2X3 + 1.73X1² + 0.63X2² + 2.39X3²",
@@ -865,49 +1030,144 @@
     "n": 17,
     "summary": [
      {
+      "model": "Reduced quadratic",
+      "n_terms": 4,
+      "model_p": 0.004122443016315507,
+      "lof_p": 0.366988099736012,
+      "adj_r2": 0.5940184751285986,
+      "pred_r2": 0.24597750988768974,
+      "aicc": -34.49171445172552,
+      "rank": 1,
+      "term_names": [
+       "a",
+       "b",
+       "c",
+       "a:c"
+      ],
+      "gate": false,
+      "why": [
+       "조정 R² − 예측 R² = 0.35 > 0.2"
+      ]
+     },
+     {
       "model": "Mean",
-      "seq_p": null,
+      "n_terms": 0,
+      "model_p": null,
       "lof_p": 0.09406386363848485,
-      "r2": 2.220446049250313e-16,
-      "adj_r2": 2.220446049250313e-16,
-      "pred_r2": -0.12890625,
-      "aliased": false,
-      "suggested": false
+      "adj_r2": 0.0,
+      "pred_r2": null,
+      "aicc": -29.819366726705287,
+      "rank": 2,
+      "term_names": [],
+      "gate": false,
+      "why": [
+       "평균 모형(요인 없음)"
+      ]
      },
      {
       "model": "Linear",
-      "seq_p": 0.019733257678518856,
+      "n_terms": 3,
+      "model_p": 0.019733257678518787,
       "lof_p": 0.21177833636388077,
-      "r2": 0.5197038862406076,
       "adj_r2": 0.4088663215269017,
       "pred_r2": 0.07005516624291486,
-      "aliased": false,
-      "suggested": true
+      "aicc": -31.688955976870623,
+      "rank": 3,
+      "term_names": [
+       "a",
+       "b",
+       "c"
+      ],
+      "gate": false,
+      "why": [
+       "조정 R² − 예측 R² = 0.34 > 0.2"
+      ]
      },
      {
       "model": "2FI",
-      "seq_p": 0.06748692481048546,
+      "n_terms": 6,
+      "model_p": 0.011234110756003621,
       "lof_p": 0.3726699648160572,
-      "r2": 0.7574937383857154,
       "adj_r2": 0.6119899814171446,
       "pred_r2": 0.0676555703960302,
-      "aliased": false,
-      "suggested": false
+      "aicc": -24.760881297266245,
+      "rank": 4,
+      "term_names": [
+       "a",
+       "b",
+       "c",
+       "a:b",
+       "a:c",
+       "b:c"
+      ],
+      "gate": false,
+      "why": [
+       "조정 R² − 예측 R² = 0.54 > 0.2"
+      ]
+     },
+     {
+      "model": "Pure quadratic",
+      "n_terms": 6,
+      "model_p": 0.10330001057182076,
+      "lof_p": 0.16103477658726484,
+      "adj_r2": 0.34862406075785746,
+      "pred_r2": -0.4429637634321726,
+      "aicc": -15.953932785900001,
+      "rank": 5,
+      "term_names": [
+       "a",
+       "b",
+       "c",
+       "a2",
+       "b2",
+       "c2"
+      ],
+      "gate": false,
+      "why": [
+       "모형 p 0.103 ≥ 0.05",
+       "조정 R² − 예측 R² = 0.79 > 0.2",
+       "예측 R² -0.44 ≤ 0.0"
+      ]
      },
      {
       "model": "Quadratic",
-      "seq_p": 0.4438085196952096,
+      "n_terms": 9,
+      "model_p": 0.04563315632232628,
       "lof_p": 0.3160343012573026,
-      "r2": 0.8306798901187687,
       "adj_r2": 0.612982605985757,
       "pred_r2": -0.6105326411893022,
-      "aliased": false,
-      "suggested": false
+      "aicc": 9.932098771800383,
+      "rank": 6,
+      "term_names": [
+       "a",
+       "b",
+       "c",
+       "a:b",
+       "a:c",
+       "b:c",
+       "a2",
+       "b2",
+       "c2"
+      ],
+      "gate": false,
+      "why": [
+       "조정 R² − 예측 R² = 1.22 > 0.2",
+       "예측 R² -0.61 ≤ 0.0"
+      ]
      }
     ],
-    "suggested": "Linear",
-    "reason": "순차 F 검정이 유의한(p = 0.0197 < 0.05) 가장 높은 차수",
+    "log": [
+     "Reduced quadratic 불합격: 조정 R² − 예측 R² = 0.35 > 0.2",
+     "평균 모형 도달 → 요인으로 설명되지 않음"
+    ],
+    "status": "UNEXPLAINED",
+    "suggested": "Mean",
+    "reason": "게이트를 통과한 모형 없이 평균 모형까지 내려감 — 요인으로 설명되지 않음",
     "paper_family": "2FI",
+    "paper_gate": "UNEXPLAINED",
+    "paper_gate_why": [
+     "조정 R² − 예측 R² = 0.54 > 0.2"
+    ],
     "coded_eq": "Y3 = 0.2441 + 0.0125X1 − 0.09125X2 − 0.03125X3 + 0X1X2 − 0.08X1X3 + 0.0475X2X3",
     "actual_eq": "Y3 = 0.146 + 0.00053X1 − 0.01625X2 + 0.1294X3 + 0X1X2 − 0.00016X1X3 + 0.002375X2X3",
     "paper_coded": "Y3 = 0.24 + 0.01X1 − 0.09X2 − 0.03X3 − (5.05×10⁻¹⁷)X1X2 − 0.08X1X3 + 0.05X2X3",
@@ -963,15 +1223,159 @@
    }
   ],
   "cbd_space": {
-   "status": "EMPTY",
-   "mean_ok_fraction": 0.47926943074256767,
-   "feasible_fraction": 0.0,
-   "max_joint": 0.8831642944725568,
-   "binding": {
-    "Hardness": 7501
+   "status": "OK",
+   "approval": {
+    "approvable": true,
+    "code": null,
+    "reason": "평균 기준 영역과 control space 확인"
    },
-   "grid_points_in_domain": 7501
+   "slice": {
+    "index": 2,
+    "name": "CCS",
+    "unit": "%",
+    "auto": true,
+    "auto_index": 2,
+    "levels_actual": [
+     1.0,
+     3.0,
+     5.0
+    ]
+   },
+   "control_space": {
+    "Force": [
+     1250.0,
+     1425.0
+    ],
+    "MCC": [
+     30.0,
+     44.5
+    ],
+    "CCS": 3.0
+   },
+   "optimum": {
+    "coded": [
+     -0.75,
+     -0.45,
+     0.0
+    ],
+    "actual": {
+     "Force": 1312.5,
+     "MCC": 35.5,
+     "CCS": 3.0
+    },
+    "joint": 0.8834926674791711,
+    "control_corners": [
+     [
+      -1.0,
+      -1.0,
+      0.0
+     ],
+     [
+      -0.3,
+      -1.0,
+      0.0
+     ],
+     [
+      -1.0,
+      0.45,
+      0.0
+     ],
+     [
+      -0.3,
+      0.45,
+      0.0
+     ]
+    ],
+    "edge": 0.25
+   },
+   "mean_ok_fraction": 0.4775498067201903,
+   "fail_fraction": {
+    "Hardness": 0.5224501932798097
+   },
+   "aux": {
+    "max_joint": 0.8834926674791711,
+    "joint_ge_09_fraction": 0.0,
+    "contour_levels": [
+     0.5,
+     0.8,
+     0.9
+    ],
+    "note": "보조 — 판정에 쓰지 않는다(반응 간 독립 가정)"
+   },
+   "gate_passed": [
+    "Hardness"
+   ],
+   "slices": [
+    {
+     "level_actual": 1.0,
+     "ds_fraction": 0.5719381688466112,
+     "p_max": 0.869677803962832,
+     "rect_area": 180,
+     "control": false
+    },
+    {
+     "level_actual": 3.0,
+     "ds_fraction": 0.4806662700773349,
+     "p_max": 0.8834926674791711,
+     "rect_area": 450,
+     "control": true
+    },
+    {
+     "level_actual": 5.0,
+     "ds_fraction": 0.3769322235434007,
+     "p_max": 0.8470198127067203,
+     "rect_area": 99,
+     "control": false
+    }
+   ],
+   "unexplained": [
+    {
+     "response": "DT",
+     "level": "note",
+     "text": "DT: 요인으로 설명되지 않음 — 관측 12.16–24.12 s, 목표 ≤ 30"
+    },
+    {
+     "response": "Friability",
+     "level": "note",
+     "text": "Friability: 요인으로 설명되지 않음 — 관측 0.13–0.42 %, 목표 ≤ 1"
+    }
+   ]
   },
+  "cbd_vplan": [
+   {
+    "role": "SETPOINT",
+    "settings": {
+     "Force": 1312.5,
+     "MCC": 35.5,
+     "CCS": 3.0
+    }
+   },
+   {
+    "role": "BOUNDARY",
+    "settings": {
+     "Force": 1425.0,
+     "MCC": 44.5,
+     "CCS": 3.0
+    }
+   },
+   {
+    "role": "ROBUSTNESS",
+    "settings": {
+     "Force": 1362.5,
+     "MCC": 37.5,
+     "CCS": 3.4
+    }
+   },
+   {
+    "role": "REFERENCE",
+    "settings": {
+     "Force": 1400.0,
+     "MCC": 35.0,
+     "CCS": 1.0
+    }
+   }
+  ],
+  "cbd_vplan_locked": true,
   "lornoxicam": {
    "n": 15,
    "specs": [
@@ -1003,165 +1407,670 @@
    "fit": [
     {
      "response": "Dispersion time",
-     "suggested": "Quadratic",
-     "family": "Quadratic",
-     "adj_r2": 0.9711496746203905,
-     "pred_r2": 0.8649674620390454,
-     "overfit": false,
+     "suggested": "Reduced quadratic",
+     "status": "SELECTED",
+     "adj_r2": 0.9707992658101118,
+     "pred_r2": 0.9457815816827917,
+     "terms": [
+      "a",
+      "b",
+      "c",
+      "b2",
+      "c2"
+     ],
+     "log": [
+      "Reduced quadratic 통과 → 채택"
+     ],
      "rows": [
       {
+       "model": "Reduced quadratic",
+       "n_terms": 5,
+       "model_p": 1.7200654517889008e-07,
+       "lof_p": 0.3493507192413706,
+       "adj_r2": 0.9707992658101118,
+       "pred_r2": 0.9457815816827917,
+       "aicc": 56.235484320728624,
+       "rank": 1,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "b2",
+        "c2"
+       ],
+       "gate": true,
+       "why": []
+      },
+      {
+       "model": "Mean",
+       "n_terms": 0,
+       "model_p": null,
+       "lof_p": 0.012944806929328867,
+       "adj_r2": 0.0,
+       "pred_r2": null,
+       "aicc": 90.86639700293429,
+       "rank": 2,
+       "term_names": [],
+       "gate": false,
+       "why": [
+        "평균 모형(요인 없음)"
+       ]
+      },
+      {
        "model": "Linear",
+       "n_terms": 3,
+       "model_p": 0.03944123260787818,
+       "lof_p": 0.02006624304395388,
        "adj_r2": 0.38572273713271543,
        "pred_r2": 0.15065662075814668,
-       "seq_p": 0.03944123260787813,
-       "overfit": true
+       "aicc": 91.60599954874566,
+       "rank": 3,
+       "term_names": [
+        "a",
+        "b",
+        "c"
+       ],
+       "gate": false,
+       "why": [
+        "적합결여 p 0.020 < 0.05",
+        "조정 R² − 예측 R² = 0.24 > 0.2"
+       ]
+      },
+      {
+       "model": "Pure quadratic",
+       "n_terms": 6,
+       "model_p": 3.8763238015935886e-07,
+       "lof_p": 0.4286526106931988,
+       "adj_r2": 0.9776979392624728,
+       "pred_r2": 0.952819956616052,
+       "aicc": 60.42601725843791,
+       "rank": 4,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "a2",
+        "b2",
+        "c2"
+       ],
+       "gate": true,
+       "why": []
       },
       {
        "model": "2FI",
+       "n_terms": 6,
+       "model_p": 0.3074086197019711,
+       "lof_p": 0.01349054201950628,
        "adj_r2": 0.15963937093275493,
        "pred_r2": -0.7825275157490108,
-       "seq_p": 0.9976619876549006,
-       "overfit": true
+       "aicc": 114.86329779952953,
+       "rank": 5,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "a:b",
+        "a:c",
+        "b:c"
+       ],
+       "gate": false,
+       "why": [
+        "모형 p 0.307 ≥ 0.05",
+        "적합결여 p 0.013 < 0.05",
+        "조정 R² − 예측 R² = 0.94 > 0.2",
+        "예측 R² -0.78 ≤ 0.0"
+       ]
       },
       {
        "model": "Quadratic",
+       "n_terms": 9,
+       "model_p": 0.0001956025808161276,
+       "lof_p": 0.298534223706338,
        "adj_r2": 0.9711496746203905,
        "pred_r2": 0.8649674620390454,
-       "seq_p": 0.0001363288258969808,
-       "overfit": false
+       "aicc": 127.23759562868281,
+       "rank": 6,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "a:b",
+        "a:c",
+        "b:c",
+        "a2",
+        "b2",
+        "c2"
+       ],
+       "gate": true,
+       "why": []
       }
      ]
     },
     {
      "response": "Friability",
-     "suggested": "Linear",
-     "family": "Linear",
-     "adj_r2": 0.8878709579616,
-     "pred_r2": 0.824249180869523,
-     "overfit": false,
+     "suggested": "Reduced quadratic",
+     "status": "SELECTED",
+     "adj_r2": 0.8963301922357241,
+     "pred_r2": 0.8499225754203514,
+     "terms": [
+      "a",
+      "c"
+     ],
+     "log": [
+      "Reduced quadratic 통과 → 채택"
+     ],
      "rows": [
       {
+       "model": "Reduced quadratic",
+       "n_terms": 2,
+       "model_p": 4.923036112799205e-07,
+       "lof_p": 0.1684971907724313,
+       "adj_r2": 0.8963301922357241,
+       "pred_r2": 0.8499225754203514,
+       "aicc": -27.568843748128067,
+       "rank": 1,
+       "term_names": [
+        "a",
+        "c"
+       ],
+       "gate": true,
+       "why": []
+      },
+      {
+       "model": "Mean",
+       "n_terms": 0,
+       "model_p": null,
+       "lof_p": 0.01916231716131578,
+       "adj_r2": 0.0,
+       "pred_r2": null,
+       "aicc": 1.7415817885774527,
+       "rank": 2,
+       "term_names": [],
+       "gate": false,
+       "why": [
+        "평균 모형(요인 없음)"
+       ]
+      },
+      {
        "model": "Linear",
+       "n_terms": 3,
+       "model_p": 4.277026274005603e-06,
+       "lof_p": 0.1542446381268423,
        "adj_r2": 0.8878709579616,
        "pred_r2": 0.824249180869523,
-       "seq_p": 4.277026274035478e-06,
-       "overfit": false
+       "aicc": -23.03075604488023,
+       "rank": 3,
+       "term_names": [
+        "a",
+        "b",
+        "c"
+       ],
+       "gate": true,
+       "why": []
+      },
+      {
+       "model": "Pure quadratic",
+       "n_terms": 6,
+       "model_p": 0.00017756362164358873,
+       "lof_p": 0.15220891689588845,
+       "adj_r2": 0.8947928361511029,
+       "pred_r2": 0.7651606458856162,
+       "aicc": -5.430013284065019,
+       "rank": 4,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "a2",
+        "b2",
+        "c2"
+       ],
+       "gate": true,
+       "why": []
       },
       {
        "model": "2FI",
+       "n_terms": 6,
+       "model_p": 0.00047726494648330306,
+       "lof_p": 0.1194545291433633,
        "adj_r2": 0.8642961217144367,
        "pred_r2": 0.6413809604483904,
-       "seq_p": 0.7816508748195445,
-       "overfit": true
+       "aicc": -1.6118570209585599,
+       "rank": 5,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "a:b",
+        "a:c",
+        "b:c"
+       ],
+       "gate": false,
+       "why": [
+        "조정 R² − 예측 R² = 0.22 > 0.2"
+       ]
       },
       {
        "model": "Quadratic",
+       "n_terms": 9,
+       "model_p": 0.00898311348498491,
+       "lof_p": 0.09583914083513756,
        "adj_r2": 0.8612262250693435,
        "pred_r2": 0.25127542596750707,
-       "seq_p": 0.4868024636351781,
-       "overfit": true
+       "aicc": 61.67363767811665,
+       "rank": 6,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "a:b",
+        "a:c",
+        "b:c",
+        "a2",
+        "b2",
+        "c2"
+       ],
+       "gate": false,
+       "why": [
+        "조정 R² − 예측 R² = 0.61 > 0.2"
+       ]
       }
      ]
     },
     {
      "response": "DE30",
-     "suggested": "Quadratic",
-     "family": "Quadratic",
-     "adj_r2": 0.9148788715926273,
-     "pred_r2": 0.7646316071946276,
-     "overfit": false,
+     "suggested": "Reduced quadratic",
+     "status": "SELECTED",
+     "adj_r2": 0.9216480122029076,
+     "pred_r2": 0.8856575771191549,
+     "terms": [
+      "a",
+      "c",
+      "c2"
+     ],
+     "log": [
+      "Reduced quadratic 통과 → 채택"
+     ],
      "rows": [
       {
+       "model": "Reduced quadratic",
+       "n_terms": 3,
+       "model_p": 6.028067549250642e-07,
+       "lof_p": 0.7946458348695556,
+       "adj_r2": 0.9216480122029076,
+       "pred_r2": 0.8856575771191549,
+       "aicc": 69.6231997442649,
+       "rank": 1,
+       "term_names": [
+        "a",
+        "c",
+        "c2"
+       ],
+       "gate": true,
+       "why": []
+      },
+      {
+       "model": "Mean",
+       "n_terms": 0,
+       "model_p": null,
+       "lof_p": 0.10466399594031073,
+       "adj_r2": 0.0,
+       "pred_r2": null,
+       "aicc": 99.77212302635465,
+       "rank": 2,
+       "term_names": [],
+       "gate": false,
+       "why": [
+        "평균 모형(요인 없음)"
+       ]
+      },
+      {
        "model": "Linear",
+       "n_terms": 3,
+       "model_p": 0.17973502653056406,
+       "lof_p": 0.11988225409563624,
        "adj_r2": 0.16949389647698343,
        "pred_r2": -0.20366147195898843,
-       "seq_p": 0.17973502653056417,
-       "overfit": true
+       "aicc": 105.03555882965537,
+       "rank": 3,
+       "term_names": [
+        "a",
+        "b",
+        "c"
+       ],
+       "gate": false,
+       "why": [
+        "모형 p 0.180 ≥ 0.05",
+        "조정 R² − 예측 R² = 0.37 > 0.2",
+        "예측 R² -0.20 ≤ 0.0"
+       ]
+      },
+      {
+       "model": "Pure quadratic",
+       "n_terms": 6,
+       "model_p": 6.426007876019681e-05,
+       "lof_p": 0.7772328604655833,
+       "adj_r2": 0.9188663694063021,
+       "pred_r2": 0.8465019994393428,
+       "aicc": 88.70302035852055,
+       "rank": 4,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "a2",
+        "b2",
+        "c2"
+       ],
+       "gate": true,
+       "why": []
       },
       {
        "model": "2FI",
+       "n_terms": 6,
+       "model_p": 0.6198129291379709,
+       "lof_p": 0.08359699496091855,
        "adj_r2": -0.11401296700505803,
        "pred_r2": -1.575239774820083,
-       "seq_p": 0.9759803158530106,
-       "overfit": true
+       "aicc": 127.99741792949023,
+       "rank": 5,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "a:b",
+        "a:c",
+        "b:c"
+       ],
+       "gate": false,
+       "why": [
+        "모형 p 0.620 ≥ 0.05",
+        "조정 R² − 예측 R² = 1.46 > 0.2",
+        "예측 R² -1.58 ≤ 0.0"
+       ]
       },
       {
        "model": "Quadratic",
+       "n_terms": 9,
+       "model_p": 0.002779862635520543,
+       "lof_p": 0.7475503320362744,
        "adj_r2": 0.9148788715926273,
        "pred_r2": 0.7646316071946276,
-       "seq_p": 0.0009978275533730763,
-       "overfit": false
+       "aicc": 152.37263181647066,
+       "rank": 6,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "a:b",
+        "a:c",
+        "b:c",
+        "a2",
+        "b2",
+        "c2"
+       ],
+       "gate": true,
+       "why": []
       }
      ]
     },
     {
      "response": "AV",
-     "suggested": "Quadratic",
-     "family": "Quadratic",
-     "adj_r2": 0.8841137192541533,
-     "pred_r2": 0.4805659243315106,
-     "overfit": true,
+     "suggested": "Reduced quadratic",
+     "status": "SELECTED",
+     "adj_r2": 0.8876459129327665,
+     "pred_r2": 0.84446668830689,
+     "terms": [
+      "b",
+      "b2"
+     ],
+     "log": [
+      "Reduced quadratic 통과 → 채택"
+     ],
      "rows": [
       {
+       "model": "Reduced quadratic",
+       "n_terms": 2,
+       "model_p": 7.977237342685702e-07,
+       "lof_p": 0.4347236992586744,
+       "adj_r2": 0.8876459129327665,
+       "pred_r2": 0.84446668830689,
+       "aicc": 55.23243874184624,
+       "rank": 1,
+       "term_names": [
+        "b",
+        "b2"
+       ],
+       "gate": true,
+       "why": []
+      },
+      {
+       "model": "Mean",
+       "n_terms": 0,
+       "model_p": null,
+       "lof_p": 0.060706009465335886,
+       "adj_r2": 0.0,
+       "pred_r2": null,
+       "aicc": 83.33619748458445,
+       "rank": 2,
+       "term_names": [],
+       "gate": false,
+       "why": [
+        "평균 모형(요인 없음)"
+       ]
+      },
+      {
        "model": "Linear",
+       "n_terms": 3,
+       "model_p": 0.6334919865271569,
+       "lof_p": 0.053126469433415924,
        "adj_r2": -0.0960049331447348,
        "pred_r2": -0.5661202738701689,
-       "seq_p": 0.6334919865271569,
-       "overfit": true
+       "aicc": 92.7605086424002,
+       "rank": 3,
+       "term_names": [
+        "a",
+        "b",
+        "c"
+       ],
+       "gate": false,
+       "why": [
+        "모형 p 0.633 ≥ 0.05",
+        "조정 R² − 예측 R² = 0.47 > 0.2",
+        "예측 R² -0.57 ≤ 0.0"
+       ]
+      },
+      {
+       "model": "Pure quadratic",
+       "n_terms": 6,
+       "model_p": 0.00015015128349796925,
+       "lof_p": 0.44924317276669024,
+       "adj_r2": 0.8992189222932262,
+       "pred_r2": 0.7878143909587536,
+       "aicc": 75.51989073360835,
+       "rank": 4,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "a2",
+        "b2",
+        "c2"
+       ],
+       "gate": true,
+       "why": []
       },
       {
        "model": "2FI",
+       "n_terms": 6,
+       "model_p": 0.948367011587226,
+       "lof_p": 0.036415704772155166,
        "adj_r2": -0.47865463083339055,
        "pred_r2": -2.330510584900922,
-       "seq_p": 0.9836311879812435,
-       "overfit": true
+       "aicc": 115.80895028256433,
+       "rank": 5,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "a:b",
+        "a:c",
+        "b:c"
+       ],
+       "gate": false,
+       "why": [
+        "모형 p 0.948 ≥ 0.05",
+        "적합결여 p 0.036 < 0.05",
+        "조정 R² − 예측 R² = 1.85 > 0.2",
+        "예측 R² -2.33 ≤ 0.0"
+       ]
       },
       {
        "model": "Quadratic",
+       "n_terms": 9,
+       "model_p": 0.00584574993418111,
+       "lof_p": 0.3516268337063976,
        "adj_r2": 0.8841137192541533,
        "pred_r2": 0.4805659243315106,
-       "seq_p": 0.001062682207454535,
-       "overfit": true
+       "aicc": 140.56471762007277,
+       "rank": 6,
+       "term_names": [
+        "a",
+        "b",
+        "c",
+        "a:b",
+        "a:c",
+        "b:c",
+        "a2",
+        "b2",
+        "c2"
+       ],
+       "gate": false,
+       "why": [
+        "조정 R² − 예측 R² = 0.40 > 0.2"
+       ]
       }
      ]
     }
    ],
    "region": {
-    "grid_points_total": 9261,
-    "grid_points_in_domain": 7501,
-    "mean_ok_fraction": 0.7722970270630583,
-    "feasible_fraction": 0.47566991067857617,
-    "feasible_points": 3568,
-    "binding": {
-     "DE30": 3872,
-     "AV": 61
+    "status": "OK",
+    "approval": {
+     "approvable": true,
+     "code": null,
+     "reason": "평균 기준 영역과 control space 확인"
     },
-    "setpoint": {
+    "slice": {
+     "index": 1,
+     "name": "Mixing time",
+     "unit": "min",
+     "auto": true,
+     "auto_index": 1,
+     "levels_actual": [
+      5.0,
+      10.0,
+      15.0
+     ]
+    },
+    "control_space": {
+     "MCC:Mannitol": [
+      1.1,
+      3.0
+     ],
+     "Crospovidone": [
+      4.6,
+      9.2
+     ],
+     "Mixing time": 10.0
+    },
+    "optimum": {
      "coded": [
-      0.7,
-      0.5,
-      0.2
+      0.9,
+      0.0,
+      0.25
      ],
      "actual": {
-      "MCC:Mannitol": 2.7,
-      "Mixing time": 12.5,
-      "Crospovidone": 6.8
+      "MCC:Mannitol": 2.9,
+      "Mixing time": 10.0,
+      "Crospovidone": 7.0
      },
-     "joint": 0.9909738159800284,
-     "marginals": {
-      "Dispersion time": 0.9999999999639629,
-      "Friability": 0.9999916790286462,
-      "DE30": 0.9914056074832377,
-      "AV": 0.9995727827934895
-     },
-     "edge": 0.2999999999999998
+     "joint": 0.9983533255731429,
+     "control_corners": [
+      [
+       -0.9,
+       0.0,
+       -0.35
+      ],
+      [
+       1.0,
+       0.0,
+       -0.35
+      ],
+      [
+       -0.9,
+       0.0,
+       0.8
+      ],
+      [
+       1.0,
+       0.0,
+       0.8
+      ]
+     ],
+     "edge": 0.09999999999999987
     },
-    "max_joint": 0.9909738159800284
+    "mean_ok_fraction": 0.7951234017246506,
+    "fail_fraction": {
+     "DE30": 0.2048765982753494,
+     "Dispersion time": 0.0,
+     "Friability": 0.0,
+     "AV": 0.0
+    },
+    "aux": {
+     "max_joint": 0.9985637877223421,
+     "joint_ge_09_fraction": 0.5548617305976806,
+     "contour_levels": [
+      0.5,
+      0.8,
+      0.9
+     ],
+     "note": "보조 — 판정에 쓰지 않는다(반응 간 독립 가정)"
+    },
+    "gate_passed": [
+     "Dispersion time",
+     "Friability",
+     "DE30",
+     "AV"
+    ],
+    "slices": [
+     {
+      "level_actual": 5.0,
+      "ds_fraction": 0.8739595719381689,
+      "p_max": 0.9499045560394644,
+      "rect_area": 425,
+      "control": false
+     },
+     {
+      "level_actual": 10.0,
+      "ds_fraction": 0.7162403331350387,
+      "p_max": 0.9985637877223421,
+      "rect_area": 936,
+      "control": true
+     },
+     {
+      "level_actual": 15.0,
+      "ds_fraction": 0.8739595719381689,
+      "p_max": 0.9975094710388787,
+      "rect_area": 425,
+      "control": false
+     }
+    ],
+    "unexplained": []
    },
    "plan": {
     "pi_policy": {
      "method": "BONFERRONI",
-     "family": "필수 확인점 3 × 규격 반응",
+     "family": "필수 확인점 3 × 게이트 통과 반응",
      "comparisons": 12,
      "family_alpha": 0.05,
      "per_comparison_level": 0.9958333333333333
@@ -1170,34 +2079,34 @@
      {
       "role": "SETPOINT",
       "settings": {
-       "MCC:Mannitol": 2.7,
-       "Mixing time": 12.5,
-       "Crospovidone": 6.8
+       "MCC:Mannitol": 2.9,
+       "Mixing time": 10.0,
+       "Crospovidone": 7.0
       },
-      "joint": 0.9909738159800285,
+      "joint": 0.9983533255731429,
       "predicted": {
        "Dispersion time": {
-        "mean": 5.6333333333333355,
-        "pi_lower": 1.1165050322826868,
-        "pi_upper": 10.150161634383984,
+        "mean": 4.803846153846158,
+        "pi_lower": 1.2989154027626313,
+        "pi_upper": 8.308776904929685,
         "spec": "≤ 180"
        },
        "Friability": {
-        "mean": 0.3717083333333333,
-        "pi_lower": 0.05928030300005144,
-        "pi_upper": 0.6841363636666151,
+        "mean": 0.32252083333333337,
+        "pi_lower": 0.02674985117842915,
+        "pi_upper": 0.6182918154882375,
         "spec": "≤ 1"
        },
        "DE30": {
-        "mean": 82.34450000000001,
-        "pi_lower": 71.90449998573688,
-        "pi_upper": 92.78450001426314,
+        "mean": 82.32843750000002,
+        "pi_lower": 75.26691393579561,
+        "pi_upper": 89.38996106420443,
         "spec": "≥ 75"
        },
        "AV": {
-        "mean": 4.952758333333333,
-        "pi_lower": 0.0,
-        "pi_upper": 11.995851500003607,
+        "mean": 4.629999999999997,
+        "pi_lower": 0.022458803674845207,
+        "pi_upper": 9.23754119632515,
         "spec": "≤ 15"
        }
       }
@@ -1205,34 +2114,34 @@
      {
       "role": "BOUNDARY",
       "settings": {
-       "MCC:Mannitol": 1.7,
-       "Mixing time": 12.5,
-       "Crospovidone": 4.8
+       "MCC:Mannitol": 1.1,
+       "Mixing time": 10.0,
+       "Crospovidone": 9.2
       },
-      "joint": 0.9001277189674731,
+      "joint": 0.4731331360390555,
       "predicted": {
        "Dispersion time": {
-        "mean": 10.235416666666667,
-        "pi_lower": 5.748328777943904,
-        "pi_upper": 14.722504555389431,
+        "mean": 11.382692307692313,
+        "pi_lower": 7.872831859252834,
+        "pi_upper": 14.892552756131792,
         "spec": "≤ 180"
        },
        "Friability": {
-        "mean": 0.6173333333333335,
-        "pi_lower": 0.31083212493359036,
-        "pi_upper": 0.9238345417330767,
+        "mean": 0.8933333333333333,
+        "pi_lower": 0.5886177183422615,
+        "pi_upper": 1.1980489483244052,
         "spec": "≤ 1"
        },
        "DE30": {
-        "mean": 78.08637500000002,
-        "pi_lower": 67.7151156781947,
-        "pi_upper": 88.45763432180533,
+        "mean": 75.19175000000004,
+        "pi_lower": 68.08504550741421,
+        "pi_upper": 82.29845449258588,
         "spec": "≥ 75"
        },
        "AV": {
-        "mean": 4.747216666666667,
-        "pi_lower": 0.0,
-        "pi_upper": 11.743935589978662,
+        "mean": 4.629999999999997,
+        "pi_lower": 0.022458803674845207,
+        "pi_upper": 9.23754119632515,
         "spec": "≤ 15"
        }
       }
@@ -1240,34 +2149,34 @@
      {
       "role": "ROBUSTNESS",
       "settings": {
-       "MCC:Mannitol": 2.5,
-       "Mixing time": 11.5,
-       "Crospovidone": 6.0
+       "MCC:Mannitol": 2.7,
+       "Mixing time": 9.0,
+       "Crospovidone": 7.8
       },
-      "joint": 0.9866155663513279,
+      "joint": 0.996729906787141,
       "predicted": {
        "Dispersion time": {
-        "mean": 6.281666666666668,
-        "pi_lower": 1.7812285885040637,
-        "pi_upper": 10.782104744829272,
+        "mean": 5.511538461538466,
+        "pi_lower": 2.090013947729284,
+        "pi_upper": 8.933062975347648,
         "spec": "≤ 180"
        },
        "Friability": {
-        "mean": 0.4137083333333333,
-        "pi_lower": 0.10874978224901133,
-        "pi_upper": 0.7186668844176552,
+        "mean": 0.3982708333333334,
+        "pi_lower": 0.10534361578942497,
+        "pi_upper": 0.6911980508772418,
         "spec": "≤ 1"
        },
        "DE30": {
-        "mean": 81.518,
-        "pi_lower": 71.11588363235349,
-        "pi_upper": 91.92011636764651,
+        "mean": 81.42143750000002,
+        "pi_lower": 74.51180607760584,
+        "pi_upper": 88.33106892239421,
         "spec": "≥ 75"
        },
        "AV": {
-        "mean": 4.037541666666667,
-        "pi_lower": 0.0,
-        "pi_upper": 11.055077548638707,
+        "mean": 5.209099999999998,
+        "pi_lower": 0.6136695155420631,
+        "pi_upper": 9.804530484457931,
         "spec": "≤ 15"
        }
       }
@@ -1279,1640 +2188,35 @@
        "Mixing time": 11.0,
        "Crospovidone": 6.23
       },
-      "joint": 0.9874202962578783,
+      "joint": 0.9981342079074422,
       "predicted": {
        "Dispersion time": {
-        "mean": 5.147776302083336,
-        "pi_lower": 0.4562181392477367,
-        "pi_upper": 9.839334464918934,
+        "mean": 4.934480769230771,
+        "pi_lower": 1.3943977221247712,
+        "pi_upper": 8.474563816336772,
         "spec": "≤ 180"
        },
        "Friability": {
-        "mean": 0.2746864583333332,
+        "mean": 0.27643645833333336,
         "pi_lower": 0.0,
-        "pi_upper": 0.5915001840955084,
+        "pi_upper": 0.574256972343026,
         "spec": "≤ 1"
        },
        "DE30": {
-        "mean": 81.933536796875,
-        "pi_lower": 71.08967379780398,
-        "pi_upper": 92.77739979594602,
+        "mean": 82.28002609375002,
+        "pi_lower": 75.12698964045899,
+        "pi_upper": 89.43306254704106,
         "spec": "≥ 75"
        },
        "AV": {
-        "mean": 4.3714845677083325,
+        "mean": 4.552099999999998,
         "pi_lower": 0.0,
-        "pi_upper": 11.687034116053457,
+        "pi_upper": 9.147530484457931,
         "spec": "≤ 15"
        }
       }
      }
     ]
-   },
-   "slice": {
-    "rows": {
-     "name": "MCC:Mannitol",
-     "unit": "",
-     "values": [
-      1.0,
-      1.1,
-      1.2,
-      1.3,
-      1.4,
-      1.5,
-      1.6,
-      1.7,
-      1.8,
-      1.9,
-      2.0,
-      2.1,
-      2.2,
-      2.3,
-      2.4,
-      2.5,
-      2.6,
-      2.7,
-      2.8,
-      2.9,
-      3.0
-     ]
-    },
-    "cols": {
-     "name": "Crospovidone",
-     "unit": "%",
-     "values": [
-      2.0,
-      2.4,
-      2.8,
-      3.2,
-      3.6,
-      4.0,
-      4.4,
-      4.8,
-      5.2,
-      5.6,
-      6.0,
-      6.4,
-      6.8,
-      7.2,
-      7.6,
-      8.0,
-      8.4,
-      8.8,
-      9.2,
-      9.6,
-      10.0
-     ]
-    },
-    "fixed": {
-     "index": 1,
-     "name": "Mixing time",
-     "unit": "min",
-     "coded": 0.5,
-     "actual": 12.5,
-     "levels": [
-      {
-       "coded": -1.0,
-       "actual": 5.0
-      },
-      {
-       "coded": -0.9,
-       "actual": 5.5
-      },
-      {
-       "coded": -0.8,
-       "actual": 6.0
-      },
-      {
-       "coded": -0.7,
-       "actual": 6.5
-      },
-      {
-       "coded": -0.6,
-       "actual": 7.0
-      },
-      {
-       "coded": -0.5,
-       "actual": 7.5
-      },
-      {
-       "coded": -0.4,
-       "actual": 8.0
-      },
-      {
-       "coded": -0.3,
-       "actual": 8.5
-      },
-      {
-       "coded": -0.2,
-       "actual": 9.0
-      },
-      {
-       "coded": -0.1,
-       "actual": 9.5
-      },
-      {
-       "coded": 0.0,
-       "actual": 10.0
-      },
-      {
-       "coded": 0.1,
-       "actual": 10.5
-      },
-      {
-       "coded": 0.2,
-       "actual": 11.0
-      },
-      {
-       "coded": 0.3,
-       "actual": 11.5
-      },
-      {
-       "coded": 0.4,
-       "actual": 12.0
-      },
-      {
-       "coded": 0.5,
-       "actual": 12.5
-      },
-      {
-       "coded": 0.6,
-       "actual": 13.0
-      },
-      {
-       "coded": 0.7,
-       "actual": 13.5
-      },
-      {
-       "coded": 0.8,
-       "actual": 14.0
-      },
-      {
-       "coded": 0.9,
-       "actual": 14.5
-      },
-      {
-       "coded": 1.0,
-       "actual": 15.0
-      }
-     ]
-    },
-    "P": [
-     [
-      0.0051,
-      0.0108,
-      0.0247,
-      0.0579,
-      0.1302,
-      0.2574,
-      0.4211,
-      0.5726,
-      0.6803,
-      0.7438,
-      0.7745,
-      0.7819,
-      0.7707,
-      0.7412,
-      0.6893,
-      0.6079,
-      0.4911,
-      0.3468,
-      0.2068,
-      0.1054,
-      0.0489
-     ],
-     [
-      0.0052,
-      0.0115,
-      0.0276,
-      0.0679,
-      0.1579,
-      0.3127,
-      0.4982,
-      0.654,
-      0.7556,
-      0.8125,
-      0.84,
-      0.8481,
-      0.8415,
-      0.8202,
-      0.78,
-      0.7119,
-      0.6041,
-      0.4528,
-      0.2844,
-      0.1482,
-      0.0681
-     ],
-     [
-      0.0054,
-      0.0124,
-      0.0312,
-      0.0803,
-      0.1909,
-      0.3732,
-      0.5724,
-      0.7231,
-      0.8137,
-      0.8622,
-      0.8855,
-      0.8935,
-      0.8902,
-      0.8755,
-      0.846,
-      0.793,
-      0.7017,
-      0.5578,
-      0.373,
-      0.2022,
-      0.0931
-     ],
-     [
-      0.0057,
-      0.0136,
-      0.0358,
-      0.0955,
-      0.229,
-      0.4359,
-      0.6397,
-      0.7789,
-      0.8568,
-      0.8969,
-      0.9163,
-      0.9236,
-      0.9223,
-      0.9125,
-      0.8914,
-      0.8517,
-      0.7789,
-      0.6524,
-      0.4661,
-      0.2669,
-      0.1249
-     ],
-     [
-      0.006,
-      0.0151,
-      0.0413,
-      0.1134,
-      0.2712,
-      0.4975,
-      0.6979,
-      0.8224,
-      0.888,
-      0.921,
-      0.937,
-      0.9434,
-      0.9432,
-      0.9367,
-      0.9217,
-      0.8925,
-      0.8363,
-      0.7311,
-      0.5566,
-      0.3402,
-      0.1645
-     ],
-     [
-      0.0065,
-      0.0169,
-      0.0478,
-      0.1338,
-      0.3158,
-      0.5553,
-      0.7462,
-      0.8556,
-      0.9107,
-      0.9378,
-      0.951,
-      0.9566,
-      0.957,
-      0.9526,
-      0.9419,
-      0.9202,
-      0.8775,
-      0.7929,
-      0.6385,
-      0.4181,
-      0.212
-     ],
-     [
-      0.007,
-      0.0189,
-      0.0551,
-      0.1562,
-      0.361,
-      0.6072,
-      0.7855,
-      0.8809,
-      0.9272,
-      0.9497,
-      0.9607,
-      0.9656,
-      0.9663,
-      0.9633,
-      0.9554,
-      0.9392,
-      0.9066,
-      0.8398,
-      0.7084,
-      0.4962,
-      0.2668
-     ],
-     [
-      0.0076,
-      0.0211,
-      0.0631,
-      0.1799,
-      0.4049,
-      0.6526,
-      0.817,
-      0.9001,
-      0.9394,
-      0.9584,
-      0.9677,
-      0.9719,
-      0.9728,
-      0.9707,
-      0.9647,
-      0.9524,
-      0.9273,
-      0.8747,
-      0.7655,
-      0.57,
-      0.327
-     ],
-     [
-      0.0083,
-      0.0234,
-      0.0714,
-      0.2039,
-      0.446,
-      0.6912,
-      0.8421,
-      0.9149,
-      0.9486,
-      0.9648,
-      0.9728,
-      0.9765,
-      0.9774,
-      0.9759,
-      0.9714,
-      0.9618,
-      0.9422,
-      0.9005,
-      0.8109,
-      0.6365,
-      0.3901
-     ],
-     [
-      0.0089,
-      0.0257,
-      0.0798,
-      0.2274,
-      0.4835,
-      0.7236,
-      0.862,
-      0.9264,
-      0.9557,
-      0.9698,
-      0.9767,
-      0.98,
-      0.9809,
-      0.9798,
-      0.9762,
-      0.9686,
-      0.9531,
-      0.9198,
-      0.8463,
-      0.6939,
-      0.4532
-     ],
-     [
-      0.0095,
-      0.028,
-      0.088,
-      0.2496,
-      0.5166,
-      0.7505,
-      0.8779,
-      0.9354,
-      0.9613,
-      0.9736,
-      0.9797,
-      0.9826,
-      0.9835,
-      0.9827,
-      0.9799,
-      0.9737,
-      0.9611,
-      0.9342,
-      0.8737,
-      0.7422,
-      0.5136
-     ],
-     [
-      0.0101,
-      0.0301,
-      0.0957,
-      0.2698,
-      0.5451,
-      0.7724,
-      0.8906,
-      0.9426,
-      0.9657,
-      0.9766,
-      0.9821,
-      0.9847,
-      0.9856,
-      0.985,
-      0.9827,
-      0.9776,
-      0.9672,
-      0.945,
-      0.8948,
-      0.7818,
-      0.5692
-     ],
-     [
-      0.0106,
-      0.032,
-      0.1025,
-      0.2874,
-      0.5689,
-      0.79,
-      0.9006,
-      0.9482,
-      0.9691,
-      0.9791,
-      0.984,
-      0.9864,
-      0.9872,
-      0.9868,
-      0.9849,
-      0.9806,
-      0.9719,
-      0.9533,
-      0.9111,
-      0.8138,
-      0.6189
-     ],
-     [
-      0.0111,
-      0.0337,
-      0.1083,
-      0.3021,
-      0.588,
-      0.8037,
-      0.9083,
-      0.9526,
-      0.9719,
-      0.981,
-      0.9855,
-      0.9877,
-      0.9885,
-      0.9882,
-      0.9865,
-      0.9829,
-      0.9754,
-      0.9596,
-      0.9235,
-      0.8391,
-      0.6618
-     ],
-     [
-      0.0115,
-      0.0351,
-      0.113,
-      0.3135,
-      0.6024,
-      0.814,
-      0.9141,
-      0.9559,
-      0.974,
-      0.9825,
-      0.9867,
-      0.9888,
-      0.9895,
-      0.9893,
-      0.9878,
-      0.9846,
-      0.9781,
-      0.9643,
-      0.933,
-      0.859,
-      0.6979
-     ],
-     [
-      0.012,
-      0.0364,
-      0.1167,
-      0.3216,
-      0.6121,
-      0.8209,
-      0.9181,
-      0.9582,
-      0.9755,
-      0.9835,
-      0.9875,
-      0.9895,
-      0.9903,
-      0.9901,
-      0.9888,
-      0.9859,
-      0.9801,
-      0.9677,
-      0.9399,
-      0.8741,
-      0.7275
-     ],
-     [
-      0.0124,
-      0.0375,
-      0.1193,
-      0.3263,
-      0.6172,
-      0.8244,
-      0.9202,
-      0.9595,
-      0.9764,
-      0.9842,
-      0.9881,
-      0.99,
-      0.9908,
-      0.9906,
-      0.9894,
-      0.9868,
-      0.9814,
-      0.9701,
-      0.9448,
-      0.8851,
-      0.7508
-     ],
-     [
-      0.0129,
-      0.0385,
-      0.1211,
-      0.3278,
-      0.6175,
-      0.8245,
-      0.9205,
-      0.9598,
-      0.9766,
-      0.9844,
-      0.9883,
-      0.9902,
-      0.991,
-      0.9908,
-      0.9897,
-      0.9872,
-      0.9821,
-      0.9714,
-      0.9478,
-      0.8927,
-      0.7683
-     ],
-     [
-      0.0136,
-      0.0397,
-      0.1223,
-      0.3264,
-      0.6131,
-      0.8209,
-      0.9186,
-      0.9589,
-      0.9762,
-      0.9842,
-      0.9882,
-      0.9901,
-      0.9909,
-      0.9908,
-      0.9897,
-      0.9872,
-      0.9821,
-      0.9718,
-      0.9491,
-      0.897,
-      0.7804
-     ],
-     [
-      0.0144,
-      0.0411,
-      0.1232,
-      0.3224,
-      0.604,
-      0.8133,
-      0.9143,
-      0.9566,
-      0.9749,
-      0.9834,
-      0.9876,
-      0.9897,
-      0.9905,
-      0.9904,
-      0.9892,
-      0.9867,
-      0.9816,
-      0.9712,
-      0.9488,
-      0.8983,
-      0.7876
-     ],
-     [
-      0.0154,
-      0.0427,
-      0.1239,
-      0.3165,
-      0.5905,
-      0.8014,
-      0.9071,
-      0.9526,
-      0.9725,
-      0.9818,
-      0.9864,
-      0.9887,
-      0.9896,
-      0.9895,
-      0.9883,
-      0.9856,
-      0.9802,
-      0.9694,
-      0.9466,
-      0.8967,
-      0.7901
-     ]
-    ],
-    "mean_ok": [
-     [
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ]
-    ],
-    "in": [
-     [
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false,
-      false,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false
-     ],
-     [
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false
-     ],
-     [
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false
-     ],
-     [
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-     ],
-     [
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false
-     ],
-     [
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false,
-      false
-     ],
-     [
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false,
-      false,
-      false
-     ]
-    ],
-    "p_min": 0.9
    },
    "reference_optimum": {
     "MCC:Mannitol": 3,
@@ -2921,20 +2225,21 @@
    }
   },
   "walk": {
-   "status": "space",
+   "status": "verify",
    "blocked": [
     {
-     "step": "space",
+     "step": "verify",
      "codes": [
-      "SPACE_EMPTY"
+      "VERIFY_INDEPENDENT",
+      "VERIFY_MISSING"
      ]
     }
    ],
-   "approvals": 12,
-   "events": 21,
-   "decisions": 20,
+   "approvals": 14,
+   "events": 24,
+   "decisions": 23,
    "risk_pdf_kb": 78,
-   "final_pdf_kb": 108
+   "final_pdf_kb": 262
   },
   "check_codes": {
    "blocking": [
@@ -2964,12 +2269,11 @@
     "QTPP_EMPTY",
     "QTPP_FIELD",
     "REG_ALIASED",
+    "REG_GATE_NONE",
     "RISK_EXCIPIENT_MISSING",
     "RISK_NO_VARS",
     "RISK_PROCESS_IS_ROUTE",
     "RISK_VAR_NAMES",
-    "SPACE_EMPTY",
-    "SPACE_EXCLUDE_REASON",
     "SPACE_NO_SPEC",
     "SPACE_SPEC",
     "VERIFY_INDEPENDENT",
@@ -2979,11 +2283,13 @@
    "warning": [
     "DESIGN_RUN_ORDER",
     "PROTO_SUM",
+    "REG_GATE_FAIL",
     "REG_NOT_SUGGESTED",
-    "REG_OVERFIT",
     "RISK_LOW_DOSE",
     "RISK_NO_HIGH",
     "RISK_NO_PROCESS",
+    "SPACE_AUX_LOW",
+    "SPACE_UNEXPLAINED",
     "VERIFY_INVALIDATED",
     "VPLAN_FEW"
    ]

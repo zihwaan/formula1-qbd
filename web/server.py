@@ -1371,13 +1371,18 @@ async def stage2_surfaces(study_id: str, slice: Optional[int] = None) -> Dict[st
         raise _study_error(exc)
 
 
-@app.get("/api/stage2/studies/{study_id}/space")
-async def stage2_space(study_id: str, fixed: Optional[int] = None, level: Optional[float] = None) -> Dict[str, Any]:
-    """13단계 화면용 공동확률 단면(요인 3개면 하나를 고정한 2D 지도)."""
+@app.get("/api/stage2/studies/{study_id}/overlay.{fmt}")
+async def stage2_overlay(study_id: str, fmt: str, slice: Optional[int] = None, caption: int = 0):
+    """13단계 Overlay plot(논문 Figure 2 형식) — 평균 예측 기준 영역 · 실험 범위 밖 해칭 · 목표선 · control space · 최적점 · 보조 확률 등고선.
+    svg(화면) · png(내려받기). slice = 고정할 요인 번호(0부터, 요인 3개일 때), 비우면 13단계에 저장된 값(기본: 효과가 가장 작은 요인)."""
+    from fastapi.responses import Response
+    if fmt not in ("svg", "png"):
+        raise HTTPException(404, "svg · png만 있습니다.")
     try:
-        return await asyncio.to_thread(stage2().space_slice, study_id, fixed, level)
+        body = await asyncio.to_thread(stage2().overlay, study_id, slice, fmt, bool(caption))
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
+    return Response(body, media_type="image/svg+xml" if fmt == "svg" else "image/png", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/stage2/studies/{study_id}/trace")

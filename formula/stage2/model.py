@@ -231,34 +231,48 @@ def check(step: str, data: Dict[str, Any], ctx: Dict[str, Any]) -> List[Dict[str
         if any(not _isnum(x) for x in runs) or len({float(x) for x in runs if _isnum(x)}) != len(runs):
             out.append(_c("warning", "DESIGN_RUN_ORDER", "Run order가 비었거나 겹칩니다 — 실제 실행 순서를 적어 두면 추적이 쉽습니다."))
     elif step == "regression":
+        g = rules_gate_text()
+        passed = 0
         for r in data.get("responses") or []:
             if r.get("aliased"):
-                out.append(_c("blocking", "REG_ALIASED", f"{r['response']}: {r['family']} 모형은 이 설계로 추정할 수 없습니다(항 수 ≥ run 수 또는 별칭) — 더 낮은 차수를 고르세요."))
+                out.append(_c("blocking", "REG_ALIASED", f"{r['response']}: {r['family']} 모형은 이 설계로 추정할 수 없습니다(항 수 ≥ run 수 또는 별칭) — 다른 모형을 고르세요."))
                 continue
             if r["summary"]["suggested"] != r["family"]:
                 out.append(_c("warning", "REG_NOT_SUGGESTED", f"{r['response']}: 제안 모형은 {r['summary']['suggested']}, 선택은 {r['family']} — 연구자 선택으로 기록합니다."))
-            if overfit(r.get("adj_r2"), r.get("pred_r2")):
-                out.append(_c("warning", "REG_OVERFIT", f"{r['response']}: 과적합 의심 — 예측 R² {r['pred_r2']:.3f}가 수정 R² {r['adj_r2']:.3f}보다 "
-                              f"{OVERFIT_GAP} 넘게 낮습니다. 차수를 낮추거나(계층성 유지) 사유를 적고 수용하세요.", response=r["response"]))
+            if r.get("status", "SELECTED") == "SELECTED":
+                passed += 1
+            else:
+                why = "; ".join((r.get("gate") or {}).get("why") or []) or "평균 모형"
+                out.append(_c("warning", "REG_GATE_FAIL", f"{r['response']}: 검증 게이트 불합격({why}) — 요인으로 설명되지 않음: 회귀식·곡면·영역에 쓰지 않고 "
+                              "관측 범위와 목표만 표시합니다.", response=r["response"]))
+        if data.get("responses") and not passed:
+            out.append(_c("blocking", "REG_GATE_NONE", f"모든 반응의 회귀식이 검증 게이트({g})를 통과하지 못했습니다 — 영역을 그릴 회귀식이 없어 승인할 수 없습니다."))
     elif step == "space":
         specs = data.get("specs") or []
-        if not any(s.get("op") in ("LE", "GE", "BETWEEN") for s in specs):
-            out.append(_c("blocking", "SPACE_NO_SPEC", "규격을 하나 이상 적어야 영역을 계산합니다(반응마다 ≤ · ≥ · 범위)."))
         for s in specs:
             op = s.get("op")
             if op in (None, "", "NONE"):
-                if not str(s.get("basis") or "").strip():
-                    out.append(_c("blocking", "SPACE_EXCLUDE_REASON", f"{s.get('response')}: 영역 계산에서 빼려면 이유를 적어 주세요."))
                 continue
             need = {"LE": ("upper",), "GE": ("lower",), "BETWEEN": ("lower", "upper")}.get(op)
             if not need or any(not _isnum(s.get(k)) for k in need):
-                out.append(_c("blocking", "SPACE_SPEC", f"{s.get('response')}: 규격 값이 비었거나 숫자가 아닙니다."))
+                out.append(_c("blocking", "SPACE_SPEC", f"{s.get('response')}: 목표 값이 비었거나 숫자가 아닙니다."))
             elif op == "BETWEEN" and float(s["lower"]) >= float(s["upper"]):
                 out.append(_c("blocking", "SPACE_SPEC", f"{s.get('response')}: 하한이 상한보다 작아야 합니다."))
         reg = data.get("region") or {}
-        if reg.get("status") == "EMPTY":
-            out.append(_c("blocking", "SPACE_EMPTY", f"공동 통과확률 ≥ {reg.get('p_min', 0.9):.2f}인 점이 없습니다(최대 {reg.get('max_joint', 0):.3f}). "
-                          "규격을 완화하지 않습니다 — 모형·요인 범위·위험평가를 다시 검토하세요."))
+        if not reg or reg.get("status") == "NO_SPEC":
+            out.append(_c("blocking", "SPACE_NO_SPEC", "게이트 통과 반응의 목표를 하나 이상 적어야 영역을 계산합니다(반응마다 ≤ · ≥ · 범위)."))
+        else:
+            ap = reg.get("approval") or {}
+            # 13단계 승인 불가는 두 경우뿐 — 평균 기준 영역 없음 · control space를 만들 수 없음(공동확률은 보조 표시)
+            if ap.get("code") in ("SPACE_NO_MEAN_REGION", "SPACE_NO_CONTROL", "SPACE_NO_GATE"):
+                out.append(_c("blocking", ap["code"], ap["reason"]))
+            aux = reg.get("aux") or {}
+            if ap.get("approvable") and aux.get("max_joint") is not None and aux["max_joint"] < 0.9:
+                out.append(_c("warning", "SPACE_AUX_LOW", f"보조 지표: 새 배치가 모든 목표를 만족할 확률이 영역 안에서 최대 {aux['max_joint']:.3f}(< 0.9) — "
+                              "여유가 적습니다. 승인은 막지 않습니다."))
+            for nt in reg.get("unexplained") or []:
+                if nt.get("level") == "warn":
+                    out.append(_c("warning", "SPACE_UNEXPLAINED", nt["text"], response=nt["response"]))
     elif step == "vplan":
         roles = [p["role"] for p in (data.get("plan") or {}).get("points") or []]
         if "SETPOINT" not in roles:
@@ -276,11 +290,11 @@ def check(step: str, data: Dict[str, Any], ctx: Dict[str, Any]) -> List[Dict[str
     return out
 
 
-OVERFIT_GAP = 0.2       # Design-Expert 관행: 예측 R²가 수정 R²보다 0.2 넘게 낮으면 과적합 의심
-
-
-def overfit(adj: Optional[float], pred: Optional[float]) -> bool:
-    return adj is not None and pred is not None and (adj - pred > OVERFIT_GAP or pred < 0)
+def rules_gate_text() -> str:
+    from formula.stage2.doe import rules
+    g = rules()["gate"]
+    return (f"모형 p < {g['model_p_max']:g} · 적합결여 p ≥ {g['lack_of_fit_p_min']:g} · 조정 R² − 예측 R² ≤ {g['adj_minus_pred_r2_max']:g} · "
+            f"예측 R² > {g['pred_r2_min']:g}")
 
 
 def numbers_not_in(text: str, source: str) -> List[str]:

@@ -1,21 +1,34 @@
 """2단계 DoE toolkit — 실험 설계 표(9) → 회귀식(10) → 반응 곡면(11) → ANOVA(12). numpy·scipy만, LLM 없음.
 
 - 요인은 표에 적힌 최솟값·최댓값으로 coded(−1…+1)로 바꾼다: x = (X − 중앙) / 반폭.
-- 모형 후보는 Mean · Linear · 2FI · Quadratic(요인 1개면 2FI 없음). Design-Expert의 적합 요약처럼 순차 F 검정(앞 모형 대비 추가 항)과
-  적합결여 검정, 수정 R²·예측 R²(PRESS)를 계산하고, 순차 p < 0.05인 가장 높은 차수(추정 불가 제외)를 제안한다. 연구자가 바꿀 수 있다.
+- 10단계 = Automatic Hierarchical Model Selector → Model Validation Gate(overlay 파이프라인, 규칙 숫자는 config/stage2_design_space.yaml).
+  후보 Mean · Linear · 2FI · Pure quadratic · Quadratic · Reduced quadratic(Quadratic에서 계층성을 지키며 p > 0.05 항을 하나씩 뺀 모형)을
+  AICc로 줄 세우고(최소 + 2 이내면 항 수가 적은 쪽 먼저) 순서대로 게이트 4조건 — 모형 p < 0.05 · 적합결여 p ≥ 0.05 · 조정 R² − 예측 R² ≤ 0.2 ·
+  예측 R² > 0 — 을 검사해 처음 통과한 모형을 제안한다. 평균 모형까지 내려가면 "요인으로 설명되지 않음"(회귀식·곡면·영역에 쓰지 않는다).
+  연구자가 모형을 바꿀 수 있고, 고른 모형이 게이트를 못 넘으면 그 반응도 "요인으로 설명되지 않음"이다.
 - ANOVA는 각 항의 부분 제곱합(Type III: 그 항을 뺀 모형과의 잔차 제곱합 차이), 잔차 = 적합결여 + 순수오차(같은 설정의 반복 run).
 - 실제 단위 식은 coded 식을 전개해서 만든다(반올림은 표시할 때만).
 """
 from __future__ import annotations
 
 import itertools
+import math
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
+import yaml
 from scipy import stats
 
-FAMILIES = ("Mean", "Linear", "2FI", "Quadratic")
+FAMILIES = ("Mean", "Linear", "2FI", "Pure quadratic", "Quadratic", "Reduced quadratic")
 ALPHA = 0.05
+RULES_PATH = Path(__file__).resolve().parents[2] / "config" / "stage2_design_space.yaml"
+
+
+@lru_cache(maxsize=1)
+def rules() -> Dict[str, Any]:
+    return yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))
 
 
 # ── 설계 표 ────────────────────────────────────────────────────────────────
@@ -46,13 +59,13 @@ def to_actual(x: np.ndarray, c: Dict[str, float]) -> np.ndarray:
 
 # ── 항 ────────────────────────────────────────────────────────────────────
 def terms_of(family: str, k: int) -> List[Tuple[int, ...]]:
-    """항 = 요인 인덱스 튜플. () 절편, (0,) X1, (0,1) X1X2, (0,0) X1²."""
+    """항 = 요인 인덱스 튜플. () 절편, (0,) X1, (0,1) X1X2, (0,0) X1². Reduced quadratic은 반응마다 달라 select()가 정한다."""
     t: List[Tuple[int, ...]] = [()]
-    if family in ("Linear", "2FI", "Quadratic"):
+    if family in ("Linear", "2FI", "Pure quadratic", "Quadratic", "Reduced quadratic"):
         t += [(i,) for i in range(k)]
-    if family in ("2FI", "Quadratic"):
+    if family in ("2FI", "Quadratic", "Reduced quadratic"):
         t += [(i, j) for i, j in itertools.combinations(range(k), 2)]
-    if family == "Quadratic":
+    if family in ("Pure quadratic", "Quadratic", "Reduced quadratic"):
         t += [(i, i) for i in range(k)]
     return t
 
@@ -163,10 +176,140 @@ def fit_summary(x: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
     return {"rows": rows, "suggested": pick["model"], "reason": why}
 
 
-# ── ANOVA ─────────────────────────────────────────────────────────────────
-def anova(family: str, x: np.ndarray, y: np.ndarray, names: Sequence[str]) -> Dict[str, Any]:
+# ── 10단계: 모형 자동 선택 → 검증 게이트 ──────────────────────────────────
+def _zname(t: Tuple[int, ...]) -> str:
+    """항 이름(overlay 파이프라인 표기) — 같은 p값일 때 제거 순서를 똑같이 정하려고 쓴다."""
+    s = "abcdefg"
+    if len(t) == 2 and t[0] == t[1]:
+        return s[t[0]] + "2"
+    return ":".join(s[i] for i in t)
+
+
+def _parents(t: Tuple[int, ...]) -> List[Tuple[int, ...]]:
+    if len(t) == 2 and t[0] == t[1]:
+        return [(t[0],)]
+    return [(i,) for i in t] if len(t) == 2 else []
+
+
+def _term_p(terms: Sequence[Tuple[int, ...]], x: np.ndarray, y: np.ndarray) -> Dict[Tuple[int, ...], float]:
+    f = fit(terms, x, y)
+    if f["aliased"] or f["df_resid"] <= 0:
+        return {}
+    se = np.sqrt(np.maximum(np.diag(np.array(f["cov"])), 0))
+    out = {}
+    for t, b, e in zip(terms, f["coef"], se):
+        if t:
+            out[t] = float(2 * stats.t.sf(abs(b / e), f["df_resid"])) if e > 0 else 0.0
+    return out
+
+
+def reduce_hierarchical(x: np.ndarray, y: np.ndarray) -> List[Tuple[int, ...]]:
+    """Quadratic에서 시작해 '다른 남은 항의 부모가 아닌 항' 중 p > alpha인 항을 p가 큰 것부터 하나씩 뺀다(모두 p ≤ alpha가 될 때까지)."""
+    alpha = rules()["selector"]["reduction"]["alpha_remove"]
+    terms = [t for t in terms_of("Quadratic", x.shape[1]) if t]
+    while terms:
+        p = _term_p([()] + terms, x, y)
+        if not p:
+            break
+        removable = [t for t in terms if not any(t in _parents(u) for u in terms if u != t)]
+        cand = [(p[t], _zname(t), t) for t in removable if p[t] > alpha]
+        if not cand:
+            break
+        drop = max(cand)[2]
+        terms = [t for t in terms if t != drop]
+    return [()] + terms
+
+
+def _aicc(f: Dict[str, Any]) -> float:
+    n, p = f["n"], f["p"]
+    llf = -n / 2 * (math.log(2 * math.pi) + math.log(f["sse"] / n) + 1) if f["sse"] > 0 else math.inf
+    aic = -2 * llf + 2 * p
+    kk = p + 1
+    return aic + 2 * kk * (kk + 1) / (n - kk - 1) if n - kk - 1 > 0 else math.inf
+
+
+def gate(row: Dict[str, Any]) -> Dict[str, Any]:
+    """검증 게이트 4조건. 적합결여는 계산할 수 없으면 건너뛰고 표시한다."""
+    g = rules()["gate"]
+    why, checks = [], []
+    mp, lp, adj, pred = row.get("model_p"), row.get("lof_p"), row.get("adj_r2"), row.get("pred_r2")
+    ok = mp is not None and mp < g["model_p_max"]
+    checks.append({"check": "모형 p < 0.05", "value": mp, "pass": ok})
+    if not ok:
+        why.append(f"모형 p {mp:.3f} ≥ {g['model_p_max']}" if mp is not None else "모형 p 없음")
+    if lp is None:
+        checks.append({"check": "적합결여 p ≥ 0.05", "value": None, "pass": None})
+    else:
+        ok = lp >= g["lack_of_fit_p_min"]
+        checks.append({"check": "적합결여 p ≥ 0.05", "value": lp, "pass": ok})
+        if not ok:
+            why.append(f"적합결여 p {lp:.3f} < {g['lack_of_fit_p_min']}")
+    gap = None if adj is None or pred is None else adj - pred
+    ok = gap is not None and gap <= g["adj_minus_pred_r2_max"]
+    checks.append({"check": "조정 R² − 예측 R² ≤ 0.2", "value": gap, "pass": ok})
+    if not ok:
+        why.append(f"조정 R² − 예측 R² = {gap:.2f} > {g['adj_minus_pred_r2_max']}" if gap is not None else "예측 R² 없음")
+    ok = pred is not None and pred > g["pred_r2_min"]
+    checks.append({"check": "예측 R² > 0", "value": pred, "pass": ok})
+    if not ok:
+        why.append(f"예측 R² {pred:.2f} ≤ {g['pred_r2_min']}" if pred is not None else "예측 R² 없음")
+    return {"passed": not why, "why": why, "checks": checks}
+
+
+def select(x: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
+    """Automatic Hierarchical Model Selector → Model Validation Gate. rows = 순위대로 후보(게이트 결과 포함)."""
     k = x.shape[1]
-    terms = terms_of(family, k)
+    cands: Dict[str, List[Tuple[int, ...]]] = {f: terms_of(f, k) for f in families(k) if f != "Reduced quadratic"}
+    cands["Reduced quadratic"] = reduce_hierarchical(x, y)
+    rows, seen = [], set()
+    for fam, terms in cands.items():
+        key = tuple(sorted(terms))
+        if key in seen:                      # 같은 항 구성(예: 축소 결과 = Linear)은 앞의 것만
+            continue
+        seen.add(key)
+        f = fit(terms, x, y)
+        if f["aliased"]:
+            continue
+        nt = len(terms) - 1
+        row = {"model": fam, "terms": [list(t) for t in terms], "term_names": [_zname(t) for t in terms if t], "n_terms": nt,
+               "r2": f["r2"], "adj_r2": f["adj_r2"] if nt else 0.0, "pred_r2": f["pred_r2"] if nt else None, "press": f["press"] if nt else None,
+               "model_p": None, "lof_p": f["lof"].get("p"), "aicc": _aicc(f), "std_dev": f["std_dev"]}
+        if nt:
+            F = ((f["sst"] - f["sse"]) / nt) / f["mse"] if f["mse"] > 0 else math.inf
+            row["model_p"] = float(stats.f.sf(F, nt, f["df_resid"]))
+        rows.append(row)
+    best = min(r["aicc"] for r in rows)
+    delta = rules()["selector"]["ranking"]["parsimony_delta"]
+    for r in rows:
+        r["within_delta"] = bool(r["aicc"] <= best + delta)
+    rows.sort(key=lambda r: (not r["within_delta"], r["n_terms"], r["aicc"]))
+    log, pick = [], None
+    for i, r in enumerate(rows):
+        r["rank"] = i + 1
+        r["gate"] = gate(r) if r["model"] != "Mean" else {"passed": False, "why": ["평균 모형(요인 없음)"], "checks": []}
+    for r in rows:
+        if r["model"] == "Mean":
+            log.append("평균 모형 도달 → 요인으로 설명되지 않음")
+            pick = r
+            break
+        if r["gate"]["passed"]:
+            log.append(f"{r['model']} 통과 → 채택")
+            pick = r
+            break
+        log.append(f"{r['model']} 불합격: " + "; ".join(r["gate"]["why"]))
+    pick = pick or next(r for r in rows if r["model"] == "Mean")
+    status = "UNEXPLAINED" if pick["model"] == "Mean" else "SELECTED"
+    for r in rows:
+        r["suggested"] = r is pick
+    reason = ("AICc 순위대로 검증 게이트(모형 p < 0.05 · 적합결여 p ≥ 0.05 · 조정 R² − 예측 R² ≤ 0.2 · 예측 R² > 0)를 처음 통과한 모형"
+              if status == "SELECTED" else "게이트를 통과한 모형 없이 평균 모형까지 내려감 — 요인으로 설명되지 않음")
+    return {"rows": rows, "suggested": pick["model"], "status": status, "log": log, "reason": reason}
+
+
+# ── ANOVA ─────────────────────────────────────────────────────────────────
+def anova(family: str, x: np.ndarray, y: np.ndarray, names: Sequence[str], terms: Optional[Sequence[Sequence[int]]] = None) -> Dict[str, Any]:
+    k = x.shape[1]
+    terms = [tuple(t) for t in terms] if terms else terms_of(family, k)
     full = fit(terms, x, y)
     if full["aliased"]:
         return {"family": family, "aliased": True}
@@ -238,8 +381,13 @@ def equation(y: str, terms: Sequence[Tuple[int, ...]], coef: Sequence[float], sy
     return f"{y} = " + " ".join(parts)
 
 
+def observed(y: np.ndarray) -> Dict[str, Any]:
+    return {"n": int(len(y)), "min": float(np.min(y)), "max": float(np.max(y)), "mean": float(np.mean(y)),
+            "sd": float(np.std(y, ddof=1)) if len(y) > 1 else 0.0, "values": [float(v) for v in y]}
+
+
 def regression(design: Dict[str, Any], chosen: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
-    """반응별 적합 요약 + 선택 모형의 coded·actual 식(Table 10)."""
+    """반응별 모형 선택·게이트(select) + 선택 모형의 coded·actual 식(Table 10). status = SELECTED(게이트 통과) | UNEXPLAINED."""
     fn, X, rn, Y = table_arrays(design)
     cod = coding(X)
     x = to_coded(X, cod)
@@ -248,22 +396,32 @@ def regression(design: Dict[str, Any], chosen: Optional[Dict[str, str]] = None) 
         ok = ~np.isnan(Y[:, j])
         y = Y[ok, j]
         xs = x[ok]
-        summ = fit_summary(xs, y)
+        summ = select(xs, y)
+        rows = {r["model"]: r for r in summ["rows"]}
         fam = (chosen or {}).get(name) or summ["suggested"]
-        terms = terms_of(fam, len(fn))
+        row = rows.get(fam)
+        terms = [tuple(t) for t in row["terms"]] if row else terms_of(fam, len(fn))
         f = fit(terms, xs, y)
+        g = (row or {}).get("gate") or ({"passed": False, "why": ["평균 모형(요인 없음)"], "checks": []} if fam == "Mean" else None)
+        if g is None and not f["aliased"]:
+            nt = len(terms) - 1
+            mp = float(stats.f.sf(((f["sst"] - f["sse"]) / nt) / f["mse"], nt, f["df_resid"])) if nt and f["mse"] > 0 else None
+            g = gate({"model_p": mp, "lof_p": f["lof"].get("p"), "adj_r2": f["adj_r2"], "pred_r2": f["pred_r2"]})
+        passed = bool(g and g["passed"]) and not f["aliased"] and fam != "Mean"
         entry = {"response": name, "unit": design["responses"][j].get("unit"), "n": int(ok.sum()), "summary": summ, "family": fam,
-                 "suggested": summ["suggested"], "reason": summ["reason"], "aliased": f["aliased"]}
+                 "suggested": summ["suggested"], "reason": summ["reason"], "aliased": f["aliased"], "gate": g,
+                 "status": "SELECTED" if passed else "UNEXPLAINED", "observed": observed(y)}
         if not f["aliased"]:
             ap = actual_poly(terms, f["coef"], cod)
             aterms = sorted(ap, key=lambda m: (len(m), m))
             entry.update({"terms": [list(t) for t in terms], "coef": f["coef"], "cov": f["cov"], "mse": f["mse"], "df_resid": f["df_resid"],
-                          "r2": f["r2"], "adj_r2": f["adj_r2"], "pred_r2": f["pred_r2"],
+                          "r2": f["r2"], "adj_r2": f["adj_r2"], "pred_r2": f["pred_r2"], "lof_p": f["lof"].get("p"),
                           "coded_eq": equation(f"Y{j + 1}", terms, f["coef"]),
                           "actual_eq": equation(f"Y{j + 1}", aterms, [ap[m] for m in aterms]),
                           "actual_terms": [list(m) for m in aterms], "actual_coef": [ap[m] for m in aterms]})
         out.append(entry)
-    return {"factors": [{"name": n, "unit": design["factors"][i].get("unit"), **cod[i]} for i, n in enumerate(fn)], "responses": out}
+    return {"factors": [{"name": n, "unit": design["factors"][i].get("unit"), **cod[i]} for i, n in enumerate(fn)], "responses": out,
+            "gate_passed": [e["response"] for e in out if e["status"] == "SELECTED"]}
 
 
 def predict(terms: Sequence[Sequence[int]], coef: Sequence[float], x: np.ndarray) -> np.ndarray:
@@ -326,7 +484,7 @@ def surfaces(design: Dict[str, Any], reg: Dict[str, Any], steps: int = 25, order
             "b": {"id": fac[b]["id"], "actual": [float(to_actual(v, cod[b])) for v in g]}}
     out = []
     for j, r in enumerate(reg["responses"]):
-        if r.get("aliased"):
+        if r.get("aliased") or r.get("status") == "UNEXPLAINED":      # 게이트 불합격 반응은 곡면을 그리지 않는다
             continue
         slices, lo, hi = [], np.inf, -np.inf
         for lv in levels:

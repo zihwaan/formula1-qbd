@@ -1,0 +1,29 @@
+# 2단계 10·13단계 규칙 — overlay 파이프라인(07_model_selection · 08_design_space)의 숫자를 그대로 옮겼다. 코드는 여기서 읽는다.
+# 10단계: Automatic Hierarchical Model Selector → Model Validation Gate
+selector:
+  candidates: [Mean, Linear, 2FI, Pure quadratic, Quadratic, Reduced quadratic]   # 같은 항 구성은 앞의 것만 남긴다
+  reduction:
+    start: Quadratic
+    alpha_remove: 0.05          # 항 p > alpha 이면 제거 후보(다른 남은 항의 부모가 아닌 항만), p가 가장 큰 항부터 하나씩
+  ranking:
+    criterion: AICc             # AIC + 2k(k+1)/(n−k−1)
+    parsimony_delta: 2.0        # 최소 AICc + 2 이내 후보는 항 수가 적은 순서가 우선
+gate:                           # 순위대로 검사, 첫 통과 모형 채택. 평균 모형까지 오면 "요인으로 설명되지 않음"
+  model_p_max: 0.05             # 모형이 유의한가 — 모형 p < 0.05
+  lack_of_fit_p_min: 0.05       # 데이터와 어긋나지 않는가 — 적합결여 p ≥ 0.05 (반복점이 없어 계산 불가면 건너뛰고 표시)
+  adj_minus_pred_r2_max: 0.20   # 과적합이 아닌가 — 조정 R² − 예측 R² ≤ 0.2
+  pred_r2_min: 0.0              # 새 점을 예측하는가 — 예측 R² > 0
+# 13단계: design space · control space · 최적점 · 승인
+design_space:
+  basis: mean_prediction        # 게이트 통과 반응의 평균 예측이 모든 목표 만족 → 노랑(논문과 같은 기준)
+  grid_points_per_axis: 41
+  slice_levels_coded: [-1, 0, 1]
+robustness_aux:                 # 보조 표시(판정에 쓰지 않음) — 새 배치가 모든 목표를 만족할 확률(반응별 t 예측분포 통과확률의 곱)
+  contour_levels: [0.5, 0.8, 0.9]
+  explain_if_max_below: 0.9
+control_space:
+  min_cells_per_side: 3         # 노랑 ∩ 실험 범위 격자에 3×3 이상 직사각형
+optimum:
+  edge_margin_coded: 0.1        # 실험 범위 경계에서 이 거리(coded) 미만인 점은 최적점 후보에서 제외
+unexplained_check:              # 게이트 불합격 반응 — 평균 모형 95 % 예측구간이 목표에 걸치거나 목표 밖 run이 있으면 경고(승인은 막지 않음)
+  level: 0.95

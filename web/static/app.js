@@ -1379,7 +1379,7 @@ const SCENARIOS = [
     next: "lornoxicam",
     goal: `유동성 실측(안식각 42° · Carr 22 % · Hausner 1.28)으로 USP &lt;1174&gt; 흐름성을 판정해 <b>직접타정을 유지</b>합니다(48°면 직접타정 배제).
       후보가 나오면 연구자가 <b>이 후보로 개발 착수</b>를 눌러 2단계로 갑니다 — 저함량(8/250 mg ≈ 3.2 %)이라 혼합 시간 × 함량균일성 위험이 High로
-      잡히고, 9단계에서 Almotairi 2022 Table 3(실측 15 run) CSV를 불러오면 <b>평균 기준 77.2 % → 공동확률 47.6 %</b> 영역과 설정점이 나옵니다.`,
+      잡히고, 9단계에서 Almotairi 2022 Table 3(실측 15 run)을 불러오면 10단계 <b>검증 게이트</b>를 넘은 회귀식으로 13단계 <b>Overlay plot</b> — control space와 최적 처방(2.9 · 10분 · 7 %)이 나옵니다.`,
   },
   {
     id: "amlodipine",
@@ -1472,7 +1472,7 @@ async function continueScenario() {
       layer: "다음 단계 — 연구자 선택", kind: "det",
       title: "후보를 골라 2단계로 — 9단계에서 논문 실측 15 run을 불러온다",
       body: `후보 카드의 <b>이 후보로 개발 착수</b>를 누르면 조성·공정과 요청 맥락이 불변 Handoff로 넘어가 2단계가 열립니다(1위 자동 진입 없음).
-        9단계 <b>CSV 파일 · 엑셀 붙여넣기로 채우기</b>에서 <b>실데이터 예: Almotairi 2022 Table 3</b>을 받아 불러오면 13단계에서 공동확률 Design Space가 계산됩니다.
+        9단계 표 위의 <b>논문 실측값으로 채우기 — 로르녹시캄 분산정 · Almotairi 2022 Table 3</b>을 누르면(또는 CSV 불러오기) 10단계 검증 게이트를 거쳐 13단계 Overlay plot(control space · 최적 처방)이 계산됩니다.
         <span class="nr-why">왜 중요한가: 평균 반응면만 보면 영역을 약 1.6배 과대평가합니다 — 미래 배치의 예측분포로 봐야 합니다.</span>`,
     });
   }

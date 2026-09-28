@@ -16,7 +16,8 @@
   const LEVELS = ["High", "Medium", "Low"];
   const BASIS = ["처방 자료", "약전·가이드라인", "일반 제제학 지식", "문헌(출처 기재)", "추정 — 확인 필요"];
   const SRC = { llm: "LLM 초안", paper: "논문 값", user: "연구자 입력", code: "코드 계산", upstream: "1단계 결과" };
-  const FAMILY_KO = { Mean: "평균", Linear: "선형", "2FI": "2요인 교호작용", Quadratic: "2차" };
+  const FAMILY_KO = { Mean: "평균", Linear: "선형", "2FI": "2요인 교호작용", "Pure quadratic": "순수 2차", Quadratic: "2차", "Reduced quadratic": "축소 2차" };
+  const passed = (r) => !r.aliased && (r.status || "SELECTED") === "SELECTED";
   const HINT = {
     prototype: "1단계가 넘긴 처방입니다. 성분·함량·기능을 확인하고 필요하면 고친 뒤 [실행]을 누르면 QTPP부터 시작합니다.",
     qtpp: "목표 제품 프로파일입니다. LLM이 프로토타입을 읽고 초안을 쓰며, 행을 더하거나 지우고 고친 뒤 승인합니다.",
@@ -125,7 +126,6 @@
     const cur = sec.querySelector(".s2-step.current");
     if (scroll && cur) cur.scrollIntoView({ behavior: "smooth", block: "start" });
     if (V.current === "surface" && !V.done) drawSurfaces();
-    if (V.current === "space" && !V.done && (V.study.steps.space.data || {}).region) drawSpace();
   }
 
   // 위험평가 보고서 — 8단계 종합 정리가 만들어지면(7단계 승인 뒤) 바로 나온다. 서버 조건과 같다.
@@ -184,14 +184,15 @@
         case "rm_matrix": case "fp_matrix": return `High ${d.levels.flat().filter((x) => x === "High").length}칸 · Medium ${d.levels.flat().filter((x) => x === "Medium").length}칸 / ${d.levels.flat().length}칸`;
         case "recommend": return `High 변수 ${(d.candidates || []).length}개${(d.candidates || []).length ? ` — ${(d.candidates || []).slice(0, 4).map((c) => c.variable).join(", ")}${(d.candidates || []).length > 4 ? " …" : ""}` : ""}`;
         case "design": return `요인 ${d.factors.map((f) => f.name).join(" · ")} · 반응 ${c(d.responses)}개 · ${c(d.rows)} run`;
-        case "regression": return d.responses.map((r) => `${r.response} ${FAMILY_KO[r.family] || r.family}${r.pred_r2 != null ? ` (예측 R² ${num(r.pred_r2, 3)})` : ""}`).join(" · ");
-        case "surface": return `반응 ${(d.responses || []).join(", ")}`;
-        case "anova": return d.responses.filter((r) => !r.aliased).map((r) => { const m = r.rows.find((x) => x.source === "Model"); return `${r.response} 모형 p ${pfmt(m && m.p)}`; }).join(" · ");
+        case "regression": return d.responses.map((r) => passed(r) ? `${r.response} ${FAMILY_KO[r.family] || r.family} (게이트 통과)` : `${r.response} 요인으로 설명되지 않음`).join(" · ");
+        case "surface": return `반응 ${(d.responses || []).join(", ") || "없음"}${(d.unexplained || []).length ? ` · 제외(요인으로 설명되지 않음) ${d.unexplained.join(", ")}` : ""}`;
+        case "anova": return d.responses.map((r) => { if (r.unexplained || r.aliased) return `${r.response} —`; const m = r.rows.find((x) => x.source === "Model"); return `${r.response} 모형 p ${pfmt(m && m.p)}`; }).join(" · ");
         case "space": {
           const r = d.region || {};
-          if (!r.status) return "규격 입력 전";
-          return r.status === "OK" ? `평균 기준 ${(100 * r.mean_ok_fraction).toFixed(1)}% → 공동확률 ≥ ${r.p_min} ${(100 * r.feasible_fraction).toFixed(1)}% · 설정점 ${Object.values(r.setpoint.actual).join(" / ")}`
-            : `영역 없음 (최대 공동확률 ${num(r.max_joint, 3)})`;
+          if (!r.status) return "목표 입력 전";
+          const o = r.optimum;
+          return r.status === "OK" ? `승인 가능 · control space ${Object.entries(r.control_space).map(([k, v]) => Array.isArray(v) ? `${k} ${num(v[0], 6)}–${num(v[1], 6)}` : `${k} ${num(v, 6)}`).join(" · ")} · 최적 ${Object.values(o.actual).map((v) => num(v, 6)).join(" / ")}`
+            : `승인 불가 — ${((r.approval || {}).reason || "").split(" — ")[0]}`;
         }
         case "vplan": return `확인점 ${c((d.plan || {}).points)}개${d.locked_at ? ` · ${d.locked_at.slice(0, 16).replace("T", " ")} UTC 잠금` : ""}`;
         case "verify": return ({ VERIFIED: "VERIFIED — 내부 사전계획 통과", INVALIDATED: "영역 무효화 — 진단 필요", INCOMPLETE: "실측값 미완" })[(d.judgement || {}).verdict] || "";
@@ -422,63 +423,78 @@
       ${d.note ? `<p class="s2-note">${E(d.note)}</p>` : ""}`;
   }
 
+  const xterm = (t) => (t.endsWith("2") ? `X${"abc".indexOf(t[0]) + 1}²` : t.split(":").map((q) => `X${"abc".indexOf(q) + 1}`).join(""));   // a:c → X1X3
+  const GATE_TIP = "검증 게이트: 모형 p < 0.05 · 적합결여 p ≥ 0.05 · 조정 R² − 예측 R² ≤ 0.2 · 예측 R² > 0";
   function vRegression(d, ro) {
-    return (d.responses || []).map((r) => {
-      const fams = r.summary.rows.filter((x) => x.model !== "Mean" && !x.aliased).map((x) => x.model);
-      return `<div class="s2-reg" data-resp="${E(r.response)}"><div class="s2-reg-head"><b>${E(r.response)}</b>${r.unit ? `<small>${E(r.unit)}</small>` : ""}
-          <span class="s2-muted">n = ${E(r.n)}</span>
+    const nPass = (d.responses || []).filter(passed).length;
+    return `<p class="s2-gate-head ${nPass ? "" : "bad"}">검증 게이트 통과 ${nPass} / ${(d.responses || []).length} 반응 <small>${E(GATE_TIP)} — 넷 다 통과한 모형만 회귀식·곡면·영역에 씁니다</small></p>` +
+      (d.responses || []).map((r) => {
+      const fams = r.summary.rows.map((x) => x.model);
+      const g = r.gate || {};
+      const badge = passed(r) ? `<span class="s2-gate ok">게이트 통과</span>` : `<span class="s2-gate bad">요인으로 설명되지 않음</span>`;
+      return `<div class="s2-reg ${passed(r) ? "" : "unexpl"}" data-resp="${E(r.response)}"><div class="s2-reg-head"><b>${E(r.response)}</b>${r.unit ? `<small>${E(r.unit)}</small>` : ""}
+          ${badge}<span class="s2-muted">n = ${E(r.n)}</span>
           <label>모형 ${ro ? `<b>${E(FAMILY_KO[r.family] || r.family)}</b>` : `<select data-family>${fams.map((f) => `<option value="${E(f)}" ${f === r.family ? "selected" : ""}>${E(FAMILY_KO[f] || f)}${f === r.suggested ? " (제안)" : ""}</option>`).join("")}</select>`}</label></div>
-        <div class="s2-scroll"><table class="s2-t fit"><thead><tr><th>모형</th><th>순차 p</th><th>적합결여 p</th><th>R²</th><th>수정 R²</th><th>예측 R²</th><th></th></tr></thead>
-          <tbody>${r.summary.rows.map((x) => `<tr class="${x.model === r.family ? "chosen" : ""}"><td>${E(FAMILY_KO[x.model] || x.model)}${overfit(x) ? ` <span class="s2-flag">과적합 의심</span>` : ""}</td>
-            ${x.aliased ? `<td colspan="5" class="s2-muted">추정 불가(항 수 ≥ run 수)</td>` : `<td class="n">${E(pfmt(x.seq_p))}</td><td class="n">${E(pfmt(x.lof_p))}</td>
-            <td class="n">${E(num(x.r2))}</td><td class="n">${E(num(x.adj_r2))}</td><td class="n">${E(num(x.pred_r2))}</td>`}
-            <td>${x.suggested ? "제안" : ""}</td></tr>`).join("")}</tbody></table></div>
-        <p class="s2-muted">${E(r.reason)}</p>
-        ${r.aliased ? `<p class="s2-warn">이 모형은 이 설계로 추정할 수 없습니다 — 더 낮은 차수를 고르세요.</p>` : `<dl class="s2-eq"><dt>Coded</dt><dd><code>${E(r.coded_eq)}</code></dd>
-          <dt>Actual</dt><dd><code>${E(r.actual_eq)}</code></dd><dt>적합</dt><dd>R² ${E(num(r.r2))} · 수정 R² ${E(num(r.adj_r2))} · 예측 R² ${E(num(r.pred_r2))}</dd></dl>`}
-        ${V.reference && V.reference.regression && V.reference.regression.families[r.response] ? `<p class="s2-cmp">논문 모형: ${E(FAMILY_KO[V.reference.regression.families[r.response]] || V.reference.regression.families[r.response])}</p>` : ""}
+        <details class="s2-fit" ${ro ? "" : "open"}><summary>후보 모형 ${r.summary.rows.length}개 — AICc 순위 · 게이트 검사</summary>
+        <div class="s2-scroll"><table class="s2-t fit"><thead><tr><th>순위</th><th>모형</th><th>항</th><th>모형 p</th><th>적합결여 p</th><th>조정 R²</th><th>예측 R²</th><th>AICc</th><th>게이트</th></tr></thead>
+          <tbody>${r.summary.rows.map((x) => `<tr class="${x.model === r.family ? "chosen" : ""}"><td class="n">${E(x.rank)}</td><td>${E(FAMILY_KO[x.model] || x.model)}${x.suggested ? " <small>제안</small>" : ""}
+            ${x.model === "Reduced quadratic" && x.term_names ? `<small class="s2-terms">${E(x.term_names.map(xterm).join(" + "))}</small>` : ""}</td><td class="n">${E(x.n_terms)}</td>
+            <td class="n">${E(pfmt(x.model_p))}</td><td class="n">${E(x.lof_p == null ? "계산 불가" : pfmt(x.lof_p))}</td><td class="n">${E(num(x.adj_r2))}</td><td class="n">${E(x.pred_r2 == null ? "—" : num(x.pred_r2))}</td>
+            <td class="n">${E(num(x.aicc, 4))}</td><td>${x.model === "Mean" ? "—" : (x.gate || {}).passed ? `<span class="s2-gate ok">통과</span>` : `<span class="s2-gate bad" title="${E(((x.gate || {}).why || []).join("; "))}">불합격</span>`}</td></tr>`).join("")}</tbody></table></div>
+        <p class="s2-muted">${E((r.summary.log || []).join(" → "))}</p></details>
+        ${r.aliased ? `<p class="s2-warn">이 모형은 이 설계로 추정할 수 없습니다 — 다른 모형을 고르세요.</p>`
+          : passed(r) ? `<dl class="s2-eq"><dt>Coded</dt><dd><code>${E(r.coded_eq)}</code></dd>
+          <dt>Actual</dt><dd><code>${E(r.actual_eq)}</code></dd><dt>적합</dt><dd>R² ${E(num(r.r2))} · 조정 R² ${E(num(r.adj_r2))} · 예측 R² ${E(num(r.pred_r2))}</dd></dl>`
+          : `<p class="s2-note">요인으로 설명되지 않음 — ${E((g.why || []).join("; ") || "평균 모형")}. 회귀식 없이 관측 범위 ${E(num((r.observed || {}).min))}–${E(num((r.observed || {}).max))}${r.unit ? ` ${E(r.unit)}` : ""}와 목표만 표시합니다(곡면·영역에서 제외).</p>`}
+        ${V.reference && V.reference.regression && V.reference.regression.families[r.response] ? `<p class="s2-cmp">참고 · 논문 모형: ${E(FAMILY_KO[V.reference.regression.families[r.response]] || V.reference.regression.families[r.response])}</p>` : ""}
       </div>`;
-    }).join("") + `<p class="s2-muted">요인 기호: ${(d.factors || []).map((f, i) => `X${i + 1} = ${E(f.name)}${f.unit ? ` (${E(f.unit)})` : ""} [${E(num(f.low))} – ${E(num(f.high))}]`).join(" · ")}</p>
-      ${!ro && (d.responses || []).some((r) => !r.aliased && overfit(r)) ? `<label class="s2-f wide s2-reason"><span>과적합 의심 모형을 그대로 쓰는 사유(승인에 필요)</span>
-        <textarea data-note rows="2" placeholder="예: 반응이 좁은 범위라 예측 R²가 낮음 — 확인배치로 검증 예정"></textarea></label>` : ""}`;
+    }).join("") + `<p class="s2-muted">요인 기호: ${(d.factors || []).map((f, i) => `X${i + 1} = ${E(f.name)}${f.unit ? ` (${E(f.unit)})` : ""} [${E(num(f.low))} – ${E(num(f.high))}]`).join(" · ")}</p>`;
   }
-  const overfit = (x) => x.adj_r2 != null && x.pred_r2 != null && (x.adj_r2 - x.pred_r2 > 0.2 || x.pred_r2 < 0);
 
   function vAnova(d) {
-    return (d.responses || []).map((r) => r.aliased ? `<p class="s2-warn">${E(r.response)}: 모형을 추정할 수 없습니다.</p>` : `<div class="s2-reg"><div class="s2-reg-head"><b>${E(r.response)}</b>
+    return (d.responses || []).map((r) => r.unexplained ? `<p class="s2-note">${E(r.response)}: 요인으로 설명되지 않음(검증 게이트 불합격 — ${E((r.gate_why || []).join("; ") || "평균 모형")}) — 분산분석할 회귀식이 없습니다. 관측 ${E(num((r.observed || {}).min))}–${E(num((r.observed || {}).max))}</p>`
+      : r.aliased ? `<p class="s2-warn">${E(r.response)}: 모형을 추정할 수 없습니다.</p>` : `<div class="s2-reg"><div class="s2-reg-head"><b>${E(r.response)}</b>
         <span class="s2-muted">${E(FAMILY_KO[r.family] || r.family)} 모형</span></div>
       <div class="s2-scroll"><table class="s2-t anova"><thead><tr><th>Source</th><th>Sum of squares</th><th>df</th><th>Mean square</th><th>F</th><th>p</th></tr></thead>
         <tbody>${r.rows.map((x) => `<tr class="lvl${x.level}${x.p != null && x.p < 0.05 ? " sig" : ""}"><td>${E(x.source)}</td><td class="n">${E(num(x.ss))}</td><td class="n">${E(x.df)}</td>
           <td class="n">${E(x.ms != null ? num(x.ms) : "")}</td><td class="n">${E(x.f != null ? num(x.f) : "")}</td><td class="n">${E(pfmt(x.p))}</td></tr>`).join("")}</tbody></table></div>
-      <p class="s2-muted">R² ${E(num(r.r2))} · 수정 R² ${E(num(r.adj_r2))} · 예측 R² ${E(num(r.pred_r2))} · 표준편차 ${E(num(r.std_dev))} · 평균 ${E(num(r.mean))} · CV ${E(num(r.cv_pct, 3))}% — p &lt; 0.05 굵게</p></div>`).join("");
+      <p class="s2-muted">R² ${E(num(r.r2))} · 조정 R² ${E(num(r.adj_r2))} · 예측 R² ${E(num(r.pred_r2))} · 표준편차 ${E(num(r.std_dev))} · 평균 ${E(num(r.mean))} · CV ${E(num(r.cv_pct, 3))}% — p &lt; 0.05 굵게</p></div>`).join("");
   }
 
-  // ── 13 Design Space ─────────────────────────────────────────────────────
-  const OPS = [["", "규격 없음(제외)"], ["LE", "≤ 상한"], ["GE", "≥ 하한"], ["BETWEEN", "범위"]];
-  const specText = (x) => ({ LE: `≤ ${x.upper}`, GE: `≥ ${x.lower}`, BETWEEN: `${x.lower}–${x.upper}` })[x.op] || "영역 계산 제외";
+  // ── 13 Design Space — Overlay plot(논문 Figure 2 형식, 서버가 그린다) ─────────────
+  const OPS = [["", "목표 없음(제외)"], ["LE", "≤ 상한"], ["GE", "≥ 하한"], ["BETWEEN", "범위"]];
+  const specText = (x) => ({ LE: `≤ ${x.upper}`, GE: `≥ ${x.lower}`, BETWEEN: `${x.lower}–${x.upper}` })[x.op] || "목표 없음";
+  function overlayUrl(fmt, caption) {
+    return api(`/api/stage2/studies/${encodeURIComponent(V.study.study_id)}/overlay.${fmt}?v=${V.study.state_version}${caption ? "&caption=1" : ""}`);
+  }
   function vSpace(d, ro) {
     const specs = d.specs || [], r = d.region;
-    const rows = specs.map((x, i) => ro ? `<tr><td>${E(x.response)}${x.unit ? ` <small>${E(x.unit)}</small>` : ""}</td><td>${E(specText(x))}</td><td>${E(x.basis || "")}</td></tr>`
-      : `<tr data-spec="${i}" data-resp="${E(x.response)}" data-unit="${E(x.unit)}"><td><b>${E(x.response)}</b>${x.unit ? ` <small>${E(x.unit)}</small>` : ""}</td>
+    const gp = new Set((V.study.steps.regression.data || {}).gate_passed || []);
+    const tag = (n) => gp.has(n) ? "" : ` <span class="s2-gate bad">요인으로 설명되지 않음</span>`;
+    const rows = specs.map((x, i) => ro ? `<tr><td>${E(x.response)}${x.unit ? ` <small>${E(x.unit)}</small>` : ""}${tag(x.response)}</td><td>${E(specText(x))}</td><td>${E(x.basis || "")}</td></tr>`
+      : `<tr data-spec="${i}" data-resp="${E(x.response)}" data-unit="${E(x.unit)}"><td><b>${E(x.response)}</b>${x.unit ? ` <small>${E(x.unit)}</small>` : ""}${tag(x.response)}</td>
         <td><select data-k="op">${OPS.map(([v, t]) => `<option value="${v}" ${v === (x.op || "") ? "selected" : ""}>${E(t)}</option>`).join("")}</select></td>
         <td class="n"><input data-k="lower" value="${E(x.lower ?? "")}" inputmode="decimal" placeholder="하한"></td>
         <td class="n"><input data-k="upper" value="${E(x.upper ?? "")}" inputmode="decimal" placeholder="상한"></td>
-        <td><input data-k="basis" value="${E(x.basis || "")}" placeholder="근거(약전·목표·가정 — 제외하면 이유)"></td></tr>`).join("");
-    const head = ro ? "<tr><th>반응</th><th>규격</th><th>근거</th></tr>" : "<tr><th>반응</th><th>규격</th><th>하한</th><th>상한</th><th>근거</th></tr>";
-    let res = `<p class="s2-muted">규격을 적고 <b>저장</b>을 누르면 영역을 계산합니다.</p>`;
+        <td><input data-k="basis" value="${E(x.basis || "")}" placeholder="근거(약전·목표·가정)"></td></tr>`).join("");
+    const head = ro ? "<tr><th>반응</th><th>목표</th><th>근거</th></tr>" : "<tr><th>반응</th><th>목표</th><th>하한</th><th>상한</th><th>근거</th></tr>";
+    let res = `<p class="s2-muted">목표를 적고 <b>저장</b>을 누르면 영역을 계산합니다(게이트 통과 반응만 영역에, 요인으로 설명되지 않는 반응은 관측 범위와 목표 비교 문구로).</p>`;
     if (r && r.status) {
-      const sp = r.setpoint;
-      res = `<div class="s2-kpis">
-          <div><small>평균 예측이 모든 규격 안</small><b>${(100 * r.mean_ok_fraction).toFixed(1)}%</b></div>
-          <div class="arrow">→</div>
-          <div><small>미래 배치 공동확률 ≥ ${E(r.p_min)}</small><b>${(100 * r.feasible_fraction).toFixed(1)}%</b></div>
-          <div><small>지지 영역 격자점</small><b>${E(r.grid_points_in_domain.toLocaleString())}</b><small>/ ${E(r.grid_points_total.toLocaleString())}</small></div>
-          <div><small>${sp ? "권장 설정점 공동확률" : "최대 공동확률"}</small><b>${E(num(sp ? sp.joint : r.max_joint, 3))}</b></div></div>
-        ${sp ? `<p class="s2-setpoint">권장 설정점 — ${Object.entries(sp.actual).map(([k, v]) => `<b>${E(k)}</b> ${E(num(v))}`).join(" · ")}</p>`
-          : `<p class="s2-warn">공동 통과확률 ≥ ${E(r.p_min)}인 점이 없습니다 — 규격을 완화하지 않습니다. 모형·요인 범위·위험평가를 다시 보세요.</p>`}
-        <p class="s2-muted">경계를 정하는 반응(미달 격자점 수): ${E(Object.entries(r.binding || {}).map(([k, v]) => `${k} ${v.toLocaleString()}`).join(" · ") || "—")}
-          ${(r.excluded || []).length ? ` · 제외: ${E(r.excluded.join(", "))}` : ""} · ${E(r.independence_note || "")}</p>
-        ${ro ? "" : `<div class="s2-map" id="s2-map-box"><p class="s2-muted">단면을 그리는 중…</p></div>`}`;
+      const ap = r.approval || {}, o = r.optimum, sl = r.slice, aux = r.aux || {};
+      const fx = (V.study.steps.design.data || {}).factors || [];
+      res = `<p class="s2-verdict ${ap.approvable ? "ok" : "bad"}">${ap.approvable ? "승인 가능" : "승인 불가"} — ${E(ap.reason || "")}</p>
+        ${r.slices && r.slices.length ? `<div class="s2-kpis">
+          ${r.slices.map((x, i) => `<div class="${x.control ? "on" : ""}"><small>${x.level_actual != null ? `(${"abc"[i]}) ${E(sl.name)} = ${E(num(x.level_actual))}` : "평균 기준 영역"}</small><b>${(100 * x.ds_fraction).toFixed(1)}%</b><small>노랑(실험 범위 안)</small></div>`).join("")}
+          <div><small>보조 · 새 배치 통과확률 최대</small><b>${E(num(aux.max_joint, 3))}</b><small>판정에 안 씀</small></div></div>` : ""}
+        ${o ? `<p class="s2-setpoint">control space — ${Object.entries(r.control_space).map(([k, v]) => Array.isArray(v) ? `<b>${E(k)}</b> ${E(num(v[0], 6))}–${E(num(v[1], 6))}` : `<b>${E(k)}</b> ${E(num(v, 6))}`).join(" · ")}
+            <br>최적 처방 — ${Object.entries(o.actual).map(([k, v]) => `<b>${E(k)}</b> ${E(num(v, 6))}`).join(" · ")} <small>(새 배치 통과확률 ${E(num(o.joint, 3))})</small></p>` : ""}
+        ${(r.unexplained || []).map((nt) => `<p class="${nt.level === "warn" ? "s2-warn" : "s2-muted"}">${nt.level === "warn" ? "주의 · " : "· "}${E(nt.text)}</p>`).join("")}
+        ${r.slices && r.slices.length ? `<figure class="s2-overlay">
+          ${!ro && sl && fx.length >= 3 ? `<div class="s2-map-ctrl"><label>단면 고정 요인 <select data-space-slice>${fx.map((f, i) => `<option value="${i}" ${i === sl.index ? "selected" : ""}>${E(f.name)}${i === sl.auto_index ? " (자동: 효과 최소)" : ""}</option>`).join("")}</select></label></div>` : ""}
+          <div class="ov-scroll"><img src="${E(overlayUrl("svg"))}" alt="Overlay plot — 노랑: 평균 예측이 모든 목표 만족 · 회색: 미달 · 해칭: 실험 범위 밖 · 빨간 점선: control space · 큰 빨간 점: 최적 처방" loading="lazy"></div>
+          <figcaption>노랑 = 게이트 통과 반응의 평균 예측이 모든 목표 만족 · 회색 = 미달 · 해칭 = 설계점 밖(외삽) · 경계선 = 반응별 목표 한계 · 빨간 점 = 그 단면의 설계점 ·
+            빨간 점선 사각형 = control space · 큰 빨간 점 = 최적 처방 · 회색 점선 = 보조: 새 배치가 모든 목표를 만족할 확률(판정에 쓰지 않음).
+            <a href="${E(overlayUrl("png", true))}" target="_blank" rel="noopener">PNG(문구 포함) 내려받기</a></figcaption></figure>` : ""}`;
     }
     return `<div class="s2-scroll"><table class="s2-t spec"><thead>${head}</thead><tbody>${rows}</tbody></table></div>${res}`;
   }
@@ -497,12 +513,12 @@
     const body = pts.map((p) => {
       const pr = Object.entries(p.predicted);
       return pr.map(([n, v], i) => `<tr class="${p.role === "REFERENCE" ? "ref" : ""}">${i ? "" : `<th rowspan="${pr.length}">${E(ROLE_KO[p.role] || p.role)}${p.label ? `<small>${E(p.label)}</small>` : ""}</th>
-        <td rowspan="${pr.length}">${Object.entries(p.settings).map(([k, x]) => `${E(k)} ${E(num(x))}`).join("<br>")}</td><td rowspan="${pr.length}" class="n">${E(num(p.joint, 3))}</td>`}
-        <td>${E(n)}</td><td>${E(v.spec)}</td><td class="n">${E(num(v.mean, 3))}</td><td class="n">${E(num(v.pi_lower, 3))} – ${E(num(v.pi_upper, 3))}${v.pi_truncated ? "*" : ""}</td></tr>`).join("");
+        <td rowspan="${pr.length}">${Object.entries(p.settings).map(([k, x]) => `${E(k)} ${E(num(x, 6))}`).join("<br>")}</td><td rowspan="${pr.length}" class="n">${E(num(p.joint, 3))}</td>`}
+        <td>${E(n)}${v.unexplained ? " †" : ""}</td><td>${E(v.spec)}</td><td class="n">${E(num(v.mean, 3))}</td><td class="n">${E(num(v.pi_lower, 3))} – ${E(num(v.pi_upper, 3))}${v.pi_truncated ? "*" : ""}</td></tr>`).join("");
     }).join("");
-    return `${ctrl}${pts.length ? `<div class="s2-scroll"><table class="s2-t vplan"><thead><tr><th>확인점</th><th>설정</th><th>공동확률</th><th>반응</th><th>규격</th><th>예측 평균</th><th>예측구간</th></tr></thead><tbody>${body}</tbody></table></div>
-      <p class="s2-muted">예측구간: ${E(pol.comparisons)}개 비교(필수 확인점 3 × 규격 반응)의 Bonferroni 동시구간 — 개별 ${E(num(100 * (pol.per_comparison_level || 0), 4))}%.
-        * 하한이 음수라 0에서 자름. ${d.locked_at ? `<b>${E(d.locked_at.slice(0, 16).replace("T", " "))} UTC 잠금 · ${E(d.plan_hash)}</b>` : "승인하면 결과를 보기 전에 이 계획이 잠깁니다."}</p>`
+    return `${ctrl}${pts.length ? `<div class="s2-scroll"><table class="s2-t vplan"><thead><tr><th>확인점</th><th>설정</th><th>새 배치 통과확률</th><th>반응</th><th>규격</th><th>예측 평균</th><th>예측구간</th></tr></thead><tbody>${body}</tbody></table></div>
+      <p class="s2-muted">예측구간: ${E(pol.comparisons)}개 비교(필수 확인점 3 × 게이트 통과 반응)의 Bonferroni 동시구간 — 개별 ${E(num(100 * (pol.per_comparison_level || 0), 4))}%.
+        * 하한이 음수라 0에서 자름. † 요인으로 설명되지 않는 반응 — 목표만 판정(구간은 관측 평균의 95 % 예측구간, 참고). ${d.locked_at ? `<b>${E(d.locked_at.slice(0, 16).replace("T", " "))} UTC 잠금 · ${E(d.plan_hash)}</b>` : "승인하면 결과를 보기 전에 이 계획이 잠깁니다."}</p>`
       : `<p class="s2-warn">${E(plan.reason || "확인점을 만들 수 없습니다.")}</p>`}`;
   }
 
@@ -512,7 +528,8 @@
     const obs = Object.fromEntries((d.observations || []).map((o) => [o.role, o.values || {}]));
     const j = d.judgement || {};
     const cellOf = Object.fromEntries((j.rows || []).map((x) => [`${x.role}|${x.response}`, x]));
-    const CELL = { PASS_IN: ["통과 · 구간 안", "ok"], PASS_OUT: ["통과 · 구간 밖", "warn"], FAIL_IN: ["실패 · 구간 안", "bad"], FAIL_OUT: ["실패 · 구간 밖", "bad"] };
+    const CELL = { PASS_IN: ["통과 · 구간 안", "ok"], PASS_OUT: ["통과 · 구간 밖", "warn"], FAIL_IN: ["실패 · 구간 안", "bad"], FAIL_OUT: ["실패 · 구간 밖", "bad"],
+      PASS_NA: ["통과(목표만)", "ok"], FAIL_NA: ["실패(목표만)", "bad"] };
     const rows = (plan.points || []).map((p) => {
       const pr = Object.entries(p.predicted);
       return pr.map(([n, v], i) => {
@@ -560,7 +577,7 @@
     if (k === "regression") return { chosen: Object.fromEntries(q(".s2-reg[data-resp]").map((r) => [r.dataset.resp, r.querySelector("[data-family]").value])) };
     if (k === "space") return { specs: q("tr[data-spec]").map((tr) => ({ response: tr.dataset.resp, unit: tr.dataset.unit,
       op: tr.querySelector('[data-k="op"]').value, lower: tr.querySelector('[data-k="lower"]').value, upper: tr.querySelector('[data-k="upper"]').value,
-      basis: tr.querySelector('[data-k="basis"]').value })) };
+      basis: tr.querySelector('[data-k="basis"]').value })), slice: (box.querySelector("[data-space-slice]") || {}).value ?? (V.study.steps.space.data || {}).slice ?? null };
     if (k === "vplan") {
       const lab = box.querySelector('[data-ref="label"]');
       const settings = Object.fromEntries(q("[data-ref-set]").map((i) => [i.dataset.refSet, i.value]));
@@ -615,7 +632,7 @@
   function wireEdit(k, box) {
     if (!box.dataset.wired) {           // 다시 그려도 상자 자체는 같다 — 리스너는 한 번만
       box.dataset.wired = "1";
-      const skip = (e) => e.target.closest("[data-space-fixed],[data-space-level],[data-note],[data-paste],[data-map],[data-csv-file]");
+      const skip = (e) => e.target.closest("[data-space-slice],[data-paste],[data-map],[data-csv-file]");
       box.addEventListener("input", (e) => { if (skip(e)) return; box.dataset.dirty = "1"; markStale(box); });
       box.addEventListener("change", (e) => { if (skip(e)) return; box.dataset.dirty = "1"; markStale(box); });
     }
@@ -716,8 +733,14 @@
       redrawEdit(k, d);
       out(`${d.rows.length}개 행 · 요인 ${F.length} · 반응 ${R.length}을 표에 넣었습니다 — 저장하면 서버가 검사합니다.`);
     };
-    const sp = box.querySelector("[data-space-fixed]");
-    if (sp) sp.onchange = () => { spaceView.fixed = Number(sp.value); spaceView.level = null; drawSpace(); };
+    const sp = box.querySelector("[data-space-slice]");          // 단면 고정 요인을 바꾸면 곧바로 다시 계산(저장)
+    if (sp) sp.onchange = async () => {
+      if (busy) return;
+      busy = true;
+      out("단면을 다시 계산하는 중…");
+      try { V = await post("save", { step: "space", data: { ...collect("space", box), slice: Number(sp.value) } }); busy = false; render(false); out("단면을 바꿨습니다."); }
+      catch (e) { busy = false; out(e.message, "warn"); }
+    };
   }
 
   function parseTable(text) {
@@ -757,71 +780,6 @@
       if (nf < wantF) { nf += 1; return "f"; }
       return "r";
     });
-  }
-
-  // ── 13 공동확률 단면 지도 — (a) 평균 예측이 모든 규격 안 (b) 미래 배치 공동 통과확률(≥ 기준 = 흰 점) ────
-  const spaceView = { fixed: null, level: null };
-  async function drawSpace() {
-    const box = $("s2-map-box");
-    if (!box) return;
-    const r = (V.study.steps.space.data || {}).region || {};
-    const k = (r.factors || []).length;
-    if (k === 3 && spaceView.fixed == null) spaceView.fixed = 1;
-    if (k === 3 && spaceView.level == null && r.setpoint) spaceView.level = r.setpoint.coded[spaceView.fixed];
-    try {
-      const q = k === 3 ? `?fixed=${spaceView.fixed}${spaceView.level != null ? `&level=${spaceView.level}` : ""}` : "";
-      const d = await req(`/api/stage2/studies/${encodeURIComponent(V.study.study_id)}/space${q}`);
-      box.innerHTML = d.kind === "LINE" ? lineSvg(d, r) : mapFigure(d, r, k);
-      const fsel = box.querySelector("[data-space-fixed]"), lsel = box.querySelector("[data-space-level]");
-      if (fsel) fsel.onchange = () => { spaceView.fixed = Number(fsel.value); spaceView.level = r.setpoint ? r.setpoint.coded[spaceView.fixed] : 0; drawSpace(); };
-      if (lsel) lsel.onchange = () => { spaceView.level = Number(lsel.value); drawSpace(); };
-    } catch (e) { box.innerHTML = `<p class="s2-warn">${E(e.message)}</p>`; }
-  }
-  function mapFigure(d, r, k) {
-    const sp = r.setpoint;
-    const onSlice = sp && (!d.fixed || Math.abs(sp.coded[d.fixed.index] - d.fixed.coded) < 1e-6);
-    const idx = (vals, v) => vals.reduce((b, x, i) => (Math.abs(x - v) < Math.abs(vals[b] - v) ? i : b), 0);
-    const names = (r.factors || []).map((f) => f.name);
-    const spRC = onSlice ? [idx(d.rows.values, sp.actual[d.rows.name]), idx(d.cols.values, sp.actual[d.cols.name])] : null;
-    const ctrl = d.fixed ? `<div class="s2-map-ctrl"><label>고정 요인 <select data-space-fixed>${names.map((n, i) => `<option value="${i}" ${i === d.fixed.index ? "selected" : ""}>${E(n)}</option>`).join("")}</select></label>
-      <label>값 <select data-space-level>${d.fixed.levels.map((l) => `<option value="${l.coded}" ${Math.abs(l.coded - d.fixed.coded) < 1e-6 ? "selected" : ""}>${E(num(l.actual))}${E(d.fixed.unit ? " " + d.fixed.unit : "")}</option>`).join("")}</select></label></div>` : "";
-    return `${ctrl}<div class="s2-maps">${mapSvg(d, "mean", spRC)}${mapSvg(d, "joint", spRC)}</div>
-      <p class="s2-muted">${d.fixed ? `${E(d.fixed.name)} = ${E(num(d.fixed.actual))}${E(d.fixed.unit || "")} 단면. ` : ""}회색 바탕 = 설계점이 받치지 않는 곳(외삽 — 계산에서 뺌) · 둥근 테두리 = 권장 설정점${onSlice ? "" : "(이 단면에 없음)"}.</p>`;
-  }
-  function mapSvg(d, mode, spRC) {
-    const nr = d.P.length, nc = d.P[0].length, cs = 11, L = 46, T = 20, W = L + nc * cs + 8, H = T + nr * cs + 34;
-    let cells = "";
-    for (let i = 0; i < nr; i++) {
-      for (let j = 0; j < nc; j++) {
-        const x = L + j * cs, y = T + (nr - 1 - i) * cs;
-        if (!d.in[i][j]) { cells += `<rect x="${x}" y="${y}" width="${cs}" height="${cs}" class="m-out"/>`; continue; }
-        if (mode === "mean") cells += `<rect x="${x}" y="${y}" width="${cs}" height="${cs}" class="${d.mean_ok[i][j] ? "m-ok" : "m-no"}"/>`;
-        else {
-          const p = d.P[i][j];
-          cells += `<rect x="${x}" y="${y}" width="${cs}" height="${cs}" class="m-p" fill-opacity="${(0.08 + 0.85 * p).toFixed(3)}"/>`;
-          if (p >= d.p_min) cells += `<circle cx="${x + cs / 2}" cy="${y + cs / 2}" r="2" class="m-dot"/>`;
-        }
-      }
-    }
-    const ring = spRC ? `<circle cx="${L + spRC[1] * cs + cs / 2}" cy="${T + (nr - 1 - spRC[0]) * cs + cs / 2}" r="${cs * 0.9}" class="m-sp"/>` : "";
-    const ax = (vals) => [vals[0], vals[Math.floor(vals.length / 2)], vals[vals.length - 1]].map((v) => num(v, 3));
-    const cx = ax(d.cols.values), rx = ax(d.rows.values);
-    const title = mode === "mean" ? "(a) 평균 예측이 모든 규격 안" : `(b) 공동 통과확률 ≥ ${d.p_min} (흰 점)`;
-    return `<figure class="s2-mapfig"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${E(title)}">
-      <text x="${L}" y="12" class="m-t">${E(title)}</text>${cells}${ring}
-      <text x="${L}" y="${T + nr * cs + 12}" class="m-a">${E(cx[0])}</text><text x="${L + nc * cs / 2}" y="${T + nr * cs + 12}" class="m-a" text-anchor="middle">${E(cx[1])}</text>
-      <text x="${L + nc * cs}" y="${T + nr * cs + 12}" class="m-a" text-anchor="end">${E(cx[2])}</text>
-      <text x="${L + nc * cs / 2}" y="${T + nr * cs + 27}" class="m-a" text-anchor="middle">${E(d.cols.name)}${d.cols.unit ? ` (${E(d.cols.unit)})` : ""}</text>
-      <text x="${L - 4}" y="${T + nr * cs}" class="m-a" text-anchor="end">${E(rx[0])}</text><text x="${L - 4}" y="${T + 8}" class="m-a" text-anchor="end">${E(rx[2])}</text>
-      <text x="10" y="${T + nr * cs / 2}" class="m-a" transform="rotate(-90 10 ${T + nr * cs / 2})" text-anchor="middle">${E(d.rows.name)}</text></svg></figure>`;
-  }
-  function lineSvg(d, r) {
-    const n = d.P.length, W = 320, H = 150, L = 36, B = 120;
-    const px = (i) => L + (i / (n - 1)) * (W - L - 10), py = (p) => B - p * 100;
-    const pts = d.P.map((p, i) => `${px(i).toFixed(1)},${py(p).toFixed(1)}`).join(" ");
-    return `<figure class="s2-mapfig"><svg viewBox="0 0 ${W} ${H}"><text x="${L}" y="12" class="m-t">공동 통과확률 — ${E(d.factor)}</text>
-      <line x1="${L}" x2="${W - 10}" y1="${py(d.p_min)}" y2="${py(d.p_min)}" class="m-thr"/><polyline points="${pts}" class="m-line"/>
-      <text x="${L}" y="${B + 16}" class="m-a">${E(num(d.x[0], 3))}</text><text x="${W - 10}" y="${B + 16}" class="m-a" text-anchor="end">${E(num(d.x[n - 1], 3))}</text></svg></figure>`;
   }
 
   function newRow(d, add) {

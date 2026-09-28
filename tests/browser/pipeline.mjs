@@ -1,7 +1,7 @@
 // 발표 자료 10쪽 — 로르녹시캄 분산정 전체 파이프라인을 화면 클릭으로 끝까지(실제 LLM 사용).
 // 시연 카드 ① → 설계(유동성 42° → 직접타정 유지) → 후보 카드 '이 후보로 개발 착수'(불변 Handoff) → 2단계 LLM 초안으로 1–7단계 → 8 종합 정리(위험평가 PDF) →
-// 9단계 CSV(Almotairi 2022 Table 3 실측 15 run) → 10 회귀(AV 과적합 → 사유) → 11 곡면 → 12 ANOVA →
-// 13 규격 입력 → 평균 77.2 % → 공동확률 47.6 %, 설정점 2.7 · 12.5 · 6.8 → 14 확인계획 잠금(참고: 논문 최적 3 · 11 · 6.23).
+// 9단계 CSV(Almotairi 2022 Table 3 실측 15 run) → 10 모형 선택·검증 게이트(네 반응 축소 2차 통과) → 11 곡면 → 12 ANOVA →
+// 13 목표 입력 → Overlay plot: control space · 최적 2.9 · 10분 · 7 % → 14 확인계획 잠금(참고: 논문 최적 3 · 11 · 6.23).
 //   F1_LLM=dacon CHROME=<chrome> node tests/browser/pipeline.mjs http://localhost:8104/ [스크린샷 폴더]
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
@@ -111,13 +111,12 @@ await act('approve');
 console.log('\n[2단계] 10 회귀 · 11 곡면 · 12 ANOVA');
 check('회귀식 단계', await cur() === 'regression', await cur());
 const fams = await page.$$eval('#s2 .s2-step.current .s2-reg[data-resp]', (rs) => rs.map((r) => `${r.dataset.resp}:${r.querySelector('[data-family]').value}`).join(' '));
-check('제안 모형 = DT 2차 · 마손도 선형 · DE30 2차 · AV 2차', fams === 'Dispersion time:Quadratic Friability:Linear DE30:Quadratic AV:Quadratic', fams);
-check('과적합 의심 표시(마손도 2차 · AV 2차)', await page.locator('#s2 .s2-step.current .s2-flag').count() >= 2);
-await act('approve');
-check('사유 없으면 승인 막힘(REG_OVERFIT_REASON)', (await blocked()).some((b) => b.includes('REG_OVERFIT_REASON')));
-await page.fill('#s2 .s2-step.current [data-note]', 'AV 2차 모형은 예측 R² 0.48 — 확인배치로 검증하는 조건으로 수용');
+check('선택 모형 = 네 반응 모두 축소 2차(AICc 순위 → 검증 게이트)', fams === 'Dispersion time:Reduced quadratic Friability:Reduced quadratic DE30:Reduced quadratic AV:Reduced quadratic', fams);
+const gh = (await page.locator('#s2 .s2-step.current .s2-gate-head').textContent()).replace(/\s+/g, ' ');
+check('검증 게이트 통과 4 / 4 반응', /통과 4 \/ 4/.test(gh), gh.slice(0, 40));
 await shot('07_regression');
 await act('approve');
+check('게이트 통과 → 반응 곡면', await cur() === 'surface', await cur());
 await page.waitForFunction(() => document.querySelectorAll('#s2-surf-box .rsg-plot').length >= 3, null, { timeout: 120000 }).catch(() => {});
 await page.waitForTimeout(2500);
 await shot('08_surface');
@@ -137,12 +136,13 @@ for (const [resp, [op, lo, hi, basis]] of Object.entries(specs)) {
   await tr.locator('[data-k="basis"]').fill(basis);
 }
 await act('save');
-await page.waitForSelector('#s2 .s2-kpis', { timeout: 60000 });
-const kpi = (await page.locator('#s2 .s2-kpis').textContent()).replace(/\s+/g, ' ');
-check('평균 77.2 % → 공동확률 47.6 %', kpi.includes('77.2%') && kpi.includes('47.6%'), kpi.slice(0, 160));
-const spt = (await page.locator('#s2 .s2-setpoint').textContent()).replace(/\s+/g, ' ');
-check('설정점 2.7 · 12.5 · 6.8', /2\.7/.test(spt) && /12\.5/.test(spt) && /6\.8/.test(spt), spt);
-await page.waitForSelector('#s2-map-box svg', { timeout: 60000 });
+await page.waitForSelector('#s2 .s2-step.current .s2-kpis', { timeout: 60000 });
+const verdict = (await page.locator('#s2 .s2-step.current .s2-verdict').textContent()).replace(/\s+/g, ' ');
+check('13단계 승인 가능 — 평균 기준 영역과 control space', /승인 가능/.test(verdict), verdict.slice(0, 80));
+const spt = (await page.locator('#s2 .s2-step.current .s2-setpoint').textContent()).replace(/\s+/g, ' ');
+check('control space MCC:Mannitol 1.1–3 × Crospovidone 4.6–9.2 @ 10분 · 최적 2.9 · 10 · 7', /1\.1–3/.test(spt) && /4\.6–9\.2/.test(spt) && /2\.9/.test(spt) && /Mixing time 10/.test(spt), spt.slice(0, 200));
+await page.waitForFunction(() => { const i = document.querySelector('#s2 .s2-step.current .s2-overlay img'); return i && i.complete && i.naturalWidth > 300; }, null, { timeout: 60000 }).catch(() => {});
+check('Overlay plot 그림', await page.evaluate(() => { const i = document.querySelector('#s2 .s2-step.current .s2-overlay img'); return !!i && i.naturalWidth > 300; }));
 await page.locator('#s2 .s2-step.current').scrollIntoViewIfNeeded();
 await shot('09_space');
 await act('approve');
@@ -156,7 +156,7 @@ for (let i = 0; i < await refs.count(); i++) await refs.nth(i).fill(vals[i]);
 await act('save');
 const vtxt = (await page.locator('#s2 .s2-step.current table.vplan').textContent()).replace(/\s+/g, ' ');
 check('확인점 3 + 참고 배치', ['설정점', '경계점', '강건성', '참고 배치'].every((w) => vtxt.includes(w)));
-check('설정점 DE30 예측구간 71.9 – 92.8', /71\.9\d*\s*–\s*92\.(8|7[5-9])/.test(vtxt), (vtxt.match(/DE30[^%]*/) || [''])[0].slice(0, 80));
+check('최적점 DE30 예측구간 75.3 – 89.4', /75\.3\s*–\s*89\.4/.test(vtxt), (vtxt.match(/DE30[^%]*/) || [''])[0].slice(0, 80));
 await shot('10_vplan');
 await act('approve');
 check('잠금 → 15단계(확인배치)', await cur() === 'verify', await cur());

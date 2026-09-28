@@ -252,15 +252,21 @@ def final_report(st: Dict[str, Any], images: Optional[Dict[str, bytes]] = None) 
     _meta(pdf, st, "regression")
     names = "; ".join(f"X{i + 1} = {f['name']}" + (f" ({f['unit']})" if f.get("unit") else "") + f" [{_g(f['low'])}–{_g(f['high'])}]"
                       for i, f in enumerate(reg["factors"]))
+    ok = lambda r: r.get("status", "SELECTED") == "SELECTED" and not r.get("aliased")   # noqa: E731
     _table(pdf, ["Responses", "모형", "Coded equations", "Actual equations"],
-           [[r["response"], r["family"] + ("" if r["family"] == r["suggested"] else f" (제안 {r['suggested']})"), r.get("coded_eq", "추정 불가"),
-             r.get("actual_eq", "")] for r in reg["responses"]], [30, 26, 105, 106], 7.6)
-    _p(pdf, f"요인: {names}. coded x = (X − 중앙) / 반폭(표의 최솟값·최댓값 기준). 모형 제안: 순차 F 검정이 유의한(p < 0.05) 가장 높은 차수.", 8)
-    _table(pdf, ["Responses", "모형", "순차 p", "적합결여 p", "R²", "수정 R²", "예측 R²", "선택"],
-           [[r["response"], row["model"], _n(row.get("seq_p")), _n(row.get("lof_p")), _n(row.get("r2")), _n(row.get("adj_r2")), _n(row.get("pred_r2")),
-             ("선택" if row["model"] == r["family"] else "") + (" · 제안" if row.get("suggested") else "")]
-            for r in reg["responses"] for row in r["summary"]["rows"] if not row.get("aliased")], [34, 26, 26, 30, 26, 30, 30, 30], 7.4,
-           align=["LEFT", "LEFT"] + ["CENTER"] * 6)
+           [[r["response"], r["family"] + ("" if r["family"] == r["suggested"] else f" (제안 {r['suggested']})"),
+             r.get("coded_eq", "추정 불가") if ok(r) else "요인으로 설명되지 않음 — 검증 게이트 불합격",
+             r.get("actual_eq", "") if ok(r) else f"관측 {_g(round((r.get('observed') or {}).get('min', 0), 4))}–{_g(round((r.get('observed') or {}).get('max', 0), 4))}"]
+            for r in reg["responses"]], [30, 26, 105, 106], 7.6)
+    _p(pdf, f"요인: {names}. coded x = (X − 중앙) / 반폭(표의 최솟값·최댓값 기준). 모형 선택: 후보(Mean · Linear · 2FI · Pure quadratic · Quadratic · "
+            "Reduced quadratic)를 AICc로 줄 세우고(최소 + 2 이내면 항 수가 적은 쪽 먼저) 검증 게이트(모형 p < 0.05 · 적합결여 p ≥ 0.05 · "
+            "조정 R² − 예측 R² ≤ 0.2 · 예측 R² > 0)를 처음 통과한 모형. 평균 모형까지 내려가면 요인으로 설명되지 않는 반응으로, 곡면·영역에 쓰지 않는다.", 8)
+    gate_txt = lambda row: ("통과" if (row.get("gate") or {}).get("passed") else ("—" if row["model"] == "Mean" else "불합격"))   # noqa: E731
+    _table(pdf, ["Responses", "모형", "항", "모형 p", "적합결여 p", "조정 R²", "예측 R²", "AICc", "게이트", "선택"],
+           [[r["response"], row["model"], str(row["n_terms"]), _n(row.get("model_p")), _n(row.get("lof_p")), _n(row.get("adj_r2")), _n(row.get("pred_r2")),
+             _n(row.get("aicc")), gate_txt(row), " · ".join(x for x in ("선택" if row["model"] == r["family"] else "", "제안" if row.get("suggested") else "") if x)]
+            for r in reg["responses"] for row in r["summary"]["rows"]], [30, 30, 12, 24, 26, 24, 24, 26, 20, 26], 7.2,
+           align=["LEFT", "LEFT"] + ["CENTER"] * 8)
     if images:
         pdf.add_page(orientation="L")
         _h(pdf, "그림 1. 반응 곡면")
@@ -285,6 +291,11 @@ def final_report(st: Dict[str, Any], images: Optional[Dict[str, bytes]] = None) 
     _meta(pdf, st, "anova")
     rows = []
     for r in an["responses"]:
+        if r.get("unexplained"):
+            o = r.get("observed") or {}
+            rows.append([{"text": f"{r['response']} — 요인으로 설명되지 않음(검증 게이트 불합격: {'; '.join(r.get('gate_why') or []) or '평균 모형'}) · "
+                                  f"관측 {_g(round(o.get('min', 0), 4))}–{_g(round(o.get('max', 0), 4))}", "colspan": 6}])
+            continue
         if r.get("aliased"):
             continue
         rows.append([{"text": f"{r['response']} — {r['family']}", "colspan": 6}])
@@ -297,9 +308,6 @@ def final_report(st: Dict[str, Any], images: Optional[Dict[str, bytes]] = None) 
     _table(pdf, ["Source", "Sum of squares", "df", "Mean square", "F-value", "p-value"], rows, [40, 30, 14, 30, 30, 36], 7.6,
            align=["LEFT", "RIGHT", "CENTER", "RIGHT", "RIGHT", "RIGHT"])
     _p(pdf, "* p < 0.05. 항의 제곱합은 부분(Type III) 제곱합, 잔차 = 적합결여 + 순수오차(같은 설정의 반복 run).", 8)
-    ap = [a for a in st["approvals"] if a["step"] == "regression" and a.get("note")]
-    if ap:
-        _p(pdf, f"모형 수용 사유(연구자): {ap[-1]['note']}", 8)
     _space_sections(pdf, st)
     return bytes(pdf.output())
 
@@ -315,24 +323,44 @@ def _space_sections(pdf, st: Dict[str, Any]) -> None:
     if not sd or not sd.get("region"):
         return
     r = sd["region"]
-    pdf.add_page(orientation="P")
-    _h(pdf, "Design Space — 미래 배치 공동 통과확률")
+    pdf.add_page(orientation="L")
+    _h(pdf, "Design Space — Overlay plot(평균 예측 기준 영역 · control space · 최적점)")
     _meta(pdf, st, "space")
-    _table(pdf, ["반응", "규격", "근거"], [[x["response"] + (f" ({x['unit']})" if x.get("unit") else ""),
+    try:
+        from formula.stage2 import space as SPc
+        png = SPc.render(s["design"]["data"], s["regression"]["data"], [x for x in sd["specs"] if x.get("op") in SPc.OPS and
+                         all(x.get(k) is not None for k in {"LE": ("upper",), "GE": ("lower",), "BETWEEN": ("lower", "upper")}[x["op"]])],
+                         fixed=sd.get("slice"), fmt="png", caption=True, dpi=170)
+        pdf.image(io.BytesIO(png), x=pdf.l_margin, w=pdf.w - pdf.l_margin - pdf.r_margin)
+    except Exception as exc:   # noqa: BLE001 — 그림이 실패해도 표는 남긴다
+        _p(pdf, f"(Overlay plot을 그리지 못했습니다: {str(exc)[:120]})", 8)
+    pdf.add_page(orientation="P")
+    _table(pdf, ["반응", "목표", "근거"], [[x["response"] + (f" ({x['unit']})" if x.get("unit") else ""),
                                           {"LE": f"≤ {_g(x.get('upper'))}", "GE": f"≥ {_g(x.get('lower'))}",
-                                           "BETWEEN": f"{_g(x.get('lower'))}–{_g(x.get('upper'))}"}.get(x["op"], "영역 계산 제외"),
+                                           "BETWEEN": f"{_g(x.get('lower'))}–{_g(x.get('upper'))}"}.get(x["op"], "목표 없음"),
                                           x.get("basis") or ""] for x in sd["specs"]], [45, 40, 95], 8)
-    sp = r.get("setpoint") or {}
-    rows = [["지지 영역(설계점 convex hull) 격자점", f"{r['grid_points_in_domain']:,} / {r['grid_points_total']:,} (축마다 {r['grid']}점)"],
-            ["평균 예측이 모든 규격 안", f"{100 * r['mean_ok_fraction']:.1f} %"],
-            [f"공동 통과확률 ≥ {r['p_min']:.2f}", f"{100 * r['feasible_fraction']:.1f} % ({r['feasible_points']:,}점)"],
-            ["최대 공동 통과확률", f"{r['max_joint']:.3f}"],
-            ["경계를 정하는 반응(미달 격자점 수)", ", ".join(f"{k} {v:,}" for k, v in (r.get("binding") or {}).items()) or "—"]]
-    if sp:
-        rows.append(["권장 설정점", " · ".join(f"{k} {_g(v)}" for k, v in sp["actual"].items()) + f" (공동확률 {sp['joint']:.3f})"])
-    _table(pdf, ["지표", "값"], rows, [80, 100], 8.2)
-    _p(pdf, "반응별 예측분포 = t(자유도 = 잔차 자유도), 척도 = √(평균 SE² + 잔차분산). 공동확률 = 반응별 통과확률의 곱(반응 간 독립 가정). "
-            "평균 예측만 보는 영역은 미래 배치의 변동을 무시한다. 영역이 비면 규격을 완화하지 않는다(Peterson 2008).", 8)
+    ap = r.get("approval") or {}
+    op = r.get("optimum") or {}
+    sl = r.get("slice") or {}
+    rows = [["판정", ("승인 가능 — " if ap.get("approvable") else "승인 불가 — ") + (ap.get("reason") or "")],
+            ["영역 기준", "게이트 통과 반응의 평균 예측이 모든 목표 만족(논문과 같은 기준) · 실험 범위(설계점 convex hull) 안"],
+            ["게이트 통과 반응", ", ".join(r.get("gate_passed") or []) or "없음"]]
+    if sl:
+        rows.append(["단면 고정 요인", f"{sl.get('name')} = " + " · ".join(_g(v) for v in sl.get("levels_actual") or []) + (" (자동: 효과가 가장 작은 요인)" if sl.get("auto") else "")])
+    rows.append(["단면별 평균 기준 영역", " · ".join(f"{_g(x.get('level_actual')) if x.get('level_actual') is not None else '전체'}: {100 * x['ds_fraction']:.1f} %"
+                                           for x in r.get("slices") or [])])
+    if r.get("control_space"):
+        rows.append(["control space", " · ".join(f"{k} {_g(v[0])}–{_g(v[1])}" if isinstance(v, list) else f"{k} {_g(v)}" for k, v in r["control_space"].items())])
+    if op:
+        rows.append(["최적 처방", " · ".join(f"{k} {_g(v)}" for k, v in op["actual"].items()) + f" (새 배치 통과확률 {op['joint']:.3f})"])
+    aux = r.get("aux") or {}
+    rows.append(["보조: 새 배치 통과확률", f"최대 {aux.get('max_joint', 0):.3f} · 0.9 이상 {100 * aux.get('joint_ge_09_fraction', 0):.1f} % — 판정에 쓰지 않음"])
+    _table(pdf, ["지표", "값"], rows, [48, 132], 8.0)
+    for nt in r.get("unexplained") or []:
+        _p(pdf, ("주의 · " if nt.get("level") == "warn" else "· ") + nt["text"], 8)
+    _p(pdf, "control space = 노랑 ∩ 실험 범위 격자(축마다 41점)에 들어가는 가장 넓은 축 정렬 직사각형(가로·세로 3칸 이상). 최적 처방 = control space 안에서 "
+            "실험 범위 경계로부터 0.1 coded 이상 떨어진 점 중 새 배치가 모든 목표를 만족할 확률(반응별 t 예측분포 통과확률의 곱, 독립 가정)이 가장 큰 점. "
+            "승인 불가는 평균 기준 영역이 없거나 control space를 만들 수 없을 때뿐이다.", 8)
     vp = (s.get("vplan") or {}).get("data") or {}
     plan = vp.get("plan") or {}
     if plan.get("points"):
@@ -343,11 +371,13 @@ def _space_sections(pdf, st: Dict[str, Any]) -> None:
             for n, pr in pt["predicted"].items():
                 rows.append([ROLE_KO.get(pt["role"], pt["role"]) if n == next(iter(pt["predicted"])) else "",
                              " · ".join(f"{_g(v)}" for v in pt["settings"].values()) if n == next(iter(pt["predicted"])) else "",
-                             n, pr["spec"], _g(round(pr["mean"], 3)), f"{_g(round(pr['pi_lower'], 3))}–{_g(round(pr['pi_upper'], 3))}" + (" *" if pr.get("pi_truncated") else "")])
-        _table(pdf, ["확인점", "설정(" + " · ".join((r.get("setpoint") or {}).get("actual", {}).keys()) + ")", "반응", "규격", "예측 평균", "예측구간"],
+                             n + (" †" if pr.get("unexplained") else ""), pr["spec"], _g(round(pr["mean"], 3)) if pr.get("mean") is not None else "",
+                             (f"{_g(round(pr['pi_lower'], 3))}–{_g(round(pr['pi_upper'], 3))}" + (" *" if pr.get("pi_truncated") else "")) if pr.get("pi_lower") is not None else ""])
+        _table(pdf, ["확인점", "설정(" + " · ".join((r.get("optimum") or {}).get("actual", {}).keys()) + ")", "반응", "규격", "예측 평균", "예측구간"],
                rows, [26, 40, 30, 26, 26, 32], 7.6)
-        _p(pdf, f"예측구간: {pol.get('comparisons')}개 비교(필수 확인점 3 × 규격 반응)의 Bonferroni 동시구간, 개별 수준 {100 * pol.get('per_comparison_level', 0):.2f} %. "
-                "* 하한이 음수라 0에서 자름. 참고 배치는 결과가 이미 공개돼 승격·무효화 근거로 쓰지 않는다.", 8)
+        _p(pdf, f"예측구간: {pol.get('comparisons')}개 비교(필수 확인점 3 × 게이트 통과 반응)의 Bonferroni 동시구간, 개별 수준 {100 * pol.get('per_comparison_level', 0):.2f} %. "
+                "* 하한이 음수라 0에서 자름. † 요인으로 설명되지 않는 반응 — 목표만 판정(구간은 관측 평균의 95 % 예측구간, 참고). "
+                "참고 배치는 결과가 이미 공개돼 승격·무효화 근거로 쓰지 않는다.", 8)
     vd = (s.get("verify") or {}).get("data") or {}
     j = vd.get("judgement") or {}
     if j.get("rows") and any(x.get("observed") is not None for x in j["rows"]):
@@ -355,7 +385,8 @@ def _space_sections(pdf, st: Dict[str, Any]) -> None:
         _table(pdf, ["확인점", "반응", "실측", "예측구간", "규격", "판정"],
                [[ROLE_KO.get(x["role"], x["role"]), x["response"], _g(x.get("observed")), f"{_g(round(x['pi'][0], 3))}–{_g(round(x['pi'][1], 3))}" if x.get("pi") else "",
                  "통과" if x.get("spec_pass") else ("실패" if x.get("spec_pass") is False else ""), {"PASS_IN": "통과 · 구간 안", "PASS_OUT": "통과 · 구간 밖",
-                 "FAIL_IN": "실패 · 구간 안", "FAIL_OUT": "실패 · 구간 밖"}.get(x.get("cell"), "")] for x in j["rows"]], [30, 30, 24, 34, 20, 42], 7.8)
+                 "FAIL_IN": "실패 · 구간 안", "FAIL_OUT": "실패 · 구간 밖", "PASS_NA": "통과(목표만)", "FAIL_NA": "실패(목표만)"}.get(x.get("cell"), "")]
+                for x in j["rows"]], [30, 30, 24, 34, 20, 42], 7.8)
         _p(pdf, f"결론: {VERDICT_KO.get(j.get('verdict'), j.get('verdict'))}. " + " ".join(j.get("advice") or []), 8.5)
 
 

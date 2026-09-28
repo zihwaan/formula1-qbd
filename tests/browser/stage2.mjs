@@ -1,5 +1,5 @@
-// 2단계(Design Space 도출) — CBD 논문 시연 카드로 15단계 중 13단계(Design Space)까지 클릭으로 걷는다. LLM 없이(논문 값) 돈다.
-// CBD는 논문 규격(경도 4–6 kgf 등)에서 미래 배치 공동확률 ≥ 0.90인 영역이 없어 13단계에서 멈추는 것이 정답이다(규격을 완화하지 않는다).
+// 2단계(Design Space 도출) — CBD 논문 시연 카드로 15단계 중 14단계(확인계획)까지 클릭으로 걷는다. LLM 없이(논문 값) 돈다.
+// 10단계 검증 게이트(경도만 통과 · 전부 불합격이면 승인 불가), 13단계 Overlay plot(평균 기준 영역 없음이면 승인 불가 · 논문 규격이면 control space로 승인).
 // 편집(행·열 추가/삭제, 붙여넣기), 승인 차단, 다시 열기(stale), 위험평가·최종 보고서 PDF, 반응 곡면 그림 첨부,
 // 데스크톱 1440과 휴대폰 390에서 가로 넘침 없음까지 본다.
 //   node tests/browser/stage2.mjs http://localhost:8104/ [스크린샷 폴더]
@@ -150,17 +150,24 @@ async function walk(page, label, { edits }) {
   check(`[${label}] → 회귀식`, await current(page) === 'regression');
   const coded = await page.locator('#s2 .s2-step.current .s2-reg', { hasText: 'Hardness' }).locator('.s2-eq code').first().textContent();
   check(`[${label}] Hardness coded 식 = Table 10`, /6\.04\d* \+ 1\.00\d*X1 \+ 0\.558\d*X2 \+ 0\.156\d*X3/.test(coded.replace(/\s+/g, ' ')), coded);
-  await act(page, 'use_reference');
-  check(`[${label}] 논문 모형(DT 2차 · 마손도 2FI) → 과적합 의심 표시`, await page.locator('#s2 .s2-step.current .s2-flag').count() >= 2);
+  // 10단계 검증 게이트 — 선택기 제안: 경도 선형 통과, 붕해시간·마손도는 평균까지 내려가 "요인으로 설명되지 않음"
+  const gateHead = (await page.locator('#s2 .s2-step.current .s2-gate-head').textContent()).replace(/\s+/g, ' ');
+  check(`[${label}] 게이트 통과 1 / 3 반응 표시`, /통과 1 \/ 3/.test(gateHead), gateHead.slice(0, 60));
+  check(`[${label}] DT · Friability = 요인으로 설명되지 않음(경고, 막지 않음)`, await page.locator('#s2 .s2-step.current .s2-reg.unexpl').count() === 2
+    && await page.locator('#s2 .s2-step.current .s2-checks li.warning', { hasText: 'REG_GATE_FAIL' }).count() === 2);
+  // 모든 회귀식이 게이트를 못 넘으면 승인 불가 — 경도를 과적합인 2차로 바꿔 본다
+  await page.locator('#s2 .s2-step.current .s2-reg[data-resp="Hardness"] [data-family]').selectOption('Quadratic');
   await act(page, 'approve');
-  check(`[${label}] 사유 없이 승인하면 막힘(REG_OVERFIT_REASON)`, await page.locator('#s2 .s2-step.current .s2-checks li.blocking', { hasText: 'REG_OVERFIT_REASON' }).count() === 1);
-  await page.fill('#s2 .s2-step.current [data-note]', '논문이 보고한 모형 차수를 그대로 비교하려고 수용');
+  check(`[${label}] 모든 반응이 게이트 불합격 → 승인 불가(REG_GATE_NONE)`, await current(page) === 'regression'
+    && await page.locator('#s2 .s2-step.current .s2-checks li.blocking', { hasText: 'REG_GATE_NONE' }).count() === 1);
+  await act(page, 'use_reference');
+  check(`[${label}] 논문 모형(경도 선형 · DT 2차 · 마손도 2FI) → 경도만 게이트 통과`, await page.locator('#s2 .s2-step.current .s2-reg:not(.unexpl)').count() === 1);
   await shot('10_regression');
   await act(page, 'approve');
   check(`[${label}] → 반응 곡면`, await current(page) === 'surface');
-  await page.waitForFunction(() => document.querySelectorAll('#s2-surf-box .rsg-plot').length >= 3 && [...document.querySelectorAll('#s2-surf-box .rsg-plot')].every((d) => d.querySelector('canvas, svg')), null, { timeout: 60000 });
+  await page.waitForFunction(() => document.querySelectorAll('#s2-surf-box .rsg-plot').length >= 3 && [...document.querySelectorAll('#s2-surf-box .rsg-plot')].every((d) => d.querySelector('canvas, svg')), null, { timeout: 60000 }).catch(() => {});
   const cells = await page.locator('#s2-surf-box .rsg-plot').count();
-  check(`[${label}] 곡면 격자(반응 3 × 단면 3)`, cells === 9, `${cells}칸`);
+  check(`[${label}] 곡면 격자(게이트 통과 경도 1 × 단면 3)`, cells === 3, `${cells}칸`);
   await shot('11_surface');
   await act(page, 'approve');
   await page.waitForFunction(() => document.querySelector('#s2 .s2-step.current')?.dataset.step === 'anova', null, { timeout: 60000 });
@@ -168,24 +175,37 @@ async function walk(page, label, { edits }) {
   const hard = page.locator('#s2 .s2-step.current .s2-reg', { hasText: 'Hardness' });
   const model = await hard.locator('tr', { hasText: 'Model' }).first().textContent();
   check(`[${label}] Hardness ANOVA Model SS 10.73 · p 0.0005`, /10\.73/.test(model) && /0\.0005/.test(model), model.replace(/\s+/g, ' '));
+  check(`[${label}] ANOVA — 요인으로 설명되지 않는 DT · Friability는 표 없이 문구`, await page.locator('#s2 .s2-step.current .s2-note', { hasText: '요인으로 설명되지 않음' }).count() === 2);
   await shot('12_anova');
   await act(page, 'approve');
   check(`[${label}] ANOVA 확인 → 13 Design Space`, await current(page) === 'space');
-  await act(page, 'use_reference');
-  const kpi = (await page.locator('#s2 .s2-kpis').textContent()).replace(/\s+/g, ' ');
-  check(`[${label}] 논문 규격 → 평균 기준 영역은 있지만 공동확률 ≥ 0.9는 0 %`, /≥ 0\.9\s*0\.0%/.test(kpi) && /47\.9%/.test(kpi), kpi.slice(0, 120));
+  // 13단계 — 평균 기준 영역 없음 → 승인 불가
+  await page.locator('#s2 .s2-step.current tr[data-resp="Hardness"] [data-k="op"]').selectOption('BETWEEN');
+  await page.fill('#s2 .s2-step.current tr[data-resp="Hardness"] [data-k="lower"]', '9');
+  await page.fill('#s2 .s2-step.current tr[data-resp="Hardness"] [data-k="upper"]', '10');
+  await act(page, 'save');
   await act(page, 'approve');
-  check(`[${label}] 영역 없음 → 승인 막힘(SPACE_EMPTY) · 규격 완화 안 함`, await current(page) === 'space'
-    && await page.locator('#s2 .s2-step.current .s2-checks li.blocking', { hasText: 'SPACE_EMPTY' }).count() === 1);
+  check(`[${label}] 평균 기준 영역 없음 → 승인 불가(SPACE_NO_MEAN_REGION)`, await current(page) === 'space'
+    && await page.locator('#s2 .s2-step.current .s2-checks li.blocking', { hasText: 'SPACE_NO_MEAN_REGION' }).count() === 1);
+  await act(page, 'use_reference');
+  const kpi = (await page.locator('#s2 .s2-step.current .s2-kpis').textContent()).replace(/\s+/g, ' ');
+  check(`[${label}] 논문 규격 → 단면별 평균 기준 영역 57.2 / 48.1 / 37.7 %`, /57\.2%/.test(kpi) && /48\.1%/.test(kpi) && /37\.7%/.test(kpi), kpi.slice(0, 160));
+  const cs = (await page.locator('#s2 .s2-step.current .s2-setpoint').textContent()).replace(/\s+/g, ' ');
+  check(`[${label}] control space Force 1250–1425 × MCC 30–44.5 @ CCS 3 · 최적 1312.5 / 35.5 / 3`, /1250–1425/.test(cs) && /30–44\.5/.test(cs) && /1312\.5/.test(cs) && /35\.5/.test(cs), cs.slice(0, 160));
+  await page.waitForFunction(() => { const i = document.querySelector('#s2 .s2-step.current .s2-overlay img'); return i && i.complete && i.naturalWidth > 300; }, null, { timeout: 60000 }).catch(() => {});
+  check(`[${label}] Overlay plot 그림(서버 SVG)`, await page.evaluate(() => { const i = document.querySelector('#s2 .s2-step.current .s2-overlay img'); return !!i && i.naturalWidth > 300; }));
+  check(`[${label}] 공동확률 < 0.9는 경고만(SPACE_AUX_LOW)`, await page.locator('#s2 .s2-step.current .s2-checks li.warning', { hasText: 'SPACE_AUX_LOW' }).count() === 1);
   await shot('13_space');
+  await act(page, 'approve');
+  check(`[${label}] 13단계 승인 → 14 확인계획`, await current(page) === 'vplan');
   const fin = await page.locator('#s2 .s2-links a', { hasText: '최종' }).getAttribute('href');
   const pdf = await page.request.get(new globalThis.URL(fin, URL).href);
   const body = await pdf.body();
-  check(`[${label}] 최종 보고서 PDF(곡면 그림 · 영역 결과 포함)`, pdf.ok() && body.slice(0, 4).toString() === '%PDF' && body.length > 150000, `${Math.round(body.length / 1024)} KB`);
+  check(`[${label}] 최종 보고서 PDF(곡면 그림 · Overlay plot 포함)`, pdf.ok() && body.slice(0, 4).toString() === '%PDF' && body.length > 150000, `${Math.round(body.length / 1024)} KB`);
   check(`[${label}] 가로 넘침 없음`, await overflow(page) <= 1, `${await overflow(page)}px`);
 }
 
-console.log('\n[데스크톱 1440] CBD 1–13단계 + 편집·차단');
+console.log('\n[데스크톱 1440] CBD 1–14단계 + 편집·차단');
 {
   const { ctx, page, errors } = await open(1440, 950);
   check('처음 화면 — 가운데 입력칸', await page.locator('#hello #agent-input').count() === 1);
@@ -214,7 +234,7 @@ console.log('\n[데스크톱 1440] CBD 1–13단계 + 편집·차단');
   await ctx.close();
 }
 
-console.log('\n[휴대폰 390] CBD 1–13단계');
+console.log('\n[휴대폰 390] CBD 1–14단계');
 {
   const { ctx, page, errors } = await open(390, 844);
   check('390 — 처음 화면 넘침 없음', await overflow(page) <= 1);
