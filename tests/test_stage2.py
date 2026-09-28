@@ -314,3 +314,28 @@ def test_candidates_are_high_only_and_low_dose_warning():
     ctx = {"cqa": REF.step("cqa"), "prototype": REF.prototype()}          # CBD 10/250 mg = 4 % < 5 %
     codes = {c["code"] for c in check("fp_just", REF.step("fp_just"), ctx)}
     assert "RISK_LOW_DOSE" in codes                                      # 논문 Table 8에는 혼합 공정 변수가 없다 — 경고로 알린다
+
+
+def test_step9_paper_fill_buttons_use_real_cited_tables(svc):
+    """9단계 '논문 값 채우기' — 슬라이드 9(Monton 2026 Table 9)·발표 10쪽(Almotairi 2022 Table 3)의 실제 표만, 출처와 함께."""
+    from formula.stage2 import paper_designs as PD
+    sid = cbd(svc)
+    opts = svc.view(sid)["paper_designs"]
+    assert [o["key"] for o in opts][0] == "monton2026_t9" and opts[0]["match"]            # CBD study면 CBD 표가 앞
+    with pytest.raises(StudyError):
+        svc.act(sid, "use_paper", {"paper": "almotairi2022_t3"})                          # 9단계에서만
+    walk(svc, sid, upto="design")
+    with pytest.raises(StudyError):
+        svc.act(sid, "use_paper", {"paper": "made_up"})
+    out = svc.act(sid, "use_paper", {"paper": "monton2026_t9"})
+    d = out["study"]["steps"]["design"]
+    assert d["source"] == "paper" and d["data"]["rows"] == REF.design()["rows"] and d["data"]["paper"]["locator"] == "Table 9"
+    out = svc.act(sid, "use_paper", {"paper": "almotairi2022_t3"})
+    d = out["study"]["steps"]["design"]["data"]
+    assert len(d["rows"]) == 15 and [f["name"] for f in d["factors"]] == ["MCC:Mannitol ratio", "Mixing time", "Crospovidone"]
+    assert [r["name"] for r in d["responses"]] == ["Dispersion time", "Friability", "DE30", "AV"] and d["rows"][0]["y"] == [11, 0.7, 75.3, 14.82]
+    assert "Almotairi" in d["paper"]["citation"] and not out["action_result"]["blocking"]
+    out = svc.act(sid, "approve", {})
+    fams = {r["response"]: r["suggested"] for r in out["study"]["steps"]["regression"]["data"]["responses"]}
+    assert fams == {"Dispersion time": "Quadratic", "Friability": "Linear", "DE30": "Quadratic", "AV": "Quadratic"}   # 발표 10쪽과 같은 제안 모형
+    assert PD.options("Lornoxicam")[0]["key"] == "almotairi2022_t3"

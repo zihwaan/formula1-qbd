@@ -21,13 +21,14 @@ import numpy as np
 
 from formula.stage2 import agent as AG
 from formula.stage2 import doe as T
+from formula.stage2 import paper_designs as PD
 from formula.stage2 import reference as REF
 from formula.stage2 import space as SP
 from formula.stage2.model import (DERIVED, EDITABLE, LLM_STEPS, MAX_FACTORS, MAX_RESPONSES, STEPS, TABLE, TITLE,
                                   candidates, check, material_controls, matrix_of, numbers_not_in, risk_cqas, watch_list)
 from formula.stage2.store import StudyError, StudyStore, VersionConflict
 
-ACTIONS = ("run", "draft", "use_reference", "save", "approve", "reopen", "attach_images")
+ACTIONS = ("run", "draft", "use_reference", "use_paper", "save", "approve", "reopen", "attach_images")
 MAX_IMAGE_BYTES = 900_000
 
 
@@ -90,7 +91,8 @@ class Stage2Service:
         return {"study": st, "current": st["status"], "done": st["status"] == "done",
                 "steps": [{"key": s, "n": i + 1, "title": TITLE[s], "table": TABLE.get(s), "status": st["steps"][s]["status"],
                            "editable": s in EDITABLE, "derived": s in DERIVED, "llm": s in LLM_STEPS} for i, s in enumerate(STEPS)],
-                "reference": ref, "reference_citation": REF.citation() if ref else None}
+                "reference": ref, "reference_citation": REF.citation() if ref else None,
+                "paper_designs": PD.options(((st["steps"]["prototype"]["data"] or {}).get("api")))}
 
     def list(self, limit: int = 30) -> List[Dict[str, Any]]:
         return self.store.list(limit)
@@ -278,6 +280,16 @@ class Stage2Service:
         checks = self._set(st, step, data, source="paper", actor=actor)
         return {"blocking": [c["code"] for c in checks if c["level"] == "blocking"]}
 
+    def _use_paper(self, st, step, p, actor):
+        """9단계 시연용 — 출처가 붙은 논문 실측 설계 표로 표 전체를 채운다(어느 study에서나). 값은 paper_designs의 실제 표뿐이다."""
+        if step != "design":
+            raise StudyError("논문 실측값 채우기는 9단계(실험 설계 입력)에서만 씁니다.", status=409)
+        data = PD.design(str(p.get("paper") or ""))
+        if data is None:
+            raise StudyError(f"알 수 없는 논문 표입니다: {p.get('paper')}", status=422)
+        checks = self._set(st, step, data, source="paper", actor=actor)
+        return {"paper": data["paper"]["key"], "blocking": [c["code"] for c in checks if c["level"] == "blocking"]}
+
     def _save(self, st, step, p, actor):
         if step not in EDITABLE:
             raise StudyError(f"'{TITLE[step]}'는 앞 단계에서 코드가 만든 정리입니다 — 고치려면 앞 단계를 다시 여세요.", status=409)
@@ -298,6 +310,9 @@ class Stage2Service:
             norm = self._verify(self._ctx(st), data.get("observations") or [], bool(data.get("independent")), data.get("batches") or {})
         else:
             norm = _normalize(step, data)
+            old = st["steps"][step]["data"] or {}
+            if step == "design" and old.get("paper"):          # 논문 실측값을 고친 판 — 출처는 남기고 source가 '논문 값+연구자'가 된다
+                norm["paper"] = old["paper"]
         checks = self._set(st, step, norm, source="user", actor=actor)
         return {"blocking": [c["code"] for c in checks if c["level"] == "blocking"]}
 

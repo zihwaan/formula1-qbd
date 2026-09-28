@@ -156,6 +156,14 @@
 
 .s2-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .s2-risk-pdf { align-items: center; margin-top: 10px; }
+.s2-checks li.s2-more { background: none; padding: 0; }
+.s2-checks li.s2-more > details > summary { cursor: pointer; font-size: 12px; color: var(--ink-2); padding: 4px 2px; }
+.s2-checks li.s2-more .s2-checks { margin-top: 6px; }
+.s2-paper-fill { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 12.5px; }
+.s2-paper-fill > span { color: var(--ink-2); font-weight: 650; margin-right: 2px; }
+.s2-paper-fill small { opacity: .75; font-weight: 500; }
+.s2-paper-fill button.primary { background: var(--primary); color: var(--on-primary); border-color: transparent; }
+.s2-paper-fill button.primary:hover:not(:disabled) { background: var(--primary-press); }
 .s2-risk-pdf .s2-muted { font-size: 12px; }
 .s2-file {
   display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius-pill); text-decoration: none;

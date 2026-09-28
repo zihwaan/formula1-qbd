@@ -210,9 +210,14 @@
     return {};
   }
 
+  // 검사 결과 — 승인 불가를 먼저, 3건까지 펼치고 나머지는 "외 N건"으로 접는다(빈 설계 표처럼 항목이 많을 때 카드가 빨간 줄로 뒤덮이지 않게)
   function checks(list) {
     if (!list || !list.length) return "";
-    return `<ul class="s2-checks">${list.map((c) => `<li class="${E(c.level)}"><b>${c.level === "blocking" ? "승인 불가" : "주의"}</b> ${E(c.message)} <code>${E(c.code)}</code></li>`).join("")}</ul>`;
+    const li = (c) => `<li class="${E(c.level)}"><b>${c.level === "blocking" ? "승인 불가" : "주의"}</b> ${E(c.message)} <code>${E(c.code)}</code></li>`;
+    const sorted = [...list].sort((a, b) => (a.level === "blocking" ? 0 : 1) - (b.level === "blocking" ? 0 : 1));
+    const head = sorted.slice(0, 3), rest = sorted.slice(3);
+    return `<ul class="s2-checks">${head.map(li).join("")}${rest.length ? `<li class="s2-more"><details><summary>검사 항목 ${rest.length}건 더 보기</summary>
+      <ul class="s2-checks">${rest.map(li).join("")}</ul></details></li>` : ""}</ul>`;
   }
 
   function actions(meta, s) {
@@ -220,7 +225,7 @@
     const dis = busy ? "disabled" : "";
     if (k === "prototype") b.push(`<button type="button" class="primary" data-act="run" ${dis}>실행</button>`);
     if (meta.llm) b.push(`<button type="button" data-act="draft" ${dis}>${s.data ? "LLM 초안 다시 받기" : "LLM 초안 받기"}</button>`);
-    if (V.study.reference && ["qtpp", "cqa", "rm_just", "fp_just", "design", "regression", "space", "vplan"].includes(k))
+    if (V.study.reference && ["qtpp", "cqa", "rm_just", "fp_just", "regression", "space", "vplan"].includes(k))   // 9단계는 표 위 '논문 실측값으로 채우기'가 맡는다
       b.push(`<button type="button" class="ghost" data-act="use_reference" ${dis}>논문 값으로 채우기</button>`);
     if (meta.editable && k !== "prototype") b.push(`<button type="button" class="ghost" data-act="save" ${dis}>저장</button>`);
     if (k !== "prototype") {
@@ -382,12 +387,18 @@
     const F = d.factors || [], R = d.responses || [];
     // 요인은 연구자가 정한다 — 8단계 종합 정리의 High 변수는 이름 입력칸의 제안 목록으로만 보인다
     const hints = ((V.study.steps.recommend || {}).data || {}).candidates || [];
+    // 시연용 — 출처가 붙은 논문 실측 설계 표로 한 번에 채운다(같은 약물 표가 앞 · 검은 버튼)
+    const papers = V.paper_designs || [];
+    const filled = (d.rows || []).some((r) => (r.x || []).concat(r.y || []).some((v) => v !== null && v !== undefined && v !== ""));
     const colHead = (x, kind, i) => ro ? `<th class="${kind}">${E(x.name)}${x.unit ? `<small>${E(x.unit)}</small>` : ""}</th>`
       : `<th class="${kind}"><div class="s2-colh"><input data-col="${kind}" data-i="${i}" data-k="name" value="${E(x.name)}" placeholder="${kind === "f" ? "요인" : "반응"} 이름" ${kind === "f" ? 'list="s2-factor-hints"' : ""} aria-label="${kind === "f" ? "요인" : "반응"} ${i + 1} 이름">
         <button type="button" class="icon-btn" data-col-del="${kind}" data-i="${i}" aria-label="열 삭제" ${(kind === "f" ? F : R).length <= 1 ? "disabled" : ""}>✕</button>
         <input data-col="${kind}" data-i="${i}" data-k="unit" value="${E(x.unit)}" placeholder="단위" class="unit" aria-label="단위"></div></th>`;
     const cellI = (v, a) => ro ? `<td class="n">${E(v ?? "")}</td>` : `<td class="n"><input ${a} value="${E(v ?? "")}" inputmode="decimal"></td>`;
-    return `<div class="s2-scroll"><table class="s2-t design" data-rows="rows"><thead>
+    return `${ro || !papers.length ? "" : `<div class="s2-paper-fill"><span>논문 실측값으로 채우기</span>${papers.map((o) =>
+        `<button type="button" class="${o.match ? "primary" : "ghost"} sm" data-act="use_paper" data-paper="${E(o.key)}"
+          title="${E(o.label)} 실측값 ${E(o.runs)} run으로 표 전체(요인·반응·행)를 바꿉니다${o.match ? "" : " — 다른 약물의 논문 표(시연용)"}">${E(o.label)} <small>${E(o.runs)} run</small></button>`).join("")}</div>`}
+      <div class="s2-scroll"><table class="s2-t design" data-rows="rows"><thead>
         <tr><th rowspan="2">Std</th><th rowspan="2">Run</th><th colspan="${F.length + (ro ? 0 : 1)}" class="grp">요인 (Factors)</th><th colspan="${R.length + (ro ? 0 : 1)}" class="grp">반응 (Responses)</th>${ro ? "" : "<th rowspan=\"2\"></th>"}</tr>
         <tr>${F.map((x, i) => colHead(x, "f", i)).join("")}${ro ? "" : `<th class="add"><button type="button" class="ghost sm" data-col-add="f" ${F.length >= 3 ? "disabled" : ""} aria-label="요인 추가">+</button></th>`}
           ${R.map((x, i) => colHead(x, "r", i)).join("")}${ro ? "" : `<th class="add"><button type="button" class="ghost sm" data-col-add="r" ${R.length >= 4 ? "disabled" : ""} aria-label="반응 추가">+</button></th>`}</tr></thead>
@@ -396,7 +407,7 @@
         ${R.map((_, i) => cellI((r.y || [])[i], `data-y="${i}"`)).join("")}${ro ? "" : "<td></td>"}${del(ro)}</tr>`).join("")}</tbody>
       ${ro ? "" : `<tfoot><tr><td colspan="${F.length + R.length + 5}"><button type="button" class="ghost sm" data-row-add="rows">+ 행</button>
         <button type="button" class="ghost sm" data-rows-add5>+ 5행</button></td></tr></tfoot>`}</table></div>
-      ${ro ? "" : `<details class="s2-paste" open><summary>CSV 파일 · 엑셀 붙여넣기로 채우기</summary>
+      ${ro ? "" : `<details class="s2-paste" ${filled ? "" : "open"}><summary>CSV 파일 · 엑셀 붙여넣기로 채우기</summary>
         <p class="s2-muted">첫 줄은 머리글(Std · Run · 요인 · 반응). 머리글 앞에 <code>X:</code>(요인) · <code>Y:</code>(반응)를 붙이거나 아래에서 열마다 역할을 고릅니다.
           단위는 머리글 끝 괄호로 적습니다(예: <code>Y: Friability (%)</code>). <code>#</code>로 시작하는 줄은 설명으로 건너뜁니다. 표 전체(요인·반응·행)를 바꿉니다.</p>
         <div class="s2-import"><label class="s2-file-in">CSV 파일 고르기 <input type="file" accept=".csv,.tsv,.txt,text/csv" data-csv-file></label>
@@ -838,7 +849,7 @@
   }
 
   const BUSY = { draft: "LLM이 초안을 쓰는 중… (위험평가는 1분 이상 걸릴 수 있습니다)", approve: "검사하고 다음 단계를 준비하는 중…", run: "시작하는 중…",
-    use_reference: "논문 값을 채우는 중…", save: "저장하는 중…", reopen: "다시 여는 중…" };
+    use_reference: "논문 값을 채우는 중…", use_paper: "논문 실측값을 채우는 중…", save: "저장하는 중…", reopen: "다시 여는 중…" };
 
   async function act(action, btn) {
     if (busy) return;
@@ -864,7 +875,7 @@
         }
       } else {
         if (action === "approve" && k === "surface") await attachImages();
-        v = await post(action, { step: k, note: action === "approve" ? noteOf(box) : undefined });
+        v = await post(action, { step: k, note: action === "approve" ? noteOf(box) : undefined, paper: action === "use_paper" ? btn.dataset.paper : undefined });
       }
       V = v;
       busy = false;
@@ -874,6 +885,7 @@
       else if (action === "draft") out(`${r.provider ? `${r.provider}로 ` : ""}초안을 만들었습니다 — 확인하고 고친 뒤 승인하세요.${r.blocking && r.blocking.length ? " (승인 전에 고칠 항목이 있습니다)" : ""}`);
       else if (action === "save") out("저장했습니다.");
       else if (action === "use_reference") out("논문 값으로 채웠습니다.");
+      else if (action === "use_paper") out(`${label.replace("논문 값 채우기 · ", "")} 실측값으로 채웠습니다 — 확인하고 승인하세요.`);
       if (V.done) done();
       document.dispatchEvent(new CustomEvent("f1:stage2", { detail: { id: V.study.study_id, step: V.current } }));
     } catch (e) {

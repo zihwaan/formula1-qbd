@@ -32,8 +32,9 @@ const overflow = (page) => page.evaluate(() => {
   return Math.max(document.documentElement.scrollWidth - innerWidth, t.scrollWidth - t.clientWidth);
 });
 
-async function act(page, name) {
-  const btn = page.locator(`#s2 .s2-step.current [data-act="${name}"]`);
+async function act(page, name) { return actSel(page, `[data-act="${name}"]`, name); }
+async function actSel(page, sel, name = '') {
+  const btn = page.locator(`#s2 .s2-step.current ${sel}`);
   const resp = page.waitForResponse((r) => r.url().includes('/api/stage2/studies/') && r.request().method() === 'POST' && r.url().includes(`/actions/`), { timeout: 60000 });
   await btn.click();
   const r = await resp;
@@ -131,7 +132,14 @@ async function walk(page, label, { edits }) {
     await act(page, 'save');
     check(`[${label}] 빈 표 저장 → 승인 불가 표시`, await page.locator('#s2 .s2-step.current .s2-checks li.blocking').count() > 0);
   }
-  await act(page, 'use_reference');
+  // 9단계 시연 버튼 — 표 위 '논문 실측값으로 채우기': CBD Table 9(슬라이드 9 · 이 study 약물이라 앞 · 검은 버튼)와 로르녹시캄 Table 3(발표 10쪽)
+  const paperKeys = await page.$$eval('#s2 .s2-step.current .s2-paper-fill [data-act="use_paper"]', (b) => b.map((x) => `${x.dataset.paper}:${x.classList.contains('primary') ? 'p' : 'g'}`));
+  check(`[${label}] 논문 실측값 버튼 = CBD Table 9(앞·강조) · 로르녹시캄 Table 3, 표 위에`, paperKeys.join(',') === 'monton2026_t9:p,almotairi2022_t3:g', paperKeys.join(','));
+  check(`[${label}] 9단계 아래 중복 '논문 값으로 채우기' 없음`, await page.locator('#s2 .s2-step.current .s2-actions [data-act="use_reference"]').count() === 0);
+  await actSel(page, '[data-act="use_paper"][data-paper="almotairi2022_t3"]');
+  check(`[${label}] 로르녹시캄 Table 3 = 15 run × 요인 3 × 반응 4 · 출처 표시`, await page.locator('#s2 .s2-step.current [data-edit] table[data-rows="rows"] tbody tr').count() === 15
+    && await heads('f') === 3 && await heads('r') === 4 && /Almotairi/.test(await page.locator('#s2 .s2-step.current .s2-note').textContent()));
+  await actSel(page, '[data-act="use_paper"][data-paper="monton2026_t9"]');
   check(`[${label}] 논문 Table 9 = 17 run × 요인 3 × 반응 3`, await page.locator('#s2 .s2-step.current [data-edit] table[data-rows="rows"] tbody tr').count() === 17
     && await heads('f') === 3 && await heads('r') === 3);
   await shot('09_design');

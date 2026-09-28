@@ -95,6 +95,8 @@ await act('approve');
 
 console.log('\n[2단계] 9 실험 설계 — CSV 불러오기');
 check('실험 설계 단계', await cur() === 'design', await cur());
+const paperBtns = await page.$$eval('#s2 .s2-step.current [data-act="use_paper"]', (b) => b.map((x) => x.dataset.paper));
+check('논문 값 채우기 버튼 — 이 약물(로르녹시캄) 표가 맨 앞', paperBtns[0] === 'almotairi2022_t3', paperBtns.join(','));
 const csvResp = await page.request.get(new globalThis.URL('static/data/almotairi2022_table3.csv', URL).href);
 const tmp = path.join(os.tmpdir(), `almotairi2022_table3_${Date.now()}.csv`);
 fs.writeFileSync(tmp, await csvResp.body());

@@ -74,6 +74,9 @@ def _meta(pdf, st, step):
     src = SRC_KO.get(s["source"], s["source"])
     if (st.get("origin") or {}).get("kind") == "cbd_paper" and str(s["source"] or "").startswith("upstream"):
         src = src.replace("1단계 후보 처방", "논문 Table 1").replace("1단계 처방", "논문 Table 1")     # 논문 프로토타입으로 시작한 study
+    paper = (s.get("data") or {}).get("paper") if isinstance(s.get("data"), dict) else None
+    if paper:                                         # 9단계 논문 실측값 채우기 — 어느 논문의 몇 번 표인지
+        src += f" — {paper.get('citation')} {paper.get('locator') or ''}".rstrip()
     pdf.multi_cell(0, 4, f"출처: {src}{llm} · v{s['version']} · {who}", new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0)
     pdf.ln(2)
