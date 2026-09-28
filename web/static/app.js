@@ -554,8 +554,10 @@ function setRunning(on) {
   else stopElapsed();
 }
 
+let lastStatus = null;         // 마지막 설계의 종결 상태 — flow.js가 카드 순서를 정할 때 쓴다(제약 불가능이면 결론부터)
 function finishRun(summary) {
   if (!running) return;
+  lastStatus = summary ? summary.status : "error";
   setRunning(false);
   if (summary && summary.status === "error") {
     notice("실행이 오류로 끝났습니다. 트레이스를 확인해 주세요.", "error", true);
@@ -605,7 +607,7 @@ function startRunWith(p) {
   return true;
 }
 window.F1Discovery = { startRunWith, submitMeasurements: (m, g) => submitMeasurements(m, g || "user_statement", "agent"),
-  runId: () => runId, running: () => running, pending: () => pendingRequests.length };
+  runId: () => runId, running: () => running, pending: () => pendingRequests.length, status: () => lastStatus };
 
 function resetView() {
   candidates.clear(); tokenBuffers.clear(); degraded.clear();
@@ -827,6 +829,11 @@ function renderDataRequests(requests, planSignature, groups) {
   // 같은 시험을 가리키는 요청은 서버가 하나로 합치고(시료 적은 순 정렬) groups로 보낸다
   const list = groups || [];
   if (!pendingRequests.length || !list.length) {
+    // 대화에 이미 놓인 카드는 사라지지 않게 — 요청이 모두 풀렸거나 건너뛰었다는 결과를 그 자리에 남긴다
+    if (panel.closest("#agent-log") && body.innerHTML) {
+      body.innerHTML = `<div class="drq-done">남은 데이터 요청이 없습니다 — 제출한 값으로 풀렸거나, 건너뛴 요청은 예측값으로 계속합니다(해당 후보는 provisional).</div><div id="drq-out"></div>`;
+      return;
+    }
     panel.hidden = true;
     body.innerHTML = "";
     return;
@@ -1205,55 +1212,54 @@ function narrateEvent(kind, ev, p) {
    버튼을 누르면 곧바로 실행되고, 위 해설이 실행에 맞춰 흐른다.
    각 시나리오가 실제로 어떤 경로를 밟는지 측정해서 고른 조합이다. */
 const SCENARIOS = [
+  // 발표 자료의 시연 시나리오 ①②③ + 2단계 CBD. 요청 문장·값은 약학 담당의 시연 쿼리 카드 그대로이고,
+  // 각 카드가 실제로 어떤 경로를 밟는지는 scripts/report/demo_cards.py(대회 API)와 tests/browser/scenarios.mjs가 확인한다.
   {
-    id: "guardrail",
-    title: "규칙이 AI를 막는 순간",
-    proves: "검증 계층 · 근거 추적",
-    request: "소아용 플루옥세틴 정제를 설계해줘",
+    id: "lornoxicam",
+    title: "로르녹시캄 분산정 — 요청부터 Design Space까지",
+    proves: "전체 파이프라인 · 시연 ①",
+    request: "성인용 로르녹시캄 8 mg 분산정을 설계해 줘. 물에 분산시켜 복용하고, 직접타정으로 만들고 싶어. MCC, 만니톨, 크로스포비돈은 반드시 넣어 줘.",
+    smiles: "CN1C(=C(C2=C(S1(=O)=O)C=C(S2)Cl)O)C(=O)NC3=CC=CC=N3",
+    pinned: "Microcrystalline cellulose, Mannitol, Crospovidone",
+    measuredParams: { dose_mg: 8, angle_of_repose: 42, compressibility_index: 22, hausner_ratio: 1.28 },
+    duration: "약 3분",
+    next: "lornoxicam",
+    goal: `유동성 실측(안식각 42° · Carr 22 % · Hausner 1.28)으로 USP &lt;1174&gt; 흐름성을 판정해 <b>직접타정을 유지</b>합니다(48°면 직접타정 배제).
+      후보가 나오면 연구자가 <b>이 후보로 개발 착수</b>를 눌러 2단계로 갑니다 — 저함량(8/250 mg ≈ 3.2 %)이라 혼합 시간 × 함량균일성 위험이 High로
+      잡히고, 9단계에서 Almotairi 2022 Table 3(실측 15 run) CSV를 불러오면 <b>평균 기준 77.2 % → 공동확률 47.6 %</b> 영역과 설정점이 나옵니다.`,
+  },
+  {
+    id: "amlodipine",
+    title: "고령자용 암로디핀 2.5 mg — 유당을 고정하면?",
+    proves: "잘못된 처방 거르기 · 시연 ②",
+    request: "고령자용 암로디핀 2.5 mg 정제를 설계해 줘. 원가 때문에 유당은 반드시 넣어야 해.",
+    smiles: "CCOC(=O)C1=C(COCCN)NC(C)=C(C1c1ccccc1Cl)C(=O)OC.OS(=O)(=O)c1ccccc1",
     pinned: "Lactose monohydrate",
-    measuredParams: { dose_mg: 10 },   // PROZAC 라벨의 소아 시작 용량 10 mg
+    measuredParams: { dose_mg: 2.5 },
     duration: "약 30초",
-    goal: `현장 제약으로 <b>유당을 반드시 쓰라</b>고 못 박았습니다. 설계 AI는 제약을 지키고,
-      룰북이 <code>INC002</code>(2차 아민 + 유당 → Maillard 반응)로 막습니다.
-      재설계로 풀리지 않는 충돌이라 시스템은 루프를 돌리지 않고
-      <b>“이 제약으로는 통과가 없다”</b>는 결론과 대체 부형제를 냅니다.`,
+    goal: `베실산염을 벗긴 parent에서 <b>1차 아민</b>을 찾고, 유당(+ Mg stearate · 수분) 금기가 발동합니다. 반려 사유가 사용자가 고정한
+      유당이라 재설계 루프를 돌지 않고 <b>“이 제약으로는 통과 처방 없음”</b>과 대체 부형제를 냅니다. 용량은 유리염기 2.5 mg으로 처리합니다.`,
   },
   {
-    id: "team",
-    title: "요청에 따라 팀이 바뀐다",
-    proves: "자기조직형 멀티 에이전트",
-    request: "소아용 바나나향 아세트아미노펜 정제를 설계해줘",
+    id: "vx770",
+    title: "개발코드 VX-770 — 구조식만 있는 신규물질",
+    proves: "Cold start · 시연 ③",
+    request: "신규 후보물질 VX-770의 성인용 경구 정제 제형 전략을 세워 줘. 1회 150 mg이고, 구조식만 있고 실측 자료는 거의 없어.",
+    smiles: "CC(C)(C)C1=CC(=C(C=C1NC(=O)C2=CNC3=CC=CC=C3C2=O)O)C(C)(C)C",
     pinned: "",
-    measuredParams: { dose_mg: 160 },  // 소아용 아세트아미노펜 씹는정 1정 강도 160 mg
-    duration: "약 1분",
-    goal: `대상이 <b>소아</b>라서 소아 안전 심사관(REV001)이 그 자리에서 생성되고, 고령자 심사관은
-      <b>만들어지지 않습니다</b>. 나머지 심사관은 설계된 후보에 따라 달라집니다 — 예를 들어 룰북 밖
-      성분 조합이 나오면 문헌 조사 심사관이 들어옵니다. 누가 왜 소집됐는지는 실행 중 해설과 그래프에
-      조건식과 함께 뜹니다. 심사 점수는 검증된 인용(DOI/PMID)이 있어야 합의에 들어갑니다.`,
-  },
-  {
-    id: "labloop",
-    title: "값을 몰라도 후보부터, 갈리는 지점만 되묻는다",
-    proves: "비차단 데이터 요청 (lab-in-the-loop)",
-    // 이 시나리오의 요점은 데이터 요청 루프라 설계 단계는 가볍게 둔다 —
-    // 심사관이 많이 소집되면 무료 티어 토큰이 설계에서 다 소모된다.
-    request: "성인용 이부프로펜 정제를 설계해줘",
-    pinned: "",
-    measuredParams: { dose_mg: 200 },
+    measuredParams: { dose_mg: 150 },
     duration: "약 1분",
     autoLab: true,
-    goal: `설계가 끝나면 RDKit이 계산 가능한 값(D0·SLAD·logS 등)을 전부 채우고, BCS/DCS·
-      고체상·가용화 전략 신호를 판정해 <b>후보를 먼저 냅니다</b> — 값이 없다고 멈추지
-      않습니다. 판정이 실제로 갈리는 지점(예: 이온화하는 약이라 pH별 용해도를 모름)에서만 오른쪽
-      <b>데이터 요청</b> 패널에 구체적 실측을 요청합니다. 가진 측정값을 넣어 제출하면
-      그래프를 다시 돌리지 않고 <b>그 자리에서 재계산</b>해, 남은 요청이 줄고 후보의
-      신뢰도 태그(<code>grounded</code>/<code>provisional</code>)가 갱신됩니다.
-      시스템은 측정값을 대신 채우지 않습니다.`,
+    next: "vx770",
+    // 시연 카드의 측정 문장(Biomedicines 2023;11(5):1281의 Tm · 용해도) — 입력칸에 넣어 두기만 하고, 보내기는 발표자가 누른다
+    followUp: "DSC 측정 결과: Tm 317 도. 실험 용해도는 0.00005 mg/mL.",
+    goal: `값이 거의 없어도 <b>후보부터</b> 냅니다(BCS는 ‘미확정’). Tm을 모르면 용융압출(HME)과 분무건조(SDD)를 가를 수 없어
+      <b>DSC만</b> 요청합니다. 측정 문장을 보내면 그래프를 다시 돌리지 않고 재계산해 ASD · 분무건조가 계획에 들어옵니다. 출력에는 개발코드만 씁니다.`,
   },
   {
     id: "stage2",
-    title: "후보 이후 — QTPP부터 ANOVA까지(CBD 구강붕해정)",
-    proves: "2단계 · Design Space 도출",
+    title: "2단계 — QTPP부터 Design Space까지(CBD 구강붕해정)",
+    proves: "2단계 · 논문 표와 나란히",
     duration: "단계마다 승인",
     stage2: true,
   },
@@ -1283,6 +1289,7 @@ function buildScenarios() {
       }
       activeScenario = scenario;
       $("request").value = scenario.request;
+      $("smiles").value = scenario.smiles || "";
       $("pinned").value = scenario.pinned;
       // phase_gates가 dose_mg 없이는 dose_solubility_volume 계열을 못 채워 narrows_strategy
       // 요청이 비어 버린다 — labloop 시나리오는 이 값이 있어야 데이터 요청 패널이 실제로 뜬다.
@@ -1307,6 +1314,23 @@ function buildScenarios() {
 
 /* 시나리오 3 마무리 — 설계가 끝나면 데이터 요청 패널로 안내한다. 값은 연구자가 넣는다. */
 async function continueScenario() {
+  if (activeScenario && activeScenario.next === "lornoxicam") {
+    narrate("lx-next", {
+      layer: "다음 단계 — 연구자 선택", kind: "det",
+      title: "후보를 골라 2단계로 — 9단계에서 논문 실측 15 run을 불러온다",
+      body: `후보 카드의 <b>이 후보로 개발 착수</b>를 누르면 조성·공정과 요청 맥락이 불변 Handoff로 넘어가 2단계가 열립니다(1위 자동 진입 없음).
+        9단계 <b>CSV 파일 · 엑셀 붙여넣기로 채우기</b>에서 <b>실데이터 예: Almotairi 2022 Table 3</b>을 받아 불러오면 13단계에서 공동확률 Design Space가 계산됩니다.
+        <span class="nr-why">왜 중요한가: 평균 반응면만 보면 영역을 약 1.6배 과대평가합니다 — 미래 배치의 예측분포로 봐야 합니다.</span>`,
+    });
+  }
+  if (activeScenario && activeScenario.followUp && window.F1Agent) {
+    const inp = document.getElementById("agent-input");
+    if (inp && !inp.value) {
+      inp.value = activeScenario.followUp;
+      inp.dispatchEvent(new Event("input"));
+      notice("시연 카드의 측정 문장을 입력칸에 넣어 두었습니다 — 보내면 측정값 제출 카드가 됩니다(값은 시연 쿼리 카드의 문헌값).", "info");
+    }
+  }
   if (!activeScenario || !activeScenario.autoLab) return;
   if (!pendingRequests.length) return;
 

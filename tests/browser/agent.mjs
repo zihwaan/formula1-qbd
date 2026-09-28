@@ -50,7 +50,7 @@ check('준비된 카드', !(await card.evaluate((c) => c.classList.contains('inc
 check('구조 출처가 표시됨', /내장 구조 사전|PubChem/.test(await card.innerText()));
 check('용량 200 mg', (await card.innerText()).includes('200 mg'));
 
-check('첫 메시지 뒤 입력칸이 아래로 내려감', await page.evaluate(() => !!document.querySelector('#dock-inner #agent-form') && !document.getElementById('hello')));
+check('첫 메시지 뒤 입력 에이전트가 아래로 내려가고, 히어로·시연 카드는 맨 위에 남음', await page.evaluate(() => !!document.querySelector('#dock-inner #agent-box #agent-form') && !!document.querySelector('#hello .scenario')));
 check('설계 실행 카드 밑에 "실험 데이터값을 입력하시겠습니까?" + 실험 데이터 입력 카드', await page.evaluate(() => {
   const cards = [...document.querySelectorAll('#agent-log .ad-card')];
   const row = cards[cards.length - 1].closest('.ad-msg');

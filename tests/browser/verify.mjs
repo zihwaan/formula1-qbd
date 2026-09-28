@@ -129,8 +129,7 @@ check('물리화학 카드 가로(구조 | 플래그·descriptor·물성 줄 구
   const m = document.querySelector('.chem-mol').getBoundingClientRect(), s = document.querySelector('.chem-sections').getBoundingClientRect();
   return s.left >= m.right - 1 && document.querySelectorAll('.chem-sections .chem-sec h3').length >= 3;
 }));
-await page.click('.rail-tab[data-pane="flow"]');
-check('오른쪽 탭 — 에이전트 흐름 열림', await shown(page, 'graph'));
+check('오른쪽 관측 칼럼 — 처음부터 에이전트 흐름이 보인다', await shown(page, 'graph'));
 await page.click('#drawer-size');
 check('크게 보기', (await page.getAttribute('#drawer', 'data-size')) === 'wide');
 await page.click('.rail-tab[data-pane="narr"]');

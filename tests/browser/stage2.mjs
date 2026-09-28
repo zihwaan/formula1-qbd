@@ -1,4 +1,5 @@
-// 2단계(Design Space 도출) — CBD 논문 시연 카드로 12단계를 클릭으로 끝까지 걷는다. LLM 없이(논문 값) 돈다.
+// 2단계(Design Space 도출) — CBD 논문 시연 카드로 15단계 중 13단계(Design Space)까지 클릭으로 걷는다. LLM 없이(논문 값) 돈다.
+// CBD는 논문 규격(경도 4–6 kgf 등)에서 미래 배치 공동확률 ≥ 0.90인 영역이 없어 13단계에서 멈추는 것이 정답이다(규격을 완화하지 않는다).
 // 편집(행·열 추가/삭제, 붙여넣기), 승인 차단, 다시 열기(stale), 위험평가·최종 보고서 PDF, 반응 곡면 그림 첨부,
 // 데스크톱 1440과 휴대폰 390에서 가로 넘침 없음까지 본다.
 //   node tests/browser/stage2.mjs http://localhost:8104/ [스크린샷 폴더]
@@ -136,6 +137,10 @@ async function walk(page, label, { edits }) {
   const coded = await page.locator('#s2 .s2-step.current .s2-reg', { hasText: 'Hardness' }).locator('.s2-eq code').first().textContent();
   check(`[${label}] Hardness coded 식 = Table 10`, /6\.04\d* \+ 1\.00\d*X1 \+ 0\.558\d*X2 \+ 0\.156\d*X3/.test(coded.replace(/\s+/g, ' ')), coded);
   await act(page, 'use_reference');
+  check(`[${label}] 논문 모형(DT 2차 · 마손도 2FI) → 과적합 의심 표시`, await page.locator('#s2 .s2-step.current .s2-flag').count() >= 2);
+  await act(page, 'approve');
+  check(`[${label}] 사유 없이 승인하면 막힘(REG_OVERFIT_REASON)`, await page.locator('#s2 .s2-step.current .s2-checks li.blocking', { hasText: 'REG_OVERFIT_REASON' }).count() === 1);
+  await page.fill('#s2 .s2-step.current [data-note]', '논문이 보고한 모형 차수를 그대로 비교하려고 수용');
   await shot('10_regression');
   await act(page, 'approve');
   check(`[${label}] → 반응 곡면`, await current(page) === 'surface');
@@ -151,16 +156,22 @@ async function walk(page, label, { edits }) {
   check(`[${label}] Hardness ANOVA Model SS 10.73 · p 0.0005`, /10\.73/.test(model) && /0\.0005/.test(model), model.replace(/\s+/g, ' '));
   await shot('12_anova');
   await act(page, 'approve');
-  check(`[${label}] 12단계 완료`, await page.locator('#s2 .s2-count', { hasText: '완료' }).count() === 1);
+  check(`[${label}] ANOVA 확인 → 13 Design Space`, await current(page) === 'space');
+  await act(page, 'use_reference');
+  const kpi = (await page.locator('#s2 .s2-kpis').textContent()).replace(/\s+/g, ' ');
+  check(`[${label}] 논문 규격 → 평균 기준 영역은 있지만 공동확률 ≥ 0.9는 0 %`, /≥ 0\.9\s*0\.0%/.test(kpi) && /47\.9%/.test(kpi), kpi.slice(0, 120));
+  await act(page, 'approve');
+  check(`[${label}] 영역 없음 → 승인 막힘(SPACE_EMPTY) · 규격 완화 안 함`, await current(page) === 'space'
+    && await page.locator('#s2 .s2-step.current .s2-checks li.blocking', { hasText: 'SPACE_EMPTY' }).count() === 1);
+  await shot('13_space');
   const fin = await page.locator('#s2 .s2-links a', { hasText: '최종' }).getAttribute('href');
   const pdf = await page.request.get(new globalThis.URL(fin, URL).href);
   const body = await pdf.body();
-  check(`[${label}] 최종 보고서 PDF(곡면 그림 포함)`, pdf.ok() && body.slice(0, 4).toString() === '%PDF' && body.length > 150000, `${Math.round(body.length / 1024)} KB`);
+  check(`[${label}] 최종 보고서 PDF(곡면 그림 · 영역 결과 포함)`, pdf.ok() && body.slice(0, 4).toString() === '%PDF' && body.length > 150000, `${Math.round(body.length / 1024)} KB`);
   check(`[${label}] 가로 넘침 없음`, await overflow(page) <= 1, `${await overflow(page)}px`);
-  await shot('13_done');
 }
 
-console.log('\n[데스크톱 1440] CBD 12단계 + 편집·차단');
+console.log('\n[데스크톱 1440] CBD 1–13단계 + 편집·차단');
 {
   const { ctx, page, errors } = await open(1440, 950);
   check('처음 화면 — 가운데 입력칸', await page.locator('#hello #agent-input').count() === 1);
@@ -173,10 +184,13 @@ console.log('\n[데스크톱 1440] CBD 12단계 + 편집·차단');
   await page.locator('#s2 .s2-step[data-step="design"] [data-act="reopen"]').click();
   await page.waitForSelector('#s2 .s2-step.current[data-step="design"]');
   check('설계 표 다시 열기 → 뒤 단계 "다시 확인 필요"', await page.locator('#s2 .s2-step.stale').count() >= 2);
-  check('사이드바에 2단계 study', await page.locator('#side-s2 [data-s2]').count() >= 1);
-  // 오른쪽 서랍
+  await page.click('#s2-menu > summary');
+  check('마스트헤드 "2단계 기록"에 study', await page.locator('#side-s2 [data-s2]').count() >= 1);
+  await page.click('#s2-menu > summary');
+  // 오른쪽 관측 칼럼 — 넓은 화면은 처음부터 펼쳐져 있다
+  check('관측 칼럼 기본 펼침(에이전트 흐름)', await page.getAttribute('#drawer', 'data-size') === 'open');
   await page.click('.rail-tab[data-pane="trace"]');
-  check('서랍 탭 열림', await page.getAttribute('#drawer', 'data-size') === 'open');
+  check('탭 전환 → 실행 트레이스', await page.locator('.drawer-pane[data-pane="trace"]:not([hidden])').count() === 1);
   await page.click('#drawer-size');
   check('서랍 크게', await page.getAttribute('#drawer', 'data-size') === 'wide');
   await page.click('#drawer-size');
@@ -186,14 +200,12 @@ console.log('\n[데스크톱 1440] CBD 12단계 + 편집·차단');
   await ctx.close();
 }
 
-console.log('\n[휴대폰 390] CBD 12단계');
+console.log('\n[휴대폰 390] CBD 1–13단계');
 {
   const { ctx, page, errors } = await open(390, 844);
   check('390 — 처음 화면 넘침 없음', await overflow(page) <= 1);
   await walk(page, 'phone', { edits: false });
-  await page.click('#side-open');
-  check('390 — 목록 시트 열림', await page.evaluate(() => document.getElementById('side').classList.contains('open')));
-  await page.click('#side-scrim');
+  check('390 — 관측 칼럼은 접힌 채 시작', await page.getAttribute('#drawer', 'data-size') === 'closed');
   await page.click('#drawer-toggle');
   check('390 — 진행 과정 전체 화면', await page.evaluate(() => document.getElementById('drawer').getBoundingClientRect().width >= 389));
   await page.click('#drawer-close');

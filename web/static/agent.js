@@ -28,14 +28,14 @@
     form.id = "agent-form";
     form.innerHTML = `<label class="sr-only" for="agent-input">에이전트에게 말하기</label>
       <textarea id="agent-input" rows="3" maxlength="2000" placeholder="${esc(PLACEHOLDER)}"></textarea>
-      <button type="submit" class="send" id="agent-send" aria-label="보내기">↑</button>`;
-    el("hello-dock").append(form);
+      <button type="submit" class="send" id="agent-send" aria-label="보내기" title="보내기 (Enter)">↑</button>`;
+    el("agent-box").append(form);
     const chips = document.createElement("div");
     chips.className = "ad-chips";
     chips.id = "agent-chips";
     el("dock-inner").append(chips);
     const model = el("side-model");
-    model.innerHTML = `<label for="llm-select">모델</label><select id="llm-select" aria-describedby="llm-note"></select><small id="llm-note"></small>`;
+    if (model) model.innerHTML = `<label for="llm-select">모델</label><select id="llm-select" aria-describedby="llm-note"></select><small id="llm-note"></small>`;
     form.onsubmit = (e) => { e.preventDefault(); send(); };
     const input = el("agent-input");
     input.addEventListener("keydown", (e) => {
@@ -54,11 +54,7 @@
   function dock() {
     if (document.body.classList.contains("started")) return;
     document.body.classList.add("started");
-    el("dock-inner").prepend(el("agent-form"));   // 입력칸을 먼저 옮기고 처음 화면을 지운다
-    const demos = el("scenarios");                 // 시연 카드는 왼쪽 목록으로 옮겨 계속 쓸 수 있게 한다
-    if (demos && el("side-demos")) { el("side-demos").append(demos); el("side-demos-h").hidden = false; }
-    const hello = el("hello");
-    if (hello) hello.remove();
+    el("dock-inner").prepend(el("agent-box"));     // 입력 에이전트 상자만 아래로 — 히어로·시연 카드는 대화 맨 위에 남는다
     el("agent-input").rows = 1;
     el("agent-input").placeholder = "메시지를 입력하세요";
     autosize(el("agent-input"));
@@ -171,7 +167,7 @@
       r.push(["재평가 범위", "이 값에 의존하는 판정만 — 설계를 처음부터 다시 돌리지 않음"]);
     } else if (p.kind === "develop_candidate") {
       r.push(["후보", p.candidate_id]);
-      r.push(["다음", "이 처방을 프로토타입으로 받아 2단계(QTPP → … → ANOVA)를 시작합니다"]);
+      r.push(["다음", "이 처방을 프로토타입으로 받아 2단계(QTPP → 위험평가 → DoE → 회귀·ANOVA → Design Space)를 시작합니다"]);
     }
     return r;
   }

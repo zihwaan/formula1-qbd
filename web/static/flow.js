@@ -64,7 +64,6 @@
     $("chem-empty").hidden = false;
     $("chem-body").hidden = true;
     place($("panel-chem"), "API 물리화학 — 구조에서 계산한 값과 경고", "wide");
-    setTitle(d.request);
     $("drawer-toggle").classList.add("live");
   });
 
@@ -80,6 +79,9 @@
     const D = window.F1Discovery;
     if (!run || !D || D.running()) return;
     const pending = D.pending();
+    // 제약 불가능·설계 없음·목표 재검토로 끝나면 결론(후보 카드)을 먼저 — 데이터 요청으로 결론을 가리지 않는다
+    const concluded = ["infeasible", "no_design", "qtpp_review", "error", "exhausted", "escalated"].includes(D.status && D.status());
+    if (concluded) { showCands(); return; }
     if (!run.drqShown && pending > 0 && !run.candsShown) {
       run.drqShown = true;
       $("drq").hidden = false;
@@ -95,15 +97,15 @@
     const b = e.target.closest && e.target.closest("#drq-submit, #drq-skip");
     if (b && run) run.wantCands = true;
   }, true);
-  document.addEventListener("f1:drqdone", () => { if (run) { run.wantCands = true; } });
+  // 입력 에이전트로 제출한 경우 — 재계산 알림(f1:run)이 이 이벤트보다 먼저 오므로 여기서 바로 후보 카드를 놓는다
+  document.addEventListener("f1:drqdone", () => { if (run) { run.wantCands = true; showCands(); } });
 
-  function setTitle(t) {
-    if (t) $("chat-title").textContent = t.length > 40 ? `${t.slice(0, 40)}…` : t;
-  }
 
   // ── 오른쪽 서랍 ─────────────────────────────────────────────────────────
   const drawer = $("drawer");
   const TITLES = { flow: "에이전트 흐름", narr: "지금 무슨 일이 일어나고 있나", trace: "실행 트레이스" };
+  // 넓은 화면은 처음부터 펼쳐 둔다(관측이 늘 보이게) — 좁은 화면은 접어 두고 탭·버튼으로 연다
+  const wideScreen = () => window.innerWidth > 1180;
   function openPane(name) {
     drawer.querySelectorAll(".drawer-pane").forEach((p) => { p.hidden = p.dataset.pane !== name; });
     drawer.querySelectorAll(".rail-tab").forEach((t) => t.classList.toggle("on", t.dataset.pane === name));
@@ -111,16 +113,21 @@
     if (drawer.dataset.size === "closed") drawer.dataset.size = "open";
     $("drawer-toggle").setAttribute("aria-expanded", "true");
     document.body.classList.add("drawer-open");
+    try { localStorage.setItem("f1:drawer", "open"); } catch (e) { /* 무시 */ }
   }
   function closeDrawer() {
     drawer.dataset.size = "closed";
     drawer.querySelectorAll(".rail-tab").forEach((t) => t.classList.remove("on"));
     $("drawer-toggle").setAttribute("aria-expanded", "false");
     document.body.classList.remove("drawer-open", "drawer-wide");
+    try { localStorage.setItem("f1:drawer", "closed"); } catch (e) { /* 무시 */ }
   }
   drawer.querySelectorAll(".rail-tab").forEach((t) => t.addEventListener("click", () => {
-    if (t.classList.contains("on")) closeDrawer(); else openPane(t.dataset.pane);
+    if (t.classList.contains("on") && drawer.dataset.size !== "closed") closeDrawer(); else openPane(t.dataset.pane);
   }));
+  let pref = null;
+  try { pref = localStorage.getItem("f1:drawer"); } catch (e) { /* 무시 */ }
+  if (wideScreen() && pref !== "closed") openPane("flow"); else closeDrawer();
   $("drawer-toggle").addEventListener("click", () => (drawer.dataset.size === "closed" ? openPane("flow") : closeDrawer()));
   $("drawer-close").addEventListener("click", closeDrawer);
   $("drawer-size").addEventListener("click", () => {
@@ -130,17 +137,11 @@
     $("drawer-size").setAttribute("aria-label", wide ? "작게 보기" : "크게 보기");
   });
 
-  // ── 사이드바 · 새 설계 · 직접 입력 ────────────────────────────────────────
-  const side = $("side"), scrim = $("side-scrim");
-  const openSide = () => { side.classList.add("open"); scrim.hidden = false; };
-  const closeSide = () => { side.classList.remove("open"); scrim.hidden = true; };
-  $("side-open").addEventListener("click", openSide);
-  $("side-close").addEventListener("click", closeSide);
-  scrim.addEventListener("click", closeSide);
-  $("new-chat").addEventListener("click", () => {
-    try { localStorage.removeItem("f1:s2"); } catch (e) { /* 무시 */ }
-    location.href = location.pathname;
-  });
+  // ── 새 설계 · 2단계 기록 메뉴 · 직접 입력 ─────────────────────────────
+  const menu = $("s2-menu");
+  const closeSide = () => { if (menu) menu.open = false; };
+  document.addEventListener("click", (e) => { if (menu && menu.open && !menu.contains(e.target)) menu.open = false; });
+  $("new-chat").addEventListener("click", () => { location.href = location.pathname; });
   function openManual() {
     $("manual-slot").append($("manual"));
     $("manual").open = true;
@@ -157,6 +158,7 @@
       const d = await r.json();
       const ul = $("side-s2");
       if (!d.studies.length) return;
+      if (!ul) return;
       ul.innerHTML = d.studies.map((s) => `<li><button type="button" data-s2="${esc(s.study_id)}"><b>${esc(s.title || s.study_id)}</b>
         <small>${esc(s.status === "done" ? "완료" : `진행 중 · ${s.status}`)}</small></button></li>`).join("");
       ul.querySelectorAll("[data-s2]").forEach((b) => b.addEventListener("click", () => { closeSide(); window.F1Stage2.open(b.dataset.s2); }));

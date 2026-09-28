@@ -2,10 +2,10 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <!--BASE-->
-  <title>Formula 1 — 제형 설계 에이전트</title>
-  <meta name="description" content="AI가 처방을 제안하고 결정론적 규칙이 검증한다. 후보 처방을 고르면 QTPP·CQA·위험평가·DoE·회귀식·반응 곡면·ANOVA까지 단계마다 승인하며 진행한다.">
+  <title>Formula 1 — QbD 제형 설계 검증 엔진</title>
+  <meta name="description" content="AI가 처방을 제안하고 결정론적 규칙이 검증한다. 후보 처방을 고르면 QTPP·CQA·위험평가·DoE·회귀식·ANOVA·공동확률 Design Space·확인계획까지 단계마다 승인하며 진행한다.">
   <link rel="icon" href="static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
@@ -23,46 +23,52 @@
   </script>
 </head>
 <body class="chat-app">
-<!-- 화면은 대화 하나다: 왼쪽 목록 · 가운데 대화(아래로 순서대로 쌓인다) · 아래 입력 · 오른쪽 진행 과정 서랍.
-     1단계(후보 탐색)와 2단계(Design Space 도출)가 같은 대화에 이어진다. flow.js가 카드를 제자리에 놓는다. -->
+<!-- 화면은 대화 하나다 — 처음엔 가운데 입력 에이전트, 요청하면 카드가 아래로 순서대로 쌓인다(flow.js).
+     오른쪽은 관측 칼럼(에이전트 흐름 · 지금 무슨 일이 · 실행 트레이스) — 탭으로 바꾸고 크게/작게 · 접기.
+     모양은 지환닷컴 공용 디자인(검정 유리 마스트헤드 · 흑백 패널 · Pretendard)을 그대로 쓴다. -->
+<nav class="masthead">
+  <div class="masthead-inner">
+    <span class="brand">Formula 1</span>
+    <div class="masthead-actions">
+      <span class="pill" id="pill-rules">룰북 —</span>
+      <span class="pill" id="pill-llm">LLM —</span>
+      <details class="mh-menu" id="s2-menu">
+        <summary class="btn btn-ghost">2단계 기록</summary>
+        <div class="mh-pop"><ul id="side-s2"><li class="side-empty">후보 카드의 ‘이 후보로 개발 착수’로 시작합니다</li></ul></div>
+      </details>
+      <button class="btn btn-ghost" id="new-chat" type="button">새 설계</button>
+      <button class="btn btn-ghost" id="drawer-toggle" type="button" aria-controls="drawer" aria-expanded="true">진행 과정</button>
+      <button id="guide-open" class="btn btn-ghost" type="button">시스템 설명</button>
+      <button class="btn-icon" id="btn-theme" type="button" title="라이트/다크 전환" aria-label="라이트/다크 전환">◐</button>
+    </div>
+  </div>
+</nav>
+
 <div class="app" id="app">
-  <aside class="side" id="side" aria-label="대화 목록">
-    <div class="side-top">
-      <span class="brand">Formula 1</span>
-      <button class="icon-btn side-close" id="side-close" type="button" aria-label="목록 닫기">✕</button>
-    </div>
-    <button class="side-new" id="new-chat" type="button"><span aria-hidden="true">＋</span> 새 설계</button>
-    <nav class="side-list">
-      <h4 id="side-demos-h" hidden>시연</h4>
-      <div class="side-demos" id="side-demos"></div>
-      <h4>2단계 개발</h4>
-      <ul id="side-s2"><li class="side-empty">후보 카드의 ‘이 후보로 개발 착수’로 시작합니다</li></ul>
-    </nav>
-    <div class="side-foot">
-      <div class="side-model" id="side-model"></div>
-      <div class="side-pills"><span class="pill" id="pill-rules">룰북 —</span><span class="pill" id="pill-llm">LLM —</span></div>
-      <div class="side-actions">
-        <button id="guide-open" class="side-link" type="button">시스템 설명</button>
-        <button class="side-link" id="btn-theme" type="button" title="라이트/다크 전환" aria-label="라이트/다크 전환">화면 테마</button>
-      </div>
-    </div>
-  </aside>
-  <div class="side-scrim" id="side-scrim" hidden></div>
-
   <main class="main" id="main">
-    <header class="topbar">
-      <button class="icon-btn" id="side-open" type="button" aria-label="목록 열기">☰</button>
-      <b class="topbar-title" id="chat-title">새 설계</b>
-      <button class="topbar-btn" id="drawer-toggle" type="button" aria-controls="drawer" aria-expanded="false">진행 과정</button>
-    </header>
-
     <div class="thread" id="agent-log" role="log" aria-live="polite">
-      <!-- 처음 화면 — 가운데 입력칸(입력 에이전트)과 시연 카드. 첫 메시지를 보내면 입력칸이 아래로 내려간다. -->
       <section class="hello" id="hello">
-        <h1>무엇을 설계할까요?</h1>
-        <p>약 이름(또는 SMILES)·대상 환자·제형·1회 용량을 말하면 설계를 준비합니다. 후보를 고르면 QTPP부터 ANOVA까지 이어서 진행합니다.</p>
-        <div class="hello-dock" id="hello-dock"></div>
-        <div class="scenario-cards" id="scenarios" aria-label="시연"></div>
+        <header class="hero">
+          <h1>Formula 1</h1>
+          <p>AI가 처방을 제안하고, 결정론적 규칙이 검증한다 — 실패를 미리 겪어보는 제형 설계 엔진</p>
+        </header>
+        <div class="hello-dock" id="hello-dock">
+          <!-- 입력 에이전트 — 화면의 주 입력(agent.js). 첫 메시지를 보내면 이 상자가 아래로 내려간다. -->
+          <section class="agent-panel" id="agent-box" aria-label="입력 에이전트">
+            <div class="ap-head">
+              <div class="ap-title"><span class="ap-dot" aria-hidden="true"></span><b>입력 에이전트</b>
+                <small>말로 요청하면 실행 카드로 정리합니다 · 실행은 연구자가 누릅니다</small>
+                <div class="ap-model" id="side-model"></div></div>
+            </div>
+          </section>
+        </div>
+        <section class="scenarios" aria-label="시연 시나리오">
+          <div class="scenarios-head">
+            <span class="scenarios-label">시연 시나리오 — 누르면 바로 실행됩니다</span>
+            <span class="scenarios-hint">실행되는 동안 오른쪽에 아키텍처 해설이 단계별로 뜹니다 · 시간은 대회 API 기준(무료 모델은 분당 토큰 한도로 약 2–3배)</span>
+          </div>
+          <div class="scenario-cards" id="scenarios"></div>
+        </section>
       </section>
       <!-- 이 아래로 대화(agent.js)와 단계 카드(flow.js · stage2.js)가 순서대로 쌓인다 -->
     </div>
@@ -75,19 +81,19 @@
     </div>
   </main>
 
-  <!-- 오른쪽 진행 과정 서랍 — 에이전트 흐름 · 해설 · 트레이스. 탭을 누르면 열리고, 크게/작게 바꿀 수 있다. -->
-  <aside class="drawer" id="drawer" aria-label="진행 과정" data-size="closed">
+  <!-- 오른쪽 관측 칼럼 — 에이전트 흐름 · 해설 · 트레이스. 탭을 누르면 바뀌고, ⤢로 크게/작게, ✕로 접는다. -->
+  <aside class="drawer" id="drawer" aria-label="진행 과정" data-size="open">
     <div class="drawer-rail" role="tablist" aria-label="진행 과정 탭">
-      <button type="button" class="rail-tab" data-pane="flow" role="tab">에이전트 흐름</button>
+      <button type="button" class="rail-tab on" data-pane="flow" role="tab">에이전트 흐름</button>
       <button type="button" class="rail-tab" data-pane="narr" role="tab">지금 무슨 일이</button>
       <button type="button" class="rail-tab" data-pane="trace" role="tab">실행 트레이스</button>
     </div>
-    <div class="drawer-body">
+    <div class="drawer-body panel">
       <div class="drawer-head">
-        <b id="drawer-title">에이전트 흐름</b>
+        <h2 id="drawer-title">에이전트 흐름</h2>
         <div class="drawer-ctrl">
           <button type="button" class="icon-btn" id="drawer-size" aria-label="크게 보기" title="크게 / 작게">⤢</button>
-          <button type="button" class="icon-btn" id="drawer-close" aria-label="닫기">✕</button>
+          <button type="button" class="icon-btn" id="drawer-close" aria-label="접기" title="접기">✕</button>
         </div>
       </div>
       <div class="drawer-pane" data-pane="flow">
@@ -104,7 +110,7 @@
         <p class="pane-help">실행 단계마다 어느 계층이 무엇을 왜 하는지</p>
         <div id="scenario-goal" class="scenario-goal" hidden></div>
         <div id="narration" class="narration" role="log" aria-live="polite">
-          <div class="empty">설계를 실행하면 단계별 해설이 여기에 흐릅니다.</div>
+          <div class="empty">시나리오를 누르거나 설계를 실행하면 단계별 해설이 여기에 흐릅니다.</div>
         </div>
       </div>
       <div class="drawer-pane" data-pane="trace" hidden>
@@ -118,7 +124,7 @@
 <!-- 대화에 놓일 카드들 — flow.js가 필요한 순간에 대화로 옮긴다(아이디는 app.js가 쓴다). -->
 <div class="stash" id="stash" hidden>
   <!-- 실험 데이터 입력 카드 -->
-  <section class="card inputs-card" id="card-inputs">
+  <section class="panel inputs-card" id="card-inputs">
     <details class="inputs" id="inputs" open>
       <summary>실험 데이터 입력 <span class="inputs-opt">선택 · 비워도 실행됩니다</span></summary>
       <p class="inputs-help">
@@ -134,7 +140,7 @@
   </section>
 
   <!-- API 물리화학 카드(가로) — 구조 | 구조 플래그 · Descriptor · 물성 추정(줄로 구분) -->
-  <section class="card chem-card" id="panel-chem">
+  <section class="panel chem-card" id="panel-chem">
     <h2>API 물리화학 <small>RDKit</small></h2>
     <div id="chem-empty" class="empty">구조와 descriptor를 계산하는 중입니다…</div>
     <div id="chem-body" class="chem-row" hidden>
@@ -165,7 +171,7 @@
   </section>
 
   <!-- 데이터 요청 카드(비차단) -->
-  <section class="card drq" id="drq" hidden aria-live="polite">
+  <section class="panel drq" id="drq" hidden aria-live="polite">
     <header>
       <h3>데이터 요청 <small>비차단 · 값을 몰라도 진행</small></h3>
       <p>값을 몰라도 후보는 이미 설계돼 있습니다. 값을 넣으면 전략과 신뢰도를 다시 계산하고, 건너뛰면 예측값으로 계속합니다.</p>
@@ -174,7 +180,7 @@
   </section>
 
   <!-- 후보 처방 카드 -->
-  <section class="card cands-card" id="panel-cands">
+  <section class="panel cands-card" id="panel-cands">
     <h2>후보 처방 <small id="cand-count"></small></h2>
     <div id="cands" class="cands"><div class="empty">아직 생성된 후보가 없습니다.</div></div>
     <div id="consensus" class="consensus" hidden></div>
