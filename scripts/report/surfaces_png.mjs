@@ -13,7 +13,7 @@ const sid = await p.evaluate(async () => {
   };
   let v = await post('/api/stage2/studies', { source: 'cbd_paper' });
   const id = v.study.study_id;
-  const act = async (a) => { v = await post(`/api/stage2/studies/${id}/actions/${a}`, { payload: {} }, v.study.state_version); };
+  const act = async (a) => { v = await post(`/api/stage2/studies/${id}/actions/${a}`, { payload: a === 'approve' ? { note: '논문이 보고한 모형 차수를 그대로 비교' } : {} }, v.study.state_version); };
   await act('run');
   for (const s of ['qtpp', 'cqa', 'rm_just', 'rm_matrix', 'fp_just', 'fp_matrix', 'recommend', 'design', 'regression']) {
     if (!s.endsWith('matrix')) await act('use_reference');

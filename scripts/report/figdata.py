@@ -1,8 +1,9 @@
 """보고서 그림용 수치 — 엔진을 실제로 돌려서 얻는다(손으로 적은 값 없음).
 
 2단계는 Monton 2026(CBD 구강붕해정)의 표를 옮긴 fixture로 formula.stage2를 호출한다 — 위험 행렬(Table 5·7)은 근거 표(Table 6·8)에서
-코드가 다시 만들고, 회귀식·ANOVA(Table 10·11)는 Table 9 원자료에서 다시 적합한다. study 하나를 논문 값으로 12단계 끝까지 실제로 진행해
-승인·이벤트·검사 건수와 보고서 PDF 크기를 기록한다. 출력: docs/report/figdata.json
+코드가 다시 만들고, 회귀식·ANOVA(Table 10·11)는 Table 9 원자료에서 다시 적합한다. study 하나를 논문 값으로 13단계(Design Space)까지 실제로 진행해
+승인·이벤트·검사 건수와 보고서 PDF 크기를 기록한다. Design Space(공동확률)는 Almotairi 2022 로르녹시캄 분산정 실측 15 run(Table 3)으로
+계산한다(발표 자료 10쪽). 출력: docs/report/figdata.json
 """
 import csv
 import json
@@ -53,8 +54,37 @@ manifest = [{"id": e["id"], "priority": e.get("trigger_priority"), "eval_type": 
 jury = [{"reviewer_id": r["reviewer_id"], "name": r["reviewer_name_kr"], "condition": r["summon_condition"],
          "weight": r["base_weight"]} for r in rows("database/06_config/reviewer_registry.csv")]
 
+def lornoxicam_block() -> dict:
+    """발표 자료 10쪽 — Almotairi 2022 Table 3(실측 15 run) → 적합 요약 · 공동확률 Design Space · 확인계획. 규격 DE30 ≥ 75 %는 프로젝트 목표(가정)."""
+    from formula.stage2 import doe as T
+    from formula.stage2 import space as SP
+    from formula.stage2.model import overfit
+    rows = list(csv.DictReader(open(ROOT / "tests" / "fixtures" / "lornoxicam_table3.csv", encoding="utf-8")))
+    d = {"factors": [{"name": "MCC:Mannitol", "unit": ""}, {"name": "Mixing time", "unit": "min"}, {"name": "Crospovidone", "unit": "%"}],
+         "responses": [{"name": "Dispersion time", "unit": "s"}, {"name": "Friability", "unit": "%"}, {"name": "DE30", "unit": "%"}, {"name": "AV", "unit": ""}],
+         "rows": [{"std": int(r["run"]), "run": int(r["run"]), "x": [float(r["x1_mcc_mannitol_ratio"]), float(r["x2_mixing_time_min"]), float(r["x3_crospovidone_pct"])],
+                   "y": [float(r["y1_dispersibility_s"]), float(r["y2_friability_pct"]), float(r["y3_de30_pct"]), float(r["y4_cu_av"])]} for r in rows]}
+    reg = T.regression(d)
+    specs = [{"response": "Dispersion time", "op": "LE", "upper": 180, "basis": "분산정 3분 이내"}, {"response": "Friability", "op": "LE", "upper": 1.0, "basis": "USP <1216>"},
+             {"response": "DE30", "op": "GE", "lower": 75, "basis": "프로젝트 목표(가정)"}, {"response": "AV", "op": "LE", "upper": 15, "basis": "USP <905> L1"}]
+    R = SP.region(d, reg, specs)
+    V = SP.plan(d, reg, specs, R, reference={"label": "논문 최적 처방", "settings": {"MCC:Mannitol": 3, "Mixing time": 11, "Crospovidone": 6.23}})
+    sl = SP.slice_map(d, reg, specs, fixed=1, level=R["setpoint"]["coded"][1])
+    fit = [{"response": r["response"], "suggested": r["suggested"], "family": r["family"], "adj_r2": r["adj_r2"], "pred_r2": r["pred_r2"],
+            "overfit": overfit(r["adj_r2"], r["pred_r2"]),
+            "rows": [{k: x.get(k) for k in ("model", "adj_r2", "pred_r2", "seq_p")} | {"overfit": overfit(x.get("adj_r2"), x.get("pred_r2"))}
+                     for x in r["summary"]["rows"] if not x["aliased"] and x["model"] != "Mean"]} for r in reg["responses"]]
+    return {"n": len(rows), "specs": specs, "fit": fit,
+            "region": {k: R[k] for k in ("grid_points_total", "grid_points_in_domain", "mean_ok_fraction", "feasible_fraction", "feasible_points", "binding", "setpoint", "max_joint")},
+            "plan": {"pi_policy": V["pi_policy"], "points": [{"role": p["role"], "settings": p["settings"], "joint": p["joint"],
+                                                                "predicted": {n: {k: v[k] for k in ("mean", "pi_lower", "pi_upper", "spec")} for n, v in p["predicted"].items()}}
+                                                               for p in V["points"]]},
+            "slice": {k: sl[k] for k in ("rows", "cols", "fixed", "P", "mean_ok", "in", "p_min")},
+            "reference_optimum": {"MCC:Mannitol": 3, "Mixing time": 11, "Crospovidone": 6.23}}
+
+
 def stage2_block() -> dict:
-    """2단계 — 논문 표 재현(행렬·회귀·ANOVA)과 study 한 건을 12단계 끝까지 진행한 기록."""
+    """2단계 — 논문 표 재현(행렬·회귀·ANOVA)과 study 한 건을 13단계까지 진행한 기록."""
     import tempfile
     from formula.stage2 import doe as T
     from formula.stage2 import reference as REF
@@ -99,18 +129,20 @@ def stage2_block() -> dict:
                      "paper_model_p": pp.get("model_p"), "paper_lof_p": pp.get("lof_p"), "residual_df": next(row["df"] for row in an["rows"] if row["source"] == "Residual"),
                      "paper_residual_df": pp.get("residual_df"), "r2": an["r2"], "adj_r2": an["adj_r2"], "pred_r2": an["pred_r2"],
                      "terms": [{"source": row["source"], "ss": row["ss"], "f": row["f"], "p": row["p"]} for row in an["rows"] if row.get("level") == 1 and "term" in row]})
-    # study 한 건 — 논문 값으로 12단계
+    # study 한 건 — 논문 값으로 13단계까지(CBD는 논문 규격에서 공동확률 영역이 비어 13단계에서 멈춘다)
     svc = Stage2Service(StudyStore(Path(tempfile.mkdtemp()) / "s2.db"))
     sid = svc.create(REF.prototype(), title="CBD ODT (report)", source={"locator": "Table 1"}, reference=True, actor="report")["study"]["study_id"]
     svc.act(sid, "run", {}, actor="report")
     blocked = []
     for st in STEPS[1:]:
-        if st in ("qtpp", "cqa", "rm_just", "fp_just", "recommend", "design", "regression"):
+        if st in ("qtpp", "cqa", "rm_just", "fp_just", "recommend", "design", "regression", "space"):
             svc.act(sid, "use_reference", {}, actor="report")
-        out = svc.act(sid, "approve", {}, actor="report")
+        out = svc.act(sid, "approve", {"note": "논문이 보고한 모형 차수를 그대로 비교"}, actor="report")
         if out["action_result"].get("blocked"):
-            blocked.append(st)
+            blocked.append({"step": st, "codes": out["action_result"]["blocked"]})
+            break
     raw = svc.raw(sid)
+    cbd_space = raw["steps"]["space"]["data"]["region"] if raw["steps"]["space"]["data"] else None
     tr = svc.trace(sid)
     risk_pdf = RP.risk_report(raw)
     final_pdf = RP.final_report(raw, {})
@@ -124,6 +156,8 @@ def stage2_block() -> dict:
             "paper_doe": REF.PAPER_DOE_VARIABLES, "design": {"runs": len(design["rows"]), "factors": [f"{f['name']} ({f['unit']})" for f in design["factors"]],
                                                             "ranges": [[f["low"], f["high"]] for f in auto["factors"]]},
             "responses": resp,
+            "cbd_space": {k: cbd_space[k] for k in ("status", "mean_ok_fraction", "feasible_fraction", "max_joint", "binding", "grid_points_in_domain")} if cbd_space else None,
+            "lornoxicam": lornoxicam_block(),
             "walk": {"status": raw["status"], "blocked": blocked, "approvals": len(raw["approvals"]), "events": len(tr["events"]),
                      "decisions": len(tr["decisions"]), "risk_pdf_kb": round(len(risk_pdf) / 1024), "final_pdf_kb": round(len(final_pdf) / 1024)},
             "check_codes": {"blocking": codes, "warning": warns}}

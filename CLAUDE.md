@@ -10,7 +10,7 @@ Formula 1 is a QbD (Quality-by-Design) validation engine for pharmaceutical **fo
 
 **As of 2026-09-18 the evidence gate and everything downstream of it (approval, batch, lifecycle) is commented out, not deleted** — see "v3 phase-gate pivot" below. The paragraph above still describes what that code does and the invariant it enforces; it's just not wired into the live graph right now. What *is* live in its place is `formula/biopharm/` (phase gates before generation) plus a non-blocking data-request pattern — read that section before touching anything in this area, since "evidence" and "phase gate" are easy to conflate and they answer different questions (evidence: can we execute this *specific candidate's protocol*; phase gate: what *strategies* should even be generated).
 
-**After the candidate list comes Stage 2** — a 12-step, researcher-approved study from QTPP to ANOVA in `formula/stage2/`
+**After the candidate list comes Stage 2** — a 15-step, researcher-approved study from QTPP to ANOVA and a joint-probability Design Space in `formula/stage2/`
 (started from a candidate's "이 후보로 개발 착수"). It shares no state with discovery; read "Stage 2 — Design Space derivation" below.
 The UI is one ChatGPT-style conversation — read "Chat UI" below before touching `web/static/`.
 
@@ -21,7 +21,7 @@ The UI is one ChatGPT-style conversation — read "Chat UI" below before touchin
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 210 tests — run this first when changing the core
+.venv/bin/pytest                                  # 214 tests — run this first when changing the core
 python scripts/audit_conditions.py                # every CSV/manifest condition names a variable something actually sets (exit 1 on a dead name)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
@@ -232,7 +232,7 @@ theme key **`mm:theme` shared across MoneyMate/브리핑** (switching in one ser
   rebuild it. Observed live: a QUIC-layer disconnect used to strand the user on a half-finished run.
 - Verify with a real browser, not curl: `tests/browser/verify.mjs` (33 interaction checks),
   `tests/browser/audit.mjs` (XSS injection, double-run, stand-in exposure, a11y, 9 viewport widths),
-  `tests/browser/stage2.mjs` (stage-2 12 steps), `tests/browser/agent.mjs` (chat flow), `tests/browser/drq.mjs` (typed DRQ inputs, attachment → instrument draft → submit, 422 on a wrong type),
+  `tests/browser/stage2.mjs` (stage-2 CBD steps 1–13), `tests/browser/pipeline.mjs` (PPT p.10 Lornoxicam end to end, real LLM), `tests/browser/agent.mjs` (chat flow), `tests/browser/drq.mjs` (typed DRQ inputs, attachment → instrument draft → submit, 422 on a wrong type),
   and `tests/browser/scenarios.mjs` (the 3 demo
   scenario cards actually take the path their on-screen `goal` text claims — see `tests/browser/README.md`).
 
@@ -525,25 +525,13 @@ three — any new join between free text and rulebook data needs the same "미�
 `app.js` holds two coupled pieces that exist so a viewer can *see the architecture* rather than
 read about it. Keep them in sync with the graph — they are the demo.
 
-- **`SCENARIOS`** — three cards that **run on click** (no separate 실행 press). Each one was
-  executed and kept for the path it actually takes: `guardrail` (pinned lactose → INC002 →
-  `infeasible` verdict, ~5s), `team` (pediatric → REV001 summoned, others not), `labloop`
-  (design run with `dose_mg=200` pre-filled → phase gates fire narrows-strategy requests →
-  `continueScenario()` auto-fills one and submits to `/api/runs/{id}/measurements`).
-  If you change a request string, **re-run it** and confirm the claimed path still fires — a
-  scenario that doesn't demonstrate what its card promises is worse than no scenario.
-  `labloop`'s request is deliberately cheap (`성인용 이부프로펜`): its point is the phase-gate
-  data-request loop, and a request that summons 3–4 judges spends the whole free-tier budget on
-  the design phase (judges × candidates × 2 calls), which pushes the directive onto the
-  rule-based path. **`measuredParams: { dose_mg: 200 }` on the scenario object is load-bearing,
-  not decorative** — the click handler writes it into `#inputs-body input[data-key="dose_mg"]`
-  before calling `startRun()`, because without `dose_mg` the phase gates can't derive
-  `dose_solubility_volume`(`_fassif`) and the scenario produces zero narrows-strategy requests,
-  i.e. an empty `#drq` panel and nothing for `continueScenario()` to fill in. Since 2026-09-18
-  (v3 phase-gate pivot, see above) this scenario no longer walks the old confirmation/approval/
-  wetlab loop — that workflow is commented out. `tests/browser/scenarios.mjs` was rewritten to
-  match; its old assertions (`#wl-out`, `#wf-body`, "경쟁 원인 가설") targeted UI that no longer
-  exists and would fail against the current build.
+- **`SCENARIOS`** — the presentation's demo cards, which **run on click** (no separate 실행 press): `lornoxicam`
+  (pinned MCC/mannitol/crospovidone + flow inputs → DC kept; `continueScenario()` then narrates the 개발 착수 → CSV → Design Space path),
+  `amlodipine` (besylate SMILES + pinned lactose → INC001/MC001/MC002 → `infeasible`, no reflect loop), `vx770` (code name + SMILES +
+  dose → DSC-only request; after the run the card's measurement sentence is put **into the agent input** — the presenter sends it), and
+  `stage2` (CBD paper study). `smiles` and `measuredParams` on each object are load-bearing (salt factor, dose-dependent DCS, flow → route).
+  If you change a request string, **re-run it** (`tests/browser/scenarios.mjs`, `pipeline.mjs`) and confirm the claimed path still fires —
+  a scenario that doesn't demonstrate what its card promises is worse than no scenario.
 - **`narrateEvent()` → `narrate()`** — turns the event stream into ordered commentary. Every card
   carries the **owning layer** (`P3 · 룰북 결정론`, `P5 · 심사 LLM`, …) and a **`왜 중요한가`** line
   explaining why that layer exists. That pairing is the point: graph lighting alone doesn't tell
@@ -573,53 +561,67 @@ read about it. Keep them in sync with the graph — they are the demo.
 
 Replaced (and **permanently deleted**) the v6.1 studio (`formula/development`, `formula/qbd`, `database/07_doe`, studio.js) and
 the v7.0 package/wizard (`formula/doe`, `database/07_doe/v7_0`, doe7*.js) on the user's instruction. Source of truth:
-`docs/stage2/DESIGN.md` (12-step table) — derived from the user's `2단계_수정본.pptx` / `Formula1_본선발표.pptx` slides 5–6 and
-Monton 2026 (CBD ODT, Scientifica 2026:3553253, PMC13519653). Code: `formula/stage2/`, API `/api/stage2/studies/*`, UI `web/static/stage2.{js,css}`.
+`docs/stage2/DESIGN.md` (15-step table) — from the user's `2단계_수정본.pptx` and the presentation (`Formula1_본선발표`, PDF version
+pp. 5–6, 9–10, 13: Stage II ends in a **joint-probability Design Space + locked verification plan**, demo ① = Lornoxicam) and
+Monton 2026 (CBD ODT, PMC13519653) / Almotairi 2022 (Lornoxicam, Table 3). Code: `formula/stage2/`, API `/api/stage2/studies/*`,
+UI `web/static/stage2.{js,css}`.
 
-- **12 steps** (`model.STEPS`): prototype(T1) → qtpp(T3) → cqa(T4) → rm_just(T6) → rm_matrix(T5) → fp_just(T8) → fp_matrix(T7) →
-  recommend(≤4 DoE vars, risk PDF) → design(T9: factors 1–3, responses 1–4, any rows) → regression(T10) → surface(Fig 1) → anova(T11, final PDF).
-  Entry is only from a gate-passed candidate (`[이 후보로 개발 착수]` / agent `develop_candidate`) or the CBD demo (`source: cbd_paper`,
-  enables "논문 값으로 채우기" + "논문 표와 비교").
+- **15 steps** (`model.STEPS`): prototype(T1) → qtpp(T3) → cqa(T4) → rm_just(T6) → rm_matrix(T5) → fp_just(T8) → fp_matrix(T7) →
+  recommend(**High-only** candidates, ≤4, risk PDF) → design(T9, CSV import) → regression(T10 + overfit flag) → surface(Fig 1) → anova(T11, final PDF)
+  → space(joint P ≥ 0.90) → vplan(lock) → verify(2×2). Entry only from a gate-passed candidate (`[이 후보로 개발 착수]` / agent
+  `develop_candidate`) or the CBD demo (`source: cbd_paper`, enables "논문 값으로 채우기" + "논문 표와 비교").
+- **Immutable Handoff** (`web/server.py:_handoff`): candidate composition, request context (request · target_population · dose · dosage form ·
+  drug_loading_pct · pinned excipients · stage-1 soft/escalate signals) + sha256 fingerprint in `study.source.handoff`. The editable prototype
+  is a copy; drafts read the handoff via `agent._ctx` (this is how "저함량 → 혼합 시간 × 함량균일성 High" reaches the risk draft).
 - **HITL on `StudyStore`** (idempotency key, expected version, append-only events): only the current step can change;
-  `approve` is blocked by `model.check` blocking codes; `reopen` marks later steps `stale` (never deletes). Actions:
-  run · draft · use_reference · save · approve · reopen · attach_images. Store = `FORMULA1_STAGE2_DB` (default `/tmp/formula1/stage2.db`,
-  lost on pod restart).
-- **Matrices are derived, never entered** — `matrix_of(just, cqas)`; the justification table (grouped CQAs per row, paper format) is the
-  only input, so matrix ↔ justification can't disagree and a missing cell blocks (JUST_MISSING). Pinned: Table 6/8 → Table 5/7, 84/84 cells.
-- **LLM drafts (agent.py)**: risk justifications are two calls — a level grid (variable × confirmed CQA), then code groups
-  "same variable, same level" cells and asks for mechanism text per group (batches of 8, one retry). This guarantees exact coverage.
-  Recommend names are matched back to candidates (LLM echoes "Name (kind)" — stripped, case-insensitive; unknown names dropped and noted).
-  LLM numbers absent from the inputs → `LLM_NUMBERS` warning. No response → 503, nothing filled.
-- **Toolkit (doe.py, numpy+scipy, no LLM)**: min/max coding, Mean/Linear/2FI/Quadratic, Design-Expert-like fit summary (sequential F,
-  LOF with pure error, adj/pred R²) → suggests highest order with seq p<0.05 else max pred R²; partial-SS ANOVA; actual-unit equation;
-  surfaces for `surface3d.js` (tiny coefficients <1e-10·max are printed as 0 — the paper itself prints 5.05×10⁻¹⁷ for friability X1X2).
-  Pinned against Table 10/11 (hardness Model SS 10.73 p 0.0005, LOF p 0.4043, df 13; DT p 0.2463; friability p 0.0112).
-- **Measured LLM quality** (`scripts/report/stage2_llm.py` → `docs/report/stage2_llm.json`, contest API, drafts approved unedited):
-  no check ever blocked, but only 17/42 (raw material) and 24/42 (formulation/process) risk cells matched the paper, LLM mostly one level higher.
-  That is the reason the step is "draft + approve", not automation — don't market it otherwise.
-- **PDFs** (`report.py`, fpdf2 + NanumGothic OFL in `formula/stage2/fonts/`): NanumGothic lacks U+2212 — `PDF.normalize_text`
-  replaces it on every output path (a per-call `_safe` missed the equation table once).
-- Tests: `tests/test_stage2.py` (13), browser `tests/browser/stage2.mjs` (CBD 12 steps by clicks, edits/blocks/reopen, PDFs, 1440 + 390).
+  `approve` is blocked by `model.check` blocking codes; `reopen` marks later steps `stale` (never deletes) and unlocks vplan.
+  Store = `FORMULA1_STAGE2_DB` (default `/tmp/formula1/stage2.db`, lost on pod restart).
+- **Matrices are derived, never entered** — `matrix_of(just, cqas)`; a missing cell blocks (JUST_MISSING). Pinned: Table 6/8 → Table 5/7, 84/84.
+- **LLM drafts (agent.py)**: grid (variable × confirmed CQA levels) → code groups same-level cells → mechanism text per group (batches of 8,
+  one retry). Recommend names are matched back to candidates ("Name (kind)" stripped). Unknown numbers → `LLM_NUMBERS` warning. No response → 503, nothing filled.
+- **Toolkit (doe.py)**: fit summary (seq F, LOF, adj/pred R²) → suggestion; partial-SS ANOVA; actual-unit equation; surfaces.
+  **Overfit** = pred R² < adj R² − 0.2 or < 0 → `REG_OVERFIT` warning; approving a chosen overfit model needs an approval note
+  (`REG_OVERFIT_REASON`), which lands in the approvals ledger and the PDF.
+- **Design Space (space.py)**: per-response t predictive distribution (df = resid df, scale √(SE² + MSE)) → pass probabilities multiplied
+  (independence assumption, stated) over a 21-per-axis grid inside the design points' convex hull; setpoint = max joint P with hull edge ≥ 0.1
+  coded; empty region → `SPACE_EMPTY` blocks (**never relax specs**). vplan = SETPOINT · BOUNDARY · ROBUSTNESS(± delta corners) + optional
+  REFERENCE point, Bonferroni PIs over 3 × (#spec responses); approve = lock (`locked_at`, `plan_hash`). verify = observed values →
+  (spec pass × inside PI); all three required points PASS_IN → VERIFIED, else INVALIDATED with advice. This is the old v6.1 engine's
+  math ported 1:1 — pinned golden values: Lornoxicam 7,501/9,261, mean-ok 0.772, joint 0.476, setpoint 2.7/12.5/6.8 (P 0.991), DE30 PI 71.9–92.8;
+  CBD with paper specs → mean-ok 0.479, joint 0 (max 0.883, Hardness binds) → stops at step 13 (that is correct, not a bug).
+- **Measured LLM quality** (`scripts/report/stage2_llm.py` → `docs/report/stage2_llm.json`): drafts pass every check but only 17/42 and 24/42
+  risk cells match the paper — the reason steps are "draft + approve".
+- **PDFs** (`report.py`, fpdf2 + NanumGothic): `PDF.normalize_text` replaces U+2212 on every path. The final report is available once ANOVA is
+  approved and includes 13–15 when present.
+- Example data for the demo: `web/static/data/almotairi2022_table3.csv` (real, cited in its `#` header; `X:`/`Y:` header prefixes set column roles).
+- Tests: `tests/test_stage2.py` (17), browser `stage2.mjs` (CBD 1–13 by clicks, 1440 + 390), `pipeline.mjs` (PPT p.10 with a real LLM).
 
-## Chat UI (2026-09-28) — ChatGPT/Toss-style single conversation
+## Chat UI (2026-09-28) — one conversation, **original zihwan.com look**
 
-User spec: centered input first (placeholder text is exact — see `agent.js PLACEHOLDER`), then the proposal card with
-"실험 데이터값을 입력하시겠습니까?" + the existing inputs card; [설계 실행] → API 물리화학 card (horizontal: structure | flags ·
-descriptor · estimates split by rules) → 데이터 요청 card → only after [값 제출]/[전부 건너뛰기] (or agent submit) → 후보 처방 card.
-Graph/narration/trace moved to a right drawer (rail tabs, ⤢ wide/normal, full-screen on phones). History stays; new steps append.
+User spec: centered input first (placeholder text is exact — `agent.js PLACEHOLDER`), then the proposal card with
+"실험 데이터값을 입력하시겠습니까?" + the inputs card; [설계 실행] → API 물리화학 card (horizontal: structure | flags · descriptor ·
+estimates split by rules) → 데이터 요청 card → only after [값 제출]/[전부 건너뛰기] (or agent submit) → 후보 처방 card. Observation
+(graph · narration · trace) is a right column with tabs, ⤢ wide/normal and ✕ collapse. **Second user instruction (same day): keep the
+original UI feel** — so the look is the old one: black-glass masthead (brand · 룰북/LLM pills · 2단계 기록 · 새 설계 · 진행 과정 ·
+시스템 설명 · ◐), "Formula 1" hero + tagline, the thick-bordered 입력 에이전트 panel with the model select in its header, white `.panel`
+cards, grayscale tokens from `styles.css`, black pill primary buttons. No sidebar, no blue palette — don't reintroduce either.
 
-- `index.html`: `#agent-log` **is** the thread. Live cards (`#card-inputs`, `#panel-chem`, `#drq`, `#panel-cands`, `#manual`) sit in hidden
-  `#stash`; `flow.js` moves them into the thread at the right moment (ids unchanged, so `app.js` keeps rendering into them). On a new run the
-  previous run's cards are left as **frozen clones** (ids stripped, controls disabled) and the live nodes move to the new position.
-- Sequencing hooks: `f1:proposal` (agent start_run card) → inputs card; `f1:runstart` → chem card; `f1:run` (finish/recompute) +
-  `F1Discovery.pending()` → drq or cands; clicks on `#drq-submit/#drq-skip` or `f1:drqdone` → cands; `f1:flowready` → agent nudge.
-- `agent.dock()` must move `#agent-form` **before** removing `#hello` (it lives inside it — removing first threw and broke every card).
-  Demo scenario cards move to the sidebar (`#side-demos`) at the same time, otherwise they vanish after the first message.
-- Toss tokens are scoped to `body.chat-app` in `app.css` (blue = primary action only; `--status-*` still only for verdicts/risk levels).
-  Surface grid CSS (`.rsg*`) lives in `stage2.css` (it used to be in the deleted doe7.css — without it plots stack in one column).
-- `.s2-t` is the stage-2 *table* class — don't reuse it for text (it has `width:100%`; the step title class is `.s2-ttl`).
-- Free Groq's **daily** token limit is shared with live; a full browser run (verify+agent+scenarios) can exhaust it → candidates/drafts
-  come back empty. Re-run LLM suites with `F1_LLM=dacon` against a local container that has the contest key.
+- `index.html`: `#agent-log` **is** the thread; `#hello` (hero · `#agent-box` · demo cards) stays at its top — on the first message only
+  `#agent-box` moves to `#dock-inner` (sticky bottom). Live cards (`#card-inputs`, `#panel-chem`, `#drq`, `#panel-cands`, `#manual`) sit in hidden
+  `#stash`; `flow.js` moves them into the thread (ids unchanged, so `app.js` keeps rendering into them). A new run leaves the previous run's
+  cards as **frozen clones** (ids stripped, controls disabled).
+- Sequencing hooks: `f1:proposal` → inputs card; `f1:runstart` → chem card; `f1:run` + `F1Discovery.pending()`/`status()` → drq or cands
+  (a concluded run — infeasible/no_design/qtpp_review — shows cands immediately); `#drq-submit/#drq-skip` clicks or `f1:drqdone` → cands
+  (`f1:drqdone` arrives *after* the recompute's `f1:run`, so it places the cands itself); `f1:flowready` → agent nudge.
+  A drq card already in the thread never disappears — `renderDataRequests` leaves a "남은 요청 없음" line instead of hiding it.
+- Right column is open by default above 1180 px (pref in `localStorage f1:drawer`), fixed overlay below, full screen ≤ 760 px.
+- Demo cards = the presentation's scenarios: ① Lornoxicam full pipeline (flow inputs 42°/22 %/1.28, then 개발 착수 → CSV → Design Space),
+  ② geriatric amlodipine + pinned lactose (infeasible), ③ VX-770 cold start (after the run the card's measurement sentence is **placed in the
+  input box, not sent**), ④ CBD Stage 2. Values are the pharmacy team's demo query cards (`scripts/report/devfix_check.py CASES`).
+- Stage-2 cards: collapsed steps show a one-line summary (`summary()` in stage2.js); editing marks the shown checks as "저장된 판" (stale) until saved.
+- `.s2-t` is the stage-2 *table* class — don't reuse it for text (step title class is `.s2-ttl`). Surface grid CSS (`.rsg*`) lives in `stage2.css`.
+- Free Groq's **daily** token limit is shared with live; a full browser run can exhaust it → run LLM suites with `F1_LLM=dacon` against a local
+  container that has the contest key.
 
 ## Front part merged (PR #1 spec) + input agent (2026-09-24)
 
