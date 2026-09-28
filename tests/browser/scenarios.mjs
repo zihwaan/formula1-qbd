@@ -35,6 +35,10 @@ let trace = await p.locator('#trace').textContent();
 ck('1차 아민 × 유당 금기(INC001) 또는 다성분 금기(MC00x) 발동', /INC001|MC00\d/.test(trace), (trace.match(/INC001|MC00\d/g) || []).join(','));
 ck('“이 제약으로는 통과 없음” 결론(재설계 루프 없이 종료)', /제약|통과가 없다|불가능/.test(trace));
 ck('대화에 후보 카드가 놓인다(결론 포함)', await p.locator('#agent-log #panel-cands').count() === 1);
+const concl = (await p.locator('#agent-log #consensus.infeasible').textContent().catch(() => '')).replace(/\s+/g, ' ');
+ck('후보 카드 안에 결론 · 대안(모바일에서도 보임)', /통과하는 처방이 없음/.test(concl) && /대안/.test(concl), concl.slice(0, 120));
+ck('소집 예정 심사관 = 고령자 안전 + 공정 실현성(발표 11쪽)', /고령자 안전 심사관/.test(concl) && /공정 실현성 심사관/.test(concl) && !/소아 안전/.test(concl),
+  (concl.match(/소집 예정[^—]*/) || [''])[0]);
 
 // ── 시연 ③ VX-770 cold start ─────────────────────────────────────────
 console.log('\n[시연 ③ · 개발코드 VX-770 — 구조식만 있는 신규물질]');

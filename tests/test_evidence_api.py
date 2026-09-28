@@ -1,0 +1,106 @@
+"""근거 결손 게이트(발표 자료 ⑤)가 1단계 후보 → 2단계 진입 사이에 실제로 걸려 있는지 — API 수준.
+
+  - 통과 후보마다 결손·요청 시험이 나온다(같은 입력 → 같은 판정, LLM 없음).
+  - 결손이 남은 후보는 사유 없이 개발 착수가 409(EVIDENCE_GAPS), 사유를 적으면 Handoff에 사유와 결손이 남는다.
+  - 확인시험 결과(적합)가 들어오면 재판정으로 결손이 닫히고 사유 없이 착수된다.
+  - 부적합 결과는 전제의 부정 — 사유가 있어도 착수를 막는다(EVIDENCE_FAILED).
+또한 무료 모델(Groq) 선택은 비밀번호 접속이면 대회 API를 뒤에 두는 체인이 된다(시연이 빈 결과로 끝나지 않게).
+"""
+
+import os
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+os.environ.setdefault("FORMULA1_LLM_PROVIDER", "none")
+
+from formula.chem.profile import build_profile                     # noqa: E402
+from formula.contracts import FormulationSpec, Ingredient, Recipe   # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+@pytest.fixture()
+def app_with_final(tmp_path, monkeypatch):
+    monkeypatch.setenv("FORMULA1_STAGE2_DB", str(tmp_path / "stage2.db"))
+    import importlib
+    import web.server as server
+    server = importlib.reload(server)
+    from formula.orchestrator.runner import Run
+    run = Run(ROOT, "이부프로펜 200 mg 습식과립 정제")
+    spec = FormulationSpec(api_name="Ibuprofen", dosage_form="tablet").with_profile(
+        build_profile("Ibuprofen", base_dir=ROOT, render=False))
+    recipe = Recipe(api_name="Ibuprofen", candidate_id="cand-0-WG", strategy="WG", process="wet_granulation",
+                    ingredients=[Ingredient(name="Ibuprofen", role="api", amount_mg=200, percent=50),
+                                 Ingredient(name="Microcrystalline cellulose", role="diluent", amount_mg=150, percent=38),
+                                 Ingredient(name="Magnesium stearate", role="lubricant", amount_mg=4, percent=1)])
+    run.final = {"spec": spec, "results": [{"candidate_id": "cand-0-WG", "recipe": recipe, "derived": {},
+                                            "passed": True, "verdicts": []}]}
+    server.RUNS[run.run_id] = run
+    return server, TestClient(server.app), run
+
+
+def _create(client, run, **extra):
+    return client.post("/api/stage2/studies", json={"source": "candidate", "run_id": run.run_id,
+                                                    "candidate_id": "cand-0-WG", **extra})
+
+
+def test_evidence_is_listed_per_passed_candidate(app_with_final):
+    server, client, run = app_with_final
+    a = client.get(f"/api/runs/{run.run_id}/evidence").json()
+    b = client.get(f"/api/runs/{run.run_id}/evidence").json()
+    ev = a["candidates"]["cand-0-WG"]
+    assert ev["blocking"] and ev["readiness"] == "blocked"
+    assert all(g["test_id"] for g in ev["gaps"])                   # 요청은 실제 확인시험을 가리킨다
+    assert a["candidates"] == b["candidates"]                      # 결정론
+
+
+def test_gaps_hold_development_until_waiver_or_results(app_with_final):
+    server, client, run = app_with_final
+    held = _create(client, run)
+    assert held.status_code == 409 and held.json()["detail"]["code"] == "EVIDENCE_GAPS"
+    assert held.json()["detail"]["gaps"]
+
+    ok = _create(client, run, evidence_waiver="선행 시험은 개발 1차 배치와 병행 — 발표 시연")
+    assert ok.status_code == 200, ok.text
+    ev = ok.json()["study"]["source"]["handoff"]["evidence"]
+    assert ev["waiver"].startswith("선행 시험") and ev["open"]
+
+
+def test_passing_results_close_the_gaps(app_with_final):
+    server, client, run = app_with_final
+    gaps = client.get(f"/api/runs/{run.run_id}/evidence").json()["candidates"]["cand-0-WG"]["blocking"]
+    r = client.post(f"/api/runs/{run.run_id}/confirmation", json={
+        "candidate_id": "cand-0-WG",
+        "entries": [{"requirement_id": g, "outcome": "pass", "value": "적합"} for g in gaps]})
+    assert r.status_code == 200, r.text
+    assert not r.json()["candidate"]["blocking"]
+    assert _create(client, run).status_code == 200
+
+
+def test_failed_result_blocks_even_with_waiver(app_with_final):
+    server, client, run = app_with_final
+    gid = client.get(f"/api/runs/{run.run_id}/evidence").json()["candidates"]["cand-0-WG"]["blocking"][0]
+    client.post(f"/api/runs/{run.run_id}/confirmation", json={
+        "candidate_id": "cand-0-WG", "entries": [{"requirement_id": gid, "outcome": "fail", "value": "분해물 증가"}]})
+    r = _create(client, run, evidence_waiver="그래도 진행")
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "EVIDENCE_FAILED"
+
+
+def test_unknown_requirement_is_rejected(app_with_final):
+    server, client, run = app_with_final
+    r = client.post(f"/api/runs/{run.run_id}/confirmation", json={
+        "candidate_id": "cand-0-WG", "entries": [{"requirement_id": "NOPE", "outcome": "pass"}]})
+    assert r.status_code == 422
+
+
+def test_groq_choice_falls_back_to_contest_api_for_full_sessions(monkeypatch):
+    from formula.agents import client as c
+    monkeypatch.setattr(c, "_base_providers", lambda: ("dacon", "groq"))
+    with c.use_llm(c.GROQ_THEN_DACON):
+        assert c.providers() == ("groq", "dacon")
+    with c.use_llm("groq"):
+        assert c.providers() == ("groq",)                          # 게스트 — 무료 모델만
+    with c.use_llm("dacon"):
+        assert c.providers() == ("dacon", "groq")

@@ -9,7 +9,7 @@ curl 검증만 통과한 채 배포된 적이 있다.
                                  # 상위로 올라가 ~/zihwan/package.json 을 고친다(실제로 겪음).
 CHROME=<chrome 실행 파일 경로> node tests/browser/verify.mjs    http://localhost:8000/
 CHROME=<chrome 실행 파일 경로> node tests/browser/audit.mjs     http://localhost:8000/
-CHROME=<chrome 실행 파일 경로> node tests/browser/evidence.mjs  http://localhost:8000/
+F1_LLM=dacon CHROME=<chrome 실행 파일 경로> node tests/browser/evidence.mjs  http://localhost:8000/
 CHROME=<chrome 실행 파일 경로> node tests/browser/scenarios.mjs http://localhost:8000/
 CHROME=<chrome 실행 파일 경로> node tests/browser/agent.mjs     http://localhost:8000/
 CHROME=<chrome 실행 파일 경로> node tests/browser/stage2.mjs    http://localhost:8000/
@@ -26,16 +26,15 @@ CHROME=<chrome 실행 파일 경로> node tests/browser/stage2.mjs    http://loc
   대화에 요청 말풍선·물리화학 카드(가로)·데이터 요청(있으면 건너뛰기) → 후보 → 규칙 모달, 오른쪽 탭(흐름·해설·트레이스, 크게/닫기),
   테마 전환과 새로고침 유지, 모바일 뷰포트, 콘솔 오류 0건.
 - `agent.mjs` — 가운데 입력칸 → 미완성 카드(용량 되묻기) → 완성 카드 밑 “실험 데이터값을 입력하시겠습니까?” + 입력 카드 →
-  설계 실행 → 물리화학 → 데이터 요청 → 건너뛰기 → 후보 → 에이전트가 먼저 알림 → “1위 후보로 개발 착수” → 2단계 프로토타입 카드, XSS, 휴대폰.
-- `evidence.mjs` — **이중 루프 회귀 26건**: 실험 데이터 선택 입력(카탈로그 렌더·허용목록 거부),
-  근거 게이트(실행 불가 초안 → 확인시험 → 승인 → 실행 가능), 확인시험 수치가 실측값 자리에
-  반영되는지, 배치 결과 루프가 그대로 도는지, 4개 화면폭 가로 오버플로. 여기서 실제 결함
-  두 건을 잡았다 — 실행 중 확인시험 제출이 404 나던 문제와, 긴 토큰이 좁은 화면에서 페이지를
-  가로 스크롤시키던 문제.
-- `audit.mjs` — 상용 관점 점검: 5개 렌더 경로에 `<img onerror>` 주입(실행 0회여야 함),
+  설계 실행 → 물리화학 → 데이터 요청 → 건너뛰기 → 후보 → 에이전트가 먼저 알림 → “1위 후보로 개발 착수” → (근거 결손이면 후보 카드의 사유 칸) →
+  2단계 프로토타입 카드, XSS, 휴대폰.
+- `evidence.mjs` — **근거 결손 게이트(발표 ⑤)**: 시연 카드 ① → 통과 후보마다 게이트 상자(반려 후보엔 없음) → 요청 시험이 확인시험 마스터의
+  test_id인지 → 후보 카드에서 결과(적합) 입력 → LLM 없이 재판정 “근거 충족” → 버튼이 “이 후보로 개발 착수”로 → 사유 없이 2단계, Handoff에
+  근거 충족 기록 → 다른 결손 후보에 부적합 입력 → 개발 불가(버튼 비활성), 390px 넘침 0. 실제 LLM 필요(`F1_LLM=dacon`).
+- `audit.mjs` — 상용 관점 점검: 6개 렌더 경로(트레이스·합의·후보·근거 상자·불가능 결론·물리화학)에 `<img onerror>` 주입(실행 0회여야 함),
   실행 중 이중 실행 차단, 규칙 기반 대체값 노출 여부, 원시 HTTP 오류 문구 노출,
   접근성 기본, 9개 화면폭 가로 오버플로.
-- `scenarios.mjs` — 시연 카드 ②(암로디핀 + 유당 → INC001·MC00x → 제약 불가능 결론이 먼저 놓임)와 ③(VX-770 → DSC만 요청 → 입력칸의
+- `scenarios.mjs` — 시연 카드 ②(암로디핀 + 유당 → INC001(·MC00x) → 후보 카드 맨 위에 제약 불가능 결론 · 대안 · 소집 예정 심사관 = 고령자 안전 + 공정 실현성)와 ③(VX-770 → DSC만 요청 → 입력칸의
   측정 문장을 보내면 제출 카드 → 재계산으로 ASD_SDD, 화면에 실명 없음)이 카드 문구대로 가는지. 실제 LLM이 필요하다 — 키 없이 돌리면
   "LLM 응답이 스키마를 만족하는지"를 검증하지 못한다. 요청 문자열이나 시나리오 흐름을 바꾸면 다시 돌려 주장하는 경로가 그대로인지 확인한다.
 - `drq.mjs` — 데이터 요청 패널: 입력 칸이 필드 정의의 타입(숫자·예/아니오·선택지·목록)을 따르는지,
@@ -55,5 +54,5 @@ CHROME=<chrome 실행 파일 경로> node tests/browser/stage2.mjs    http://loc
   (SPACE_EMPTY로 멈춤 — 규격 완화 안 함) → 최종 PDF → 설계 표 다시 열기(뒤 단계 stale), 2단계 기록 메뉴 · 오른쪽 관측 칼럼.
   1440과 390 두 폭, 가로 넘침 0, 콘솔 오류 0. `node tests/browser/stage2.mjs <url> [스크린샷 폴더]`.
 - `pipeline.mjs` — **실제 LLM**(`F1_LLM=dacon` 권장): 발표 자료 10쪽 그대로. 시연 카드 ① 로르녹시캄 → 유동성 판정 → 후보 → 개발 착수(불변 Handoff ·
-  저함량) → LLM 초안으로 1–8단계 → 9단계 Almotairi Table 3 CSV 불러오기(열 역할 자동 인식) → 제안 모형과 과적합 사유 → 곡면 · ANOVA →
+  저함량 · 근거 결손 게이트: 사유 없이 막힘 → 사유 기록) → LLM 초안으로 1–8단계 → 9단계 Almotairi Table 3 CSV 불러오기(열 역할 자동 인식) → 제안 모형과 과적합 사유 → 곡면 · ANOVA →
   규격 입력 → 평균 77.2 % → 공동확률 47.6 %, 설정점 2.7 · 12.5 · 6.8 → 확인계획 잠금(참고: 논문 최적) → 최종 PDF. 약 10분.

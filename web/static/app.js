@@ -284,6 +284,7 @@ function handle(kind, ev) {
 
     case "warning":
       addTrace(ev.seq, ev.node, p.message || (p.reason + (p.fallback ? " → 규칙 기반 처리(LLM 미사용)" : "")), "warn");
+      if (ev.node === "infeasible") renderInfeasible(p);
       if (p.fallback) degraded.add(ev.node);
       if (p.no_candidate) unavailable.designs += 1;
       break;
@@ -309,11 +310,31 @@ function renderChem(p) {
     ? `${p.api_name}\n${p.smiles}` + (p.is_salt ? `\nparent: ${p.parent_smiles}` : "")
     : `${p.api_name} — SMILES 미상`;
 
-  $("mol-flags").innerHTML = (p.flags || []).map((f) =>
-    `<span class="flag ${f.present ? "on" : ""}">${esc(f.flag_name)}</span>`).join("");
+  // 검출된 구조 패턴만 먼저 — 검출 안 된 패턴(수십 개)은 접어 둔다(시연 화면이 칩으로 뒤덮이지 않게)
+  const flags = p.flags || [];
+  const on = flags.filter((f) => f.present), off = flags.filter((f) => !f.present);
+  $("mol-flags").innerHTML = (on.length ? on.map((f) => `<span class="flag on">${esc(f.flag_name)}</span>`).join("")
+      : `<span class="flags-none">검출된 구조 경고 없음</span>`)
+    + (off.length ? `<details class="flags-more"><summary>검출 안 된 패턴 ${off.length}개</summary>
+        <div class="flags">${off.map((f) => `<span class="flag">${esc(f.flag_name)}</span>`).join("")}</div></details>` : "");
 
-  $("mol-desc").innerHTML = Object.entries(p.descriptors || {}).map(([k, v]) =>
-    `<tr><td>${esc(k)}</td><td>${Number(v).toFixed(2)}</td></tr>`).join("");
+  // 판단에 주로 쓰는 descriptor를 먼저, 나머지는 접는다
+  const KEY_DESC = ["molecular_weight", "clogp", "tpsa", "hbond_donors", "hbond_acceptors", "rotatable_bonds", "aromatic_rings",
+    "fraction_csp3", "qed", "lipinski_pass", "veber_pass", "heavy_atom_count"];
+  const desc = Object.entries(p.descriptors || {});
+  const fmt = (v) => (typeof v === "boolean" ? (v ? "예" : "아니오") : Number.isFinite(Number(v)) ? Number(v).toFixed(2) : esc(v));
+  const keyRows = KEY_DESC.filter((k) => k in (p.descriptors || {})).map((k) => [k, p.descriptors[k]]);
+  const rest = desc.filter(([k]) => !KEY_DESC.includes(k));
+  const row = ([k, v]) => `<tr><td>${esc(k)}</td><td>${fmt(v)}</td></tr>`;
+  $("mol-desc").innerHTML = `<tbody class="desc-key">${(keyRows.length ? keyRows : desc.slice(0, 12)).map(row).join("")}</tbody>`
+    + (rest.length && keyRows.length ? `<tbody class="desc-rest" hidden>${rest.map(row).join("")}</tbody>
+       <tfoot><tr><td colspan="2"><button type="button" class="linkish desc-toggle">전체 descriptor ${desc.length}개 보기</button></td></tr></tfoot>` : "");
+  const dt = $("mol-desc").querySelector(".desc-toggle");
+  if (dt) dt.onclick = () => {
+    const r = $("mol-desc").querySelector(".desc-rest");
+    r.hidden = !r.hidden;
+    dt.textContent = r.hidden ? `전체 descriptor ${desc.length}개 보기` : "핵심 descriptor만 보기";
+  };
 
   $("mol-est").innerHTML = (p.estimates || []).map((e) =>
     `<div class="est"><b>${esc(e.property)}</b> = ${esc(e.value)}
@@ -333,6 +354,111 @@ function citeLink(c) {
   return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(c)}</a>` : esc(c);
 }
 
+/* ── 근거 결손 게이트(발표 자료 ⑤) — 후보 목록은 그대로 두고, 결손이 남은 후보의 개발 착수만 보류한다 ──────── */
+let evidence = {};              // candidate_id → 서버 판정(GET /api/runs/{id}/evidence)
+async function loadEvidence() {
+  if (!runId) return;
+  try {
+    const res = await fetch(api(`/api/runs/${runId}/evidence`));
+    if (!res.ok) return;
+    evidence = (await res.json()).candidates || {};
+    renderCandidates();
+  } catch (e) { /* 보조 — 실패해도 후보 목록은 그대로 */ }
+}
+function evidenceBox(id) {
+  const ev = evidence[id];
+  if (!ev) return "";
+  const pr = ev.protocol || {};
+  const before = pr.before_protocol || [], par = pr.parallel || [];
+  const failed = (ev.failed || []).length, open = (ev.blocking || []).length - failed;
+  const head = failed ? `<b class="ev-bad">근거 부적합 ${failed}건</b> — 전제가 부정됨, 개발로 넘기지 않음`
+    : open ? `<b class="ev-hold">근거 결손 ${open}건 — 보류</b> · 확인시험 결과를 넣으면 다시 판정`
+      : `<b class="ev-ok">근거 충족</b>${par.length ? ` · 병행 시험 ${par.length}건` : ""}`;
+  const item = (g) => `<li data-req="${esc(g.requirement_id)}"><b>${esc(g.label)}</b> <code>${esc(g.test_id)}</code> ${esc(g.test_name || "")}
+      <div class="ev-why">${esc(g.why || "")}${g.acceptance_logic ? ` · 판정: ${esc(g.acceptance_logic)}` : ""}${g.result_note ? ` · 결과: ${esc(g.result_note)}` : ""}</div>
+      ${g.status === "missing" ? `<div class="ev-form"><select class="ev-out"><option value="pass">적합</option><option value="fail">부적합</option></select>
+        ${g.result_key ? `<input class="ev-num" inputmode="decimal" placeholder="${esc(g.result_key)}${g.result_unit ? ` (${esc(g.result_unit)})` : ""}">` : ""}
+        <input class="ev-note" placeholder="결과 요약·출처"><button type="button" class="ev-send">결과 입력</button></div>` : ""}</li>`;
+  return `<details class="ev-box ${failed ? "bad" : open ? "hold" : "ok"}"><summary>근거 결손 게이트 · ${head}</summary>
+    ${before.length ? `<ul class="ev-list">${before.map(item).join("")}</ul>` : `<p class="ev-why">선행 확인시험 요구 없음</p>`}
+    ${par.length ? `<p class="ev-why">병행(배치와 함께): ${par.map((g) => `${esc(g.label)} <code>${esc(g.test_id)}</code>`).join(" · ")}</p>` : ""}
+    <p class="ev-why">요청 시험은 확인시험 마스터(66종)의 실제 행에서만 고른다 — 판정은 결정론, LLM 없음.</p></details>`;
+}
+function devButton(id) {
+  const ev = evidence[id] || {};
+  const failed = (ev.failed || []).length, open = (ev.blocking || []).length - failed;
+  if (failed) return `<button type="button" class="dev-start" disabled title="확인시험 부적합 — 재설계가 필요합니다">개발 불가(근거 부적합)</button>`;
+  return `<button type="button" class="dev-start${open ? " hold" : ""}" data-cand="${esc(id)}"
+    title="이 처방을 프로토타입으로 받아 2단계(QTPP → 위험평가 → DoE → 회귀·ANOVA → Design Space)를 시작합니다">${open ? "결손을 기록하고 개발 착수 →" : "이 후보로 개발 착수 →"}</button>
+    ${open ? `<div class="ev-waive" hidden><textarea rows="2" placeholder="근거 결손을 둔 채 진행하는 사유(예: DoE 배치에서 함께 확인)"></textarea>
+      <button type="button" class="ev-waive-go">사유 기록 · 개발 착수</button></div>` : ""}`;
+}
+const cardOf = (cid) => [...$("cands").querySelectorAll(".card")].find((c) => c.dataset.cand === cid) || null;
+// 결과: "started"(2단계 열림) | "waiver"(결손 — 카드에 사유 칸을 열었음) | "error". 후보 카드 버튼과 입력 에이전트가 같은 길을 쓴다.
+async function startDevelopment(cid, card, retried) {
+  if (!evidence[cid] && runId && !running) await loadEvidence();     // 판정을 읽기 전에 눌렀으면 먼저 읽는다
+  if (!card || !card.isConnected) card = cardOf(cid);                // loadEvidence가 카드를 다시 그린다
+  const ev = evidence[cid] || {};
+  const open = ((ev.blocking || []).length - (ev.failed || []).length) > 0;
+  if (open && card) {           // 결손이 남았으면 사유를 받는다 — 연구자 결정으로 Handoff와 보고서에 남는다
+    const w = card.querySelector(".ev-waive");
+    w.hidden = false;
+    w.scrollIntoView({ block: "center", behavior: "smooth" });   // 카드가 한 화면보다 길다 — 사유 칸 자체를 가운데로
+    w.querySelector("textarea").focus({ preventScroll: true });
+    w.querySelector(".ev-waive-go").onclick = async () => {
+      const reason = w.querySelector("textarea").value.trim();
+      if (!reason) { notice("사유를 적어 주세요 — 근거 결손을 둔 채 진행한 이유가 2단계 기록에 남습니다.", "warn"); return; }
+      try { await window.F1Stage2.startFromCandidate(runId, cid, reason); } catch (e) { /* stage2.js가 알린다 */ }
+    };
+    return "waiver";
+  }
+  try {
+    await window.F1Stage2.startFromCandidate(runId, cid);
+    return "started";
+  } catch (e) {
+    if (e.code === "EVIDENCE_GAPS" && !retried) {   // 화면의 판정이 낡았다 — 다시 읽고 사유 칸을 연다
+      await loadEvidence();
+      return startDevelopment(cid, null, true);
+    }
+    if (e.code === "EVIDENCE_GAPS") notice(e.message, "warn");
+    return "error";
+  }
+}
+function wireEvidence(card, cid) {
+  card.querySelectorAll(".ev-send").forEach((b) => {
+    b.onclick = async () => {
+      const li = b.closest("li");
+      const num = li.querySelector(".ev-num");
+      const entry = { requirement_id: li.dataset.req, outcome: li.querySelector(".ev-out").value,
+        value: li.querySelector(".ev-note").value.trim(), note: "", value_num: num && num.value.trim() !== "" ? Number(num.value) : null };
+      if (entry.value_num !== null && !Number.isFinite(entry.value_num)) { notice("결과 값은 숫자로 넣어 주세요.", "warn"); return; }
+      b.disabled = true;
+      try {
+        const res = await fetch(api(`/api/runs/${runId}/confirmation`), { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ candidate_id: cid, entries: [entry] }) });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((out.detail && (out.detail.message || out.detail)) || `결과 입력 실패 (${res.status})`);
+        evidence = out.candidates || evidence;
+        renderCandidates();
+        narrate(`ev-${cid}-${entry.requirement_id}`, { layer: "근거 결손 게이트", kind: "det", once: false,
+          title: entry.outcome === "pass" ? "확인시험 결과로 근거를 다시 판정했다" : "확인시험이 부적합 — 이 후보는 개발로 넘기지 않는다",
+          body: `${esc(cid)} · ${esc(entry.requirement_id)} → ${esc(out.candidate.summary || "")}
+            ${Object.keys(out.applied_measurements || {}).length ? `<br>실측값 자리에 반영: <code>${esc(Object.entries(out.applied_measurements).map(([k, v]) => `${k}=${v}`).join(", "))}</code>` : ""}
+            <span class="nr-why">왜 중요한가: 룰북 통과는 “알려진 금기가 없다”일 뿐이다 — 필수 근거가 없으면 개발(2단계)로 넘기기 전에 확인시험을 먼저 한다.</span>` });
+      } catch (e) { notice(e.message, "error"); b.disabled = false; }
+    };
+  });
+}
+
+// 심사관 서술은 세 줄로 접어 두고 필요할 때 펼친다(후보 카드가 한 화면을 넘지 않게)
+$("cands").addEventListener("click", (e) => {
+  const b = e.target.closest && e.target.closest(".jn-more");
+  if (!b) return;
+  const n = b.closest(".judge-note");
+  n.classList.toggle("open");
+  b.textContent = n.classList.contains("open") ? "접기" : "더 보기";
+});
+
 function renderCandidates() {
   const box = $("cands");
   if (!candidates.size) return;
@@ -345,6 +471,7 @@ function renderCandidates() {
     const gate = entry.gate;
     const card = document.createElement("div");
     card.className = "card " + (gate ? (gate.passed ? "pass" : "fail") : "");
+    card.dataset.cand = id;
     const ings = entry.recipe.ingredients
       .map((i) => `${esc(i.name)} ${esc(i.amount_mg ?? "-")}mg`).join(" · ");
     const chips = entry.verdicts.map((v) =>
@@ -354,9 +481,10 @@ function renderCandidates() {
         ? (j.source === "uncited"
           ? `<div class="judge-note unscored"><b>${esc(j.persona)}</b> 점수 무효 <span class="stand-in-tag">검증된 인용(DOI/PMID) 없음 — 제안 점수 ${esc(j.proposed_score ?? "-")}는 합의에 쓰지 않음</span></div>`
           : `<div class="judge-note unscored"><b>${esc(j.persona)}</b> 점수 없음 <span class="stand-in-tag">LLM 응답 없음 · 재시도 후에도 응답 없어 점수를 만들지 않음</span></div>`)
-        : `<div class="judge-note"><b>${esc(j.persona)}</b> ${esc(j.score)} — ${esc(j.rationale)}
-            ${(j.citations || []).length ? `<div class="cites">${j.citations.map(citeLink).join(" · ")}</div>` : ""}</div>`).join("");
-    const readiness = "";
+        : `<div class="judge-note clamp"><b>${esc(j.persona)}</b> ${esc(j.score)} — <span class="jn-text">${esc(j.rationale)}</span>
+            ${(j.citations || []).length ? `<div class="cites">${j.citations.map(citeLink).join(" · ")}</div>` : ""}
+            ${String(j.rationale || "").length > 140 || (j.citations || []).length > 2 ? `<button type="button" class="linkish jn-more">더 보기</button>` : ""}</div>`).join("");
+    const readiness = gate && gate.passed ? evidenceBox(id) : "";
     // v3 — confidence는 pending_refinements가 비어 있는지로 정확히 정해진다(불변식 I-10).
     // LLM이 이 값을 직접 쓰지 않는다 — drq_refine이 매긴 값을 그대로 보여줄 뿐이다.
     // 게이트 판정이 먼저다 — 반려된 후보에는 신뢰도 배지를 붙이지 않는다(반려 + grounded는 모순으로 읽힌다)
@@ -365,7 +493,8 @@ function renderCandidates() {
     const confidence = (rank ? `<span class="rank-badge">#${esc(rank)}</span>` : "") + gateBadge
       + (entry.recipe.confidence && (!gate || gate.passed)
         ? `<span class="drq-badge ${esc(entry.recipe.confidence)}">${esc(entry.recipe.confidence)}</span>` : "");
-    const refinements = (entry.recipe.pending_refinements || []).length
+    // 반려된 후보의 신뢰도 요청은 의미가 없다(반려가 먼저) — 카드만 길어진다
+    const refinements = (entry.recipe.pending_refinements || []).length && (!gate || gate.passed)
       ? `<div class="drq-refine">남은 신뢰도 요청: ${entry.recipe.pending_refinements.map(esc).join(", ")}</div>`
       : "";
     card.innerHTML = `
@@ -374,21 +503,41 @@ function renderCandidates() {
       ${(entry.recipe.process_steps || []).length ? `<div class="ing">공정: ${entry.recipe.process_steps.map(esc).join(" → ")}</div>` : ""}
       ${readiness}${refinements}
       <div class="chips">${chips}</div>${judges}
-      ${gate && gate.passed ? `<button type="button" class="dev-start" data-cand="${esc(id)}"
-         title="이 처방을 프로토타입으로 받아 2단계(QTPP · CQA · 위험평가 · DoE · 회귀식 · 곡면 · ANOVA)를 시작합니다">이 후보로 개발 착수 →</button>` : ""}`;
+      ${gate && gate.passed ? devButton(id) : ""}`;
     card.querySelectorAll(".chip").forEach((chip) => {
       chip.onclick = () => showRule(chip.dataset.rule);
     });
     // 후보 1위가 자동으로 개발에 들어가지 않는다(명세 v6.1 §0 경계 1) — 연구자가 고른 후보만 넘어간다.
     const dev = card.querySelector(".dev-start");
-    if (dev) dev.onclick = () => window.F1Stage2 && window.F1Stage2.startFromCandidate(runId, dev.dataset.cand);
+    if (dev) dev.onclick = () => startDevelopment(dev.dataset.cand, card);
+    wireEvidence(card, id);
     box.appendChild(card);
   }
+}
+
+// 제약 불가능 종료 — 결론은 해설 칼럼(모바일에선 닫혀 있다)이 아니라 대화의 후보 카드 안에 둔다.
+function renderInfeasible(p) {
+  const el = $("consensus");
+  el.hidden = false;
+  el.classList.add("infeasible");
+  $("cands").before(el);          // 결론부터 — 반려된 후보 카드는 그 아래 근거로
+  const judges = p.planned_judges || [];
+  el.innerHTML = `<h3>결론 · 이 제약으로는 통과하는 처방이 없음</h3>
+    <div class="win">${esc(p.reason || "")}</div>
+    ${(p.blocking || []).slice(0, 3).map((b) => `<div class="inf-rule"><code>${esc(b.rule_id)}</code> ${esc(b.reason)}${
+      b.suggestion ? ` → 대안 <b>${esc(b.suggestion)}</b>` : ""}</div>`).join("")}
+    ${(p.also_blocking || []).length ? `<div class="inf-rule">함께 걸린 반려 규칙: ${p.also_blocking.map((b) =>
+      `<code title="${esc(b.reason || "")}">${esc(b.rule_id)}</code>`).join(" · ")}${
+      p.also_blocking.some((b) => b.suggestion) ? ` → 대안 ${[...new Set(p.also_blocking.map((b) => b.suggestion).filter(Boolean))].slice(0, 2).map((x) => `<b>${esc(x)}</b>`).join(" · ")}` : ""}</div>` : ""}
+    ${judges.length ? `<div class="tag" style="margin-top:6px">소집 예정이던 심사관: ${judges.map((j) => `<b>${esc(j.persona)}</b>`).join(" · ")}
+      — 반려 원인이 고정 조건이라 심사·재설계 없이 종료(재설계 0회)</div>` : ""}`;
 }
 
 function renderConsensus(p) {
   const el = $("consensus");
   el.hidden = false;
+  el.classList.remove("infeasible");
+  $("cands").after(el);
   rankOf.clear();
   (p.ranked || []).forEach((r) => { if (r.rank) rankOf.set(r.candidate_id, r.rank); });
   const ranked = [...(p.ranked || [])].sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
@@ -584,7 +733,9 @@ function finishRun(summary) {
 }
 
 // 입력 에이전트에게 "설계 상태가 바뀌었다"를 알린다 — 에이전트는 서버에서 맥락을 다시 읽는다.
+// 측정값이 바뀌면 근거 판정도 바뀔 수 있어 근거 결손 게이트를 다시 읽는다.
 function announceRun() {
+  if (!running) loadEvidence();
   document.dispatchEvent(new CustomEvent("f1:run", { detail: { runId } }));
 }
 
@@ -607,12 +758,13 @@ function startRunWith(p) {
   return true;
 }
 window.F1Discovery = { startRunWith, submitMeasurements: (m, g) => submitMeasurements(m, g || "user_statement", "agent"),
+  develop: (cid) => startDevelopment(cid, null),
   runId: () => runId, running: () => running, pending: () => pendingRequests.length, status: () => lastStatus };
 
 function resetView() {
   candidates.clear(); tokenBuffers.clear(); degraded.clear();
   unavailable.designs = 0; unavailable.judges = 0;
-  winnerId = null; pendingRequests = []; rankOf.clear();
+  winnerId = null; pendingRequests = []; rankOf.clear(); evidence = {};
   resetNarration();
   $("trace").innerHTML = ""; $("cands").innerHTML = "";
   $("consensus").hidden = true;
@@ -1199,6 +1351,7 @@ function narrateEvent(kind, ev, p) {
             ${(p.blocking || []).slice(0, 2).map((b) =>
               `<br><code>${esc(b.rule_id)}</code> ${esc(b.reason)}${
                 b.suggestion ? ` → 대안 <b>${esc(b.suggestion)}</b>` : ""}`).join("")}
+            ${(p.planned_judges || []).length ? `<br>소집 예정이던 심사관: ${p.planned_judges.map((j) => esc(j.persona)).join(" · ")} — 심사 전에 종료` : ""}
             <span class="nr-why">왜 중요한가: 재설계로 풀리지 않는 충돌을 알아채고 루프를 돌리지
             않습니다. 연구원이 들어야 할 답은 “다시 설계했다”가 아니라 “제약 자체가 불가능하다,
             대신 이걸 쓰라”입니다.</span>`,
@@ -1259,7 +1412,7 @@ const SCENARIOS = [
   {
     id: "stage2",
     title: "2단계 — QTPP부터 Design Space까지(CBD 구강붕해정)",
-    proves: "2단계 · 논문 표와 나란히",
+    proves: "2단계 · 논문은 참고 자료로",
     duration: "단계마다 승인",
     stage2: true,
   },

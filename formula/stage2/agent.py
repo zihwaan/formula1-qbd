@@ -66,6 +66,8 @@ def _ctx(ctx: Dict[str, Any]) -> str:
                      f"- 요청 제형: {h['dosage_form']}" if h.get("dosage_form") else "",
                      f"- 약물 함량: {h['drug_loading_pct']:.1f} %" if h.get("drug_loading_pct") is not None else ""]
         ctx_lines += [f"- 1단계 신호 {g['rule_id']}: {g['message']}" for g in h.get("signals") or []]
+        # 근거 결손이 남은 채 넘어왔으면(연구자 사유) 그 근거는 아직 모른다 — 위험평가가 그 불확실성을 봐야 한다
+        ctx_lines += [f"- 근거 결손(확인 전): {g['label']} ({g['test_id']})" for g in ((h.get("evidence") or {}).get("open") or [])[:8]]
         ctx_lines = [x for x in ctx_lines if x]
         if ctx_lines:
             out += "\n\n## 1단계에서 넘어온 맥락\n" + "\n".join(ctx_lines)

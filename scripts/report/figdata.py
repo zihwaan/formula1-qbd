@@ -38,6 +38,8 @@ counts = {
     "reviewers": len(rows("database/06_config/reviewer_registry.csv")),
     "strategies": len(rows("database/06_config/strategy_families.csv")),
     "confirmation_tests": len(rows("database/reference/confirmation_test_master.csv")),
+    "evidence_requirements": len(rows("database/reference/evidence_requirements.csv")),
+    "evidence_before": sum(1 for r in rows("database/reference/evidence_requirements.csv") if r.get("timing") == "before_protocol"),
 }
 bt = [{k: r[k] for k in ("transition_id", "trigger_type", "return_phase", "constraint_patch", "directive_hint")}
       for r in rows("database/06_config/backtrack_transitions.csv")]

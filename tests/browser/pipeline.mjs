@@ -48,9 +48,20 @@ await shot('02_cands');
 check('후보 카드에 개발 착수 버튼', true);
 
 console.log('\n[2단계] 개발 착수 → 1–8단계(LLM 초안)');
+const evHead = (await page.locator('#agent-log #panel-cands .ev-box summary').first().textContent().catch(() => '')).replace(/\s+/g, ' ');
+check('후보 카드에 근거 결손 게이트 판정(발표 ⑤)', /근거 (결손|충족|부적합)/.test(evHead), evHead.slice(0, 90));
 await page.locator('#agent-log #panel-cands .dev-start').first().click();
+const waive = page.locator('#agent-log #panel-cands .ev-waive:not([hidden])').first();
+if (await waive.waitFor({ timeout: 5000 }).then(() => true).catch(() => false)) {
+  await page.locator('#agent-log #panel-cands .ev-waive-go').first().click();
+  check('사유 없이 착수 안 됨(알림)', /사유를 적어/.test(await page.locator('#notice').textContent()));
+  await waive.locator('textarea').fill('선행 확인시험은 DoE 1차 배치와 병행해 확인');
+  await waive.locator('.ev-waive-go').click();
+}
 await page.waitForSelector('#s2 .s2-step.current[data-step="prototype"]', { timeout: 60000 });
-check('불변 Handoff(요청 맥락 · fingerprint) 표시', await page.locator('#s2 .s2-handoff code').count() === 1);
+check('불변 Handoff(요청 맥락 · fingerprint) 표시', await page.locator('#s2 .s2-handoff code').count() >= 1);
+const hoText = (await page.locator('#s2 .s2-handoff').textContent()).replace(/\s+/g, ' ');
+check('Handoff에 근거 결손 판정(사유 포함)이 남음', /근거/.test(hoText), (hoText.match(/근거[^|]{0,80}/) || [''])[0]);
 const loading = await page.locator('#s2 .s2-handoff').textContent();
 const pct = Number((loading.replace(/\s+/g, ' ').match(/약물 함량\s*([\d.]+)/) || [])[1]);
 check('Handoff에 약물 함량(저함량 < 5 %)', pct > 0 && pct < 5, `${pct} %`);

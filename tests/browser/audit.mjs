@@ -31,7 +31,7 @@ const fontOk = await page.evaluate(() => document.fonts.check('16px "Pretendard 
 if (!fontOk) note('MED', '폰트', 'Pretendard 미적용 — 시스템 폰트로 폴백');
 
 console.log('\n── B. 실행 중 버튼/상태 (이중 실행 방지)');
-await page.evaluate(() => { document.getElementById('manual').open = true; });
+await page.click('#manual-open');                                   // 폼은 보조 경로(직접 입력 시트)
 await page.fill('#request', '소아용 플루옥세틴 정제를 설계해줘');
 await page.click('#run');
 await page.waitForTimeout(1200);
@@ -43,7 +43,7 @@ const runState = await page.evaluate(() => ({
 if (!runState.disabled) note('HIGH', '이중 실행', `실행 중인데 '설계 실행' 버튼이 활성(${JSON.stringify(runState)}) — 중복 run 생성 가능`);
 
 console.log('\n── C. 실행 완료까지');
-await page.waitForSelector('#consensus:not([hidden])', { timeout: 300000 }).catch(() => note('HIGH', '실행', '합의까지 도달 실패'));
+await page.waitForSelector('#consensus:not([hidden])', { state: 'attached', timeout: 300000 })   // 데이터 요청 뒤라 아직 숨은 카드 안일 수 있다.catch(() => note('HIGH', '실행', '합의까지 도달 실패'));
 await page.waitForTimeout(1500);
 
 const res = await page.evaluate(() => {
@@ -97,6 +97,16 @@ const xss = await page.evaluate(() => {
     });
     renderCandidates();
   });
+  probe('renderInfeasible', () => renderInfeasible({
+    reason: P, blocking: [{ rule_id: P, reason: P, suggestion: P }], also_blocking: [{ rule_id: P, reason: P, suggestion: P }],
+    planned_judges: [{ reviewer_id: P, persona: P }],
+  }));
+  probe('evidenceBox', () => {
+    evidence.x = { blocking: [P], failed: [], protocol: { before_protocol: [{ requirement_id: P, label: P, test_id: P, test_name: P, why: P,
+      acceptance_logic: P, result_note: P, status: 'missing', result_key: P, result_unit: P }], parallel: [{ label: P, test_id: P }] } };
+    candidates.get('x').gate = { passed: true };      // 근거 상자는 통과 후보에만 그려진다
+    renderCandidates();
+  });
   probe('renderChem', () => renderChem({
     api_name: P, smiles: P, flags: [{ flag_name: P, present: true }],
     descriptors: {}, estimates: [{ property: P, value: P, confidence: P }], warnings: [P],
@@ -106,7 +116,7 @@ const xss = await page.evaluate(() => {
 if (xss.executed > 0 || Object.keys(xss.hit).length) {
   note('HIGH', 'XSS', `주입 실행됨 ${xss.executed}회 — ${JSON.stringify(xss.hit)}`);
 } else {
-  console.log('   ✓ 4개 렌더 경로 모두 이스케이프됨 (실행 0회)');
+  console.log('   ✓ 6개 렌더 경로 모두 이스케이프됨 (실행 0회)');
 }
 await page.reload({ waitUntil: 'networkidle' });
 

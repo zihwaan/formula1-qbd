@@ -52,7 +52,9 @@
     const d = await res.json().catch(() => ({}));
     if (!res.ok) {
       const m = d.detail && (d.detail.message || (typeof d.detail === "string" ? d.detail : "")) || `요청 실패 (${res.status})`;
-      throw new Error(m);
+      const err = new Error(m);
+      err.code = d.detail && d.detail.code;       // EVIDENCE_GAPS 등 — 부르는 쪽이 다음 행동을 고른다
+      throw err;
     }
     return d;
   }
@@ -66,17 +68,17 @@
     document.dispatchEvent(new CustomEvent("f1:stage2", { detail: { id: v.study.study_id } }));
     return v;
   }
-  async function startFromCandidate(runId, cid) {
+  async function startFromCandidate(runId, cid, waiver) {
     try {
-      return await create({ source: "candidate", run_id: runId, candidate_id: cid },
+      return await create({ source: "candidate", run_id: runId, candidate_id: cid, ...(waiver ? { evidence_waiver: waiver } : {}) },
         `후보 ${cid}를 프로토타입으로 받아 2단계를 시작합니다. 처방을 확인하고 [실행]을 누르면 QTPP → CQA → 위험평가 → DoE → 회귀식 → 반응 곡면 → ANOVA로 이어집니다.`);
-    } catch (e) { note(e.message, "error"); throw e; }
+    } catch (e) { if (e.code !== "EVIDENCE_GAPS") note(e.message, "error"); throw e; }
   }
   async function startCbd() {
     if (window.F1Agent) window.F1Agent.say("user", "시연 — CBD 구강붕해정으로 2단계(QTPP부터 Design Space까지) 진행");
     try {
       return await create({ source: "cbd_paper" },
-        "Monton 2026(CBD 구강붕해정) Table 1의 처방을 프로토타입으로 2단계를 시작합니다. 단계마다 LLM 초안을 받거나 논문 값으로 채워 비교할 수 있습니다.");
+        "Monton 2026(CBD 구강붕해정) Table 1의 처방을 프로토타입으로 2단계를 시작합니다. 단계마다 LLM 초안을 받거나 논문 값을 채워 볼 수 있습니다 — 논문은 참고 자료이지 정답이 아닙니다.");
     } catch (e) { note(e.message, "error"); }
   }
   async function open(id) {
@@ -219,11 +221,11 @@
     return b.join("");
   }
 
-  // 논문(CBD) 값과 비교 — 논문으로 시작한 study에서만
+  // 논문(CBD) 값 — 참고 자료(정답 아님). 논문으로 시작한 study에서만
   function refBox(k) {
     const R = V.reference;
     if (!R || !R[k] || ["prototype", "recommend", "regression", "design"].includes(k)) return "";
-    return `<details class="s2-ref"><summary>논문 표와 비교 (${E(({ qtpp: "Table 3", cqa: "Table 4", rm_just: "Table 6", rm_matrix: "Table 5", fp_just: "Table 8", fp_matrix: "Table 7" })[k] || "")})</summary>
+    return `<details class="s2-ref"><summary>참고 · 논문의 판단 (${E(({ qtpp: "Table 3", cqa: "Table 4", rm_just: "Table 6", rm_matrix: "Table 5", fp_just: "Table 8", fp_matrix: "Table 7" })[k] || "")}) — 정답이 아니라 비교 자료</summary>
       <div class="s2-body">${view(k, R[k], true, true)}</div></details>`;
   }
 
@@ -264,7 +266,10 @@
       <dl class="s2-eq">${row("후보", `${h.candidate_id} · ${h.strategy || ""}`)}${row("요청", h.request)}${row("대상 환자", h.target_population)}
         ${row("1회 용량", h.dose_mg != null ? `${h.dose_mg} mg` : "")}${row("요청 제형", h.dosage_form)}${row("약물 함량", h.drug_loading_pct != null ? `${h.drug_loading_pct} %` : "")}
         ${row("고정 부형제", (h.required_excipients || []).join(", "))}${row("원본 조성", (h.ingredients || []).map((i) => `${i.name} ${i.mg ?? "?"} mg`).join(" · "))}
-        ${row("1단계 신호", (h.signals || []).map((g) => `${g.rule_id} — ${g.message}`).join(" / "))}</dl>
+        ${row("1단계 신호", (h.signals || []).map((g) => `${g.rule_id} — ${g.message}`).join(" / "))}
+        ${h.evidence ? row("근거 결손 게이트", h.evidence.open && h.evidence.open.length
+          ? `결손 ${h.evidence.open.length}건(${h.evidence.open.map((g) => `${g.label} ${g.test_id}`).join(", ")}) — 연구자 사유: ${h.evidence.waiver || ""}`
+          : "근거 충족") : ""}</dl>
       <p class="s2-muted">QTPP·위험평가 초안은 이 맥락을 함께 읽습니다. 아래 프로토타입은 고칠 수 있지만 이 원본은 바뀌지 않습니다(fingerprint로 확인).</p></details>`;
   }
 
@@ -337,7 +342,7 @@
       return `<td class="c${off ? " off" : ""}" ${off ? `title="논문: ${E(r)}"` : ""}>${lv(x)}${off ? `<small>논문 ${E(r)}</small>` : ""}</td>`;
     }).join("")}</tr>`).join("");
     return `<div class="s2-scroll"><table class="s2-t matrix"><thead><tr><th>CQA \\ 변수</th>${d.variables.map((v) => `<th>${E(v.name)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>
-      ${ref ? `<p class="s2-cmp">${diff ? `논문 표와 다른 칸 ${diff}개(테두리 표시)` : "논문 표와 모든 칸이 같습니다."}</p>` : ""}`;
+      ${ref ? `<p class="s2-cmp">${diff ? `논문의 판단과 다른 칸 ${diff}개(테두리) — 오답이 아니라 연구자가 근거를 확인할 지점` : "논문의 판단과 모든 칸이 같습니다."}</p>` : ""}`;
   }
 
   function vRecommend(d, ro) {

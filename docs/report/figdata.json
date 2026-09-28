@@ -294,7 +294,9 @@
   "backtrack_transitions": 16,
   "reviewers": 7,
   "strategies": 8,
-  "confirmation_tests": 66
+  "confirmation_tests": 66,
+  "evidence_requirements": 16,
+  "evidence_before": 7
  },
  "backtrack": [
   {

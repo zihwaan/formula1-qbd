@@ -24,7 +24,7 @@ const sid = await p.evaluate(async () => {
 await p.evaluate((id) => window.F1Stage2.open(id), sid);
 await p.waitForFunction(() => document.querySelectorAll('#s2-surf-box .rsg-plot .main-svg').length >= 9, null, { timeout: 120000 });
 await p.waitForTimeout(4000);
-await p.addStyleTag({ content: '.rsg-tools,.rsg figcaption,.modebar{display:none!important} .rsg{border-radius:0!important} .dock,.topbar,.side,.drawer{display:none!important} body.chat-app,.app{height:auto!important;overflow:visible!important} .main,.thread{overflow:visible!important;min-height:0!important;flex:none!important}' });   // 캡션은 보고서에 따로 · 입력칸·스크롤 영역이 그림을 자르지 않게
+await p.addStyleTag({ content: '.rsg-tools,.rsg figcaption,.modebar{display:none!important} .rsg{border-radius:0!important} .dock,.masthead,.topbar,.side,.drawer{display:none!important} body.chat-app,.app{height:auto!important;overflow:visible!important} .main,.thread{overflow:visible!important;min-height:0!important;flex:none!important}' });   // 캡션은 보고서에 따로 · 입력칸·스크롤 영역이 그림을 자르지 않게
 await p.waitForTimeout(800);
 await p.locator('#s2-surf-box figure').screenshot({ path: OUT });
 console.log(OUT, sid);

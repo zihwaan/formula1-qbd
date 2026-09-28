@@ -157,6 +157,18 @@ def _risk_sections(pdf, st):
     rows = [[i["name"], _g(i.get("mg")), _g(i.get("pct")), i.get("function") or i.get("role")] for i in ings]
     rows.append(["Total", _g(round(sum(i.get("mg") or 0 for i in ings), 3)), _g(round(sum(i.get("pct") or 0 for i in ings), 3)), ""])
     _table(pdf, ["Ingredients", "Amount per tablet (mg)", "Percentage (%)", "Function"], rows, [55, 38, 32, 55])
+    h = (st.get("source") or {}).get("handoff") or {}
+    if h:
+        ev = h.get("evidence") or {}
+        _p(pdf, f"1단계 Handoff(불변, fingerprint {h.get('fingerprint')}): 후보 {h.get('candidate_id')} · {h.get('strategy') or ''} · 요청 “{h.get('request') or ''}” · "
+                f"대상 {h.get('target_population') or '—'} · 1회 용량 {_g(h.get('dose_mg')) + ' mg' if h.get('dose_mg') is not None else '—'} · "
+                f"약물 함량 {_g(h.get('drug_loading_pct')) + ' %' if h.get('drug_loading_pct') is not None else '—'}.", 8)
+        if ev:
+            if ev.get("open"):
+                _p(pdf, "근거 결손 게이트: 결손 " + str(len(ev["open"])) + "건(" + ", ".join(f"{g['label']} {g['test_id']}" for g in ev["open"])
+                   + f") — 결과 없이 진행, 연구자 사유: {ev.get('waiver') or ''}", 8)
+            else:
+                _p(pdf, "근거 결손 게이트: 선행 확인시험 근거 충족.", 8)
     _h(pdf, "표 3. QTPP")
     _meta(pdf, st, "qtpp")
     rows, prev = [], None

@@ -179,6 +179,10 @@
   .s2-reg-head label { margin-left: 0; }
   .s2-actions button { flex: 1 1 auto; }
   .s2-t input:not([type="checkbox"]), .s2-t select, .s2-t textarea { font-size: 16px; }
+  /* 편집 표는 칸이 뭉개지지 않게 최소 폭을 주고 표 자체를 가로로 넘긴다(.s2-scroll) — 성분명이 "Mannit"로 잘리던 문제 */
+  .s2-t td:not(.n) > input:not([type="checkbox"]), .s2-t td > select { min-width: 9.5em; }
+  .s2-t td.n > input { min-width: 4.6em; }
+  .s2-t td > textarea { min-width: 15em; }
 }
 
 /* 반응 곡면 격자(surface3d.js) — 논문 Figure 1 형식: 검은 제목 막대 × 단면 열 */

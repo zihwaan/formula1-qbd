@@ -345,6 +345,9 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .consensus h3 { font-size: 12px; margin-bottom: 7px; }
 .consensus .win { color: var(--status-good); font-weight: 700; }
 .consensus .tag { color: var(--ink-muted); font-size: 10.5px; }
+.consensus.infeasible { border-color: color-mix(in srgb, var(--status-critical) 45%, var(--border)); }
+.consensus.infeasible .win { color: var(--status-critical); }
+.consensus .inf-rule { margin-top: 5px; line-height: 1.5; word-break: keep-all; overflow-wrap: anywhere; }
 
 /* ── 실험 데이터 입력 (선택) ────────────────────────────────────────
    비워 두는 것이 기본이고, 채우면 그만큼 선행 확인시험이 줄어든다는 사실이

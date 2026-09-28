@@ -448,22 +448,21 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         return {"status": "qtpp_review"}
 
     # ── P5 · 심사관 동적 소집 ──────────────────────────────────────────
-    def node_summon(state: FormulationState) -> Dict[str, Any]:
-        emit("summon", EventKind.NODE_ENTER)
-        passed = [r for r in state.get("results", []) if r["passed"]]
-        derived = dict(passed[0]["derived"]) if passed else {}
+    def _summon_scope(state: FormulationState, pool: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """심사관 소집 조건을 평가할 파생 state — 심사 대상(pool)의 게이트 결과 + 전략 신호."""
+        derived = dict(pool[0]["derived"]) if pool else {}
 
         # 명단의 소집 조건 중 두 개(`regulatory_narrative_needed`,
         # `novel_combination_not_in_rulebook`)는 어느 계층도 산출하지 않아서
         # REV004·REV005가 **구조적으로 소집될 수 없었다.** 게이트 결과와 부형제 마스터에서
         # 실제로 계산해 넣는다 — 조건을 없애는 게 아니라 근거를 만들어 주는 방향.
-        derived.update(_summon_signals(registry, passed))
+        derived.update(_summon_signals(registry, pool))
         # 전략·페이즈 게이트에서 오는 소집 신호 — 가용화/미분화/ASD 후보, 룰북 커버리지 공백,
         # 고체상 구간(염·공결정 경계), 염 안정성 주의. 이게 없으면 REV002·REV005·REV007이
         # 조건식에서 참조하는 이름이 비어 영영 소집되지 않는다.
         phase = state.get("phase_derived") or {}
         families = {p["strategy"]: p for p in (state.get("planned") or [])}
-        strategies = {getattr(r["recipe"], "strategy", "") for r in passed}
+        strategies = {getattr(r["recipe"], "strategy", "") for r in pool}
         fam = {s_: (families.get(s_) or {}).get("family", "") for s_ in strategies}
         derived.setdefault("solid_form_zone", phase.get("solid_form_zone"))
         derived.setdefault("salt_stability_watch", phase.get("salt_stability_watch"))
@@ -474,7 +473,12 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         known = {e.id for e in registry.entries}
         derived["coverage_gap_present"] = any(
             c and c not in known for s_ in strategies for c in (families.get(s_) or {}).get("coverage", []))
+        return derived
 
+    def node_summon(state: FormulationState) -> Dict[str, Any]:
+        emit("summon", EventKind.NODE_ENTER)
+        passed = [r for r in state.get("results", []) if r["passed"]]
+        derived = _summon_scope(state, passed)
         judges = registry.active_judges(state["spec"], derived)
         emit("summon", EventKind.NODE_EXIT,
              summoned=[{"reviewer_id": j.reviewer_id, "persona": j.persona,
@@ -573,15 +577,20 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
         """
         results = state.get("results", [])
         failures = [v for r in results for v in r["verdicts"] if v.failed]
+        # 심사 전에 끝나도 "누가 심사했을지"는 결정론으로 정해진다(대상 환자·전략이 같으면 같은 팀).
+        # 소집은 하지 않고(LLM 호출 0) 명단만 알린다 — 제약을 풀고 다시 돌리면 이 팀이 심사한다.
+        planned = [{"reviewer_id": j.reviewer_id, "persona": j.persona, "summon_condition": j.summon_condition}
+                   for j in registry.active_judges(state["spec"], _summon_scope(state, results))]
         if _dose_over_label(state, failures):
             dose = [v for v in failures if v.rulebook_id == "max_daily_dose" and v.blocking]
             emit("infeasible", EventKind.WARNING,
                  reason="요청한 1회 용량 자체가 허가 라벨의 1일 최대 용량을 넘는다 — 이 요청으로는 통과하는 처방이 없다",
-                 required_excipients=[],
+                 required_excipients=[], planned_judges=planned,
                  blocking=[{"rule_id": v.rule_id, "rulebook_id": v.rulebook_id, "reason": v.reason,
                             "suggestion": v.suggestion, "citation": v.citation} for v in dose[:1]])
             return {"status": "infeasible"}
         pinned = list(getattr(state.get("spec"), "required_excipients", []) or [])
+        seen = set()
         blocking = [
             {
                 "rule_id": v.rule_id,
@@ -593,15 +602,19 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
             for v in failures
             # 반려 권한이 있는 판정만 — 사유에 고정 성분 이름이 나올 뿐인 검토 flag(RTE008 등)는 '막은 규칙'이 아니다
             if v.blocking and any(p.split()[0].lower() in (v.reason or "").lower() for p in pinned if p.strip())
+            and not (v.rule_id in seen or seen.add(v.rule_id))      # 후보마다 같은 규칙이 걸린다 — 한 번만
         ]
+        # 고정 성분을 직접 부르지 않았지만 같은 후보들을 반려한 규칙(다성분 금기 MC00x 등) — 이름만 함께 알린다
+        also = []
+        for v in failures:
+            if v.blocking and v.rule_id not in seen:
+                seen.add(v.rule_id)
+                also.append({"rule_id": v.rule_id, "reason": v.reason, "suggestion": v.suggestion})
         emit("infeasible", EventKind.WARNING,
              reason=f"고정 제약({', '.join(pinned)})이 검증된 규칙과 충돌 — "
                     "이 제약을 유지하는 한 통과하는 처방이 없다",
-             required_excipients=pinned,
-             blocking=blocking or [
-                 {"rule_id": v.rule_id, "reason": v.reason, "suggestion": v.suggestion}
-                 for v in failures if v.blocking
-             ])
+             required_excipients=pinned, planned_judges=planned,
+             blocking=blocking or also, also_blocking=also if blocking else [])
         return {"status": "infeasible"}
 
     # ── 그래프 조립 ────────────────────────────────────────────────────

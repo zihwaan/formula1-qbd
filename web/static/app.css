@@ -174,11 +174,67 @@ body:not(.started) .dock-inner { display: none; }
   #drawer-size { display: none; }
   .thread { gap: 12px; }
   .chem-row { grid-template-columns: minmax(0, 1fr); }
-  .chem-mol { max-width: 320px; }
+  .chem-mol { max-width: 250px; margin: 0 auto; }
+  #mol-id { font-size: 10.5px; }
+  #hello .ad-form textarea { min-height: calc(5 * 1.45em + 20px); }   /* 처음 안내 문구가 잘리지 않게 */
   .cands-card .cands { grid-template-columns: minmax(0, 1fr); }
   #agent-form textarea { font-size: 16px; }   /* iOS 확대 방지 */
   body.started #agent-box .ap-head { display: none; }       /* 대화 중에는 입력칸만 — 모델은 처음 화면·설정에서 */
   body.started #agent-form.ad-form { padding: 10px 10px 10px 12px; }
+  /* 대화 중 바닥 입력칸은 화면의 1/4을 넘지 않게 — 추천 문구는 한 줄 가로 스크롤, 안내 문장은 숨김 */
+  body.started .dock { padding: 6px 0 8px; }
+  body.started .dock-foot { margin-top: 4px; }
+  body.started .dock-foot span { display: none; }
+  body.started #agent-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 0 10px 8px; }
+  body.started #agent-chips::-webkit-scrollbar { display: none; }
+  body.started #agent-chips > * { flex: none; }
   .hello .hero h1 { font-size: 1.6rem; }
   .mh-pop { position: fixed; left: 12px; right: 12px; width: auto; top: calc(var(--mh) + 4px); }
 }
+
+/* 스크롤로 카드를 올릴 때 검정 마스트헤드에 가리지 않게 */
+.thread > * { scroll-margin-top: calc(var(--mh) + 12px); }
+
+/* 시연 화면 길이 — 구조 패턴은 검출된 것만, descriptor는 핵심만, 심사관 서술은 세 줄로(펼치기 가능) */
+.flags-none { font-size: 12px; color: var(--ink-muted); }
+.flags-more { margin-top: 8px; font-size: 12px; }
+.flags-more > summary { cursor: pointer; color: var(--ink-2); font-weight: 600; }
+.flags-more .flags { margin-top: 6px; }
+table.desc tbody.desc-key { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); column-gap: 18px; }
+table.desc tbody.desc-rest:not([hidden]) { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); column-gap: 18px; }
+table.desc tbody tr { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--grid); }
+table.desc tfoot td { padding-top: 6px; }
+.chem-sec table.desc { max-width: none; }
+.judge-note.clamp .jn-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.judge-note.clamp:not(.open) .cites { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.judge-note.open .jn-text { display: inline; -webkit-line-clamp: unset; }
+.jn-more { font-size: 11px; margin-top: 3px; display: inline-block; }
+@media (max-width: 760px) {   /* 휴대폰 — descriptor 두 줄 격자, 심사관 서술 두 줄 */
+  table.desc tbody.desc-key, table.desc tbody.desc-rest:not([hidden]) { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; font-size: 11.5px; }
+  .judge-note.clamp .jn-text { -webkit-line-clamp: 2; }
+}
+
+/* 근거 결손 게이트 — 후보 카드 안. 보류는 점선(판정 색 규칙과 같게), 부적합은 반려 색 */
+.ev-box { margin-top: 8px; border: 1px solid var(--border); border-radius: var(--radius-s); padding: 7px 10px; background: var(--surface-1); font-size: 11.5px; }
+.ev-box.hold { border-style: dashed; border-color: color-mix(in srgb, var(--status-warn) 55%, var(--border)); }
+.ev-box.bad { border-color: color-mix(in srgb, var(--status-critical) 55%, var(--border)); }
+.ev-box.ok { border-color: color-mix(in srgb, var(--status-good) 45%, var(--border)); }
+.ev-box > summary { cursor: pointer; line-height: 1.5; }
+.ev-hold { color: var(--status-warn); } .ev-bad { color: var(--status-critical); } .ev-ok { color: var(--status-good); }
+.ev-list { margin: 8px 0 0; padding: 0 0 0 16px; display: grid; gap: 8px; }
+.ev-list code { font-size: 10px; }
+.ev-why { color: var(--ink-muted); margin: 3px 0 0; line-height: 1.5; font-size: 11px; }
+.ev-form { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.ev-form select, .ev-form input { font: inherit; font-size: 11.5px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--page); color: var(--ink-1); min-width: 0; }
+.ev-form input.ev-note { flex: 1 1 120px; } .ev-form input.ev-num { width: 120px; }
+.ev-form button, .ev-waive button { font: inherit; font-size: 11.5px; font-weight: 650; padding: 4px 10px; border-radius: 99px; border: 1px solid transparent; background: var(--accent-fixed); color: var(--on-accent-fixed); }
+/* 후보 카드의 진입 버튼 — 원래 모양(검은 알약). 근거 결손이 남았으면 보류 표기(점선 · 흰 바탕) */
+.dev-start {
+  margin-top: 10px; width: 100%; padding: 9px 12px; border-radius: var(--radius-pill);
+  border: 1px solid var(--ink-1); background: var(--accent-fixed); color: var(--on-accent-fixed);
+  font-weight: 650; font-size: 12.5px;
+}
+.dev-start:hover { opacity: .9; }
+.dev-start.hold { border-style: dashed; border-color: color-mix(in srgb, var(--status-warn) 70%, var(--ink-1)); background: var(--surface-1); color: var(--ink-1); }
+.ev-waive { margin-top: 6px; display: grid; gap: 5px; }
+.ev-waive textarea { font: inherit; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); color: var(--ink-1); resize: vertical; }

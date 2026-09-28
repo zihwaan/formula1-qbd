@@ -241,7 +241,12 @@
       }
       if (p.kind === "develop_candidate") {
         if (D.runId() !== p.run_id) { result("이 카드는 이전 설계의 후보입니다 — 지금 설계의 후보로 다시 요청해 주세요.", "warn"); return false; }
-        await window.F1Stage2.startFromCandidate(p.run_id, p.candidate_id);   // 후보 카드의 '이 후보로 개발 착수'와 같은 길
+        const r = await D.develop(p.candidate_id);   // 후보 카드의 '이 후보로 개발 착수'와 같은 길(근거 결손 게이트 포함)
+        if (r === "waiver") {
+          result("근거 결손이 남은 후보입니다 — 후보 카드에 사유 칸을 열었습니다. 사유를 적고 [사유 기록 · 개발 착수]를 누르거나, 확인시험 결과를 넣어 다시 판정하세요.", "warn");
+          return true;
+        }
+        if (r !== "started") { result("2단계로 넘기지 못했습니다 — 알림을 확인해 주세요.", "warn"); return false; }
         result("2단계로 넘겼습니다 — 아래에 프로토타입 카드가 열렸습니다.", "ok");
         return true;
       }

@@ -8,7 +8,12 @@ Formula 1 is a QbD (Quality-by-Design) validation engine for pharmaceutical **fo
 
 **There are two deterministic gates, and conflating them is the mistake to avoid.** `gate` (rulebook) asks *is there a contraindication in what we know*; `evidence` (`formula/evidence/`) asks *do we know enough to execute this strategy at all*. A rulebook pass means "no explicit violation found", not "safe" — a novel API often has no data, so nothing fires. The evidence gate therefore holds execution (draft, not executable) instead of rejecting, and asks for the confirmation tests that would settle it. Rejection authority stays with the rulebook; hold authority is the evidence gate's.
 
-**As of 2026-09-18 the evidence gate and everything downstream of it (approval, batch, lifecycle) is commented out, not deleted** — see "v3 phase-gate pivot" below. The paragraph above still describes what that code does and the invariant it enforces; it's just not wired into the live graph right now. What *is* live in its place is `formula/biopharm/` (phase gates before generation) plus a non-blocking data-request pattern — read that section before touching anything in this area, since "evidence" and "phase gate" are easy to conflate and they answer different questions (evidence: can we execute this *specific candidate's protocol*; phase gate: what *strategies* should even be generated).
+**As of 2026-09-18 the evidence gate's graph node and everything downstream of it (approval, batch, lifecycle) is commented out, not deleted** — see "v3 phase-gate pivot" below.
+**Since 2026-09-28 the evidence gate itself is live again in a different place: the entry to Stage 2** (presentation step ⑤). It is not a graph node — `web/server.py`
+assesses each passed candidate after the run (`GET /api/runs/{id}/evidence`, re-implemented next to the commented-out originals), confirmation results re-assess it
+(`POST /api/runs/{id}/confirmation`, zero LLM calls), and `POST /api/stage2/studies` 409s with `EVIDENCE_GAPS` unless the researcher gives an `evidence_waiver`
+reason, or `EVIDENCE_FAILED` when a result came back 부적합 (no waiver overrides that). The verdict, open gaps and waiver go into the Handoff (inside its fingerprint).
+The candidate list is unchanged — the gate holds *development*, it never rejects; approval/batch/lifecycle remain commented out. What *is* live in its place is `formula/biopharm/` (phase gates before generation) plus a non-blocking data-request pattern — read that section before touching anything in this area, since "evidence" and "phase gate" are easy to conflate and they answer different questions (evidence: can we execute this *specific candidate's protocol*; phase gate: what *strategies* should even be generated).
 
 **After the candidate list comes Stage 2** — a 15-step, researcher-approved study from QTPP to ANOVA and a joint-probability Design Space in `formula/stage2/`
 (started from a candidate's "이 후보로 개발 착수"). It shares no state with discovery; read "Stage 2 — Design Space derivation" below.
@@ -30,8 +35,8 @@ python scripts/audit_conditions.py                # every CSV/manifest condition
 .venv/bin/python scripts/import_rulebook.py       # re-import rulebook zips from 추가자료/
 # 기술 보고서(논문 PDF, zihwan.com/pdf): 수치는 엔진으로 계산 → HTML → 헤드리스 Chrome PDF → hub/reports/ 복사 → hub 재배포
 docker run --rm -e FORMULA1_LLM_PROVIDER=none -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1:latest python scripts/report/figdata.py
-python3 scripts/report/demo_cards.py <url> dacon 2 [card1,card3…]   # 시연 쿼리 카드 3장 → docs/report/demo_cards.json(보고서 7.5)
-python3 scripts/report/stage2_llm.py http://localhost:<port> dacon   # 2단계 LLM 초안 vs 논문 → docs/report/stage2_llm.json(보고서 7.6)
+python3 scripts/report/demo_cards.py <url> dacon 2 [card1,card3…]   # 시연 쿼리 카드 3장 → docs/report/demo_cards.json(보고서 7.6)
+python3 scripts/report/stage2_llm.py http://localhost:<port> dacon   # 2단계 LLM 초안 vs 논문 → docs/report/stage2_llm.json(보고서 7.7)
 CHROME=<chrome> node scripts/report/surfaces_png.mjs http://localhost:<port>/ docs/report/cbd_surfaces.png   # 그림 8 — 2단계 11단계 화면 그대로
 python3 scripts/report/build_report.py --tests <pytest 통과 수> --browser "<브라우저 스위트 요약>"
 "<Chrome>" --headless=new --no-pdf-header-footer --virtual-time-budget=15000 --print-to-pdf=docs/report/Formula1_report.pdf "file://$PWD/docs/report/report.html"
@@ -195,7 +200,7 @@ The whole system is **data-driven, not code-driven**. Rules live in CSVs; a sing
 - **`formula/chem/`** — RDKit input pipeline. `build_profile(api_name|smiles)` → `ApiProfile` (descriptors, SMARTS structural flags, advisory estimates, 2D SVG). Salts are stripped before SMARTS matching; `fr_*` counts cross-check every pattern. **Solubility/permeability estimates are `confidence=low` and must never set `bcs_class`** — the manifest gates `bcs_classification` behind measured values.
 - **`formula/orchestrator/`** — LangGraph `StateGraph` (`graph.py`), shared state with a reset-aware `accumulate` reducer (`state.py`; return `None` to clear a fan-out list between reflection rounds), and the `TraceEvent` bus (`events.py`). Every node emits events; the web UI consumes only that stream.
 - **`formula/agents/`** — Claude nodes. All use structured output (`messages.parse`) and **all have deterministic fallbacks**; `consensus.py` is pure Python driven by `severity_scoring_config.csv` (B model: judge scores rank, never block).
-- **`web/`** — FastAPI + SSE + a no-build SPA. Two result inputs, deliberately separate: `POST /api/runs/{id}/confirmation` (pre-experiment — returns into the input/evidence layer and re-runs the assessment) and `POST /api/runs/{id}/wetlab` (post-batch — returns into design/protocol revision). Merging them into one box erases *where* a result goes back to, which is the point of the dual loop. `POST /api/runs/{id}/approve` is the human gate; it 409s while evidence is missing. `/api/rules/{rule_id}` powers the evidence drill-down that shows the originating CSV row and its SOURCES document. `static/explainer.{js,css}` is the 17-step visual walkthrough of the README (auto-opens on first visit, reopened from the masthead, deep-linkable via `?guide=N`); its content mirrors README.md chapters, so **update it when the design story changes** — it's what a first-time visitor reads instead of the README.
+- **`web/`** — FastAPI + SSE + a no-build SPA. Result inputs are deliberately separate: `POST /api/runs/{id}/measurements` (data requests — re-plans strategies), `POST /api/runs/{id}/confirmation` (confirmation tests — re-runs the evidence assessment; live as the Stage-2 entry gate) and the post-batch `POST /api/runs/{id}/wetlab` (commented out since 2026-09-18, with `/approve`). Merging them into one box erases *where* a result goes back to. The human gate before development is the evidence waiver on `POST /api/stage2/studies`. `/api/rules/{rule_id}` powers the evidence drill-down that shows the originating CSV row and its SOURCES document. `static/explainer.{js,css}` is the 16-page visual walkthrough of the README (auto-opens on first visit, reopened from the masthead, deep-linkable via `?guide=N`); its content mirrors README.md chapters, so **update it when the design story changes** — it's what a first-time visitor reads instead of the README.
 
 ### Front-end rules (learned the hard way — don't regress these)
 
@@ -342,7 +347,8 @@ literally per that spec, with everything it supersedes commented out rather than
   didn't change, so only the confidence tags were refreshed.
 - **What got commented out, not deleted, in `web/server.py`:** the entire `/api/projects/*`
   cluster, the evidence/wetlab cluster (`GET /api/runs/{id}/evidence`,
-  `POST /api/runs/{id}/confirmation`, `POST /api/runs/{id}/approve`, `POST /api/runs/{id}/wetlab`),
+  `POST /api/runs/{id}/confirmation`, `POST /api/runs/{id}/approve`, `POST /api/runs/{id}/wetlab`;
+  the first two were re-implemented live on 2026-09-28 as the Stage-2 entry gate — the commented originals stay as history),
   `_drive_execution()`'s `lifecycle().sync_design(...)` call, and `create_run`/`get_run`'s
   lifecycle store lookups. `create_run`'s response no longer has `project_id` — just `{run_id,
   accepted_inputs, rejected_inputs}`. New: `POST /api/runs/{id}/measurements`
@@ -569,9 +575,12 @@ UI `web/static/stage2.{js,css}`.
 - **15 steps** (`model.STEPS`): prototype(T1) → qtpp(T3) → cqa(T4) → rm_just(T6) → rm_matrix(T5) → fp_just(T8) → fp_matrix(T7) →
   recommend(**High-only** candidates, ≤4, risk PDF) → design(T9, CSV import) → regression(T10 + overfit flag) → surface(Fig 1) → anova(T11, final PDF)
   → space(joint P ≥ 0.90) → vplan(lock) → verify(2×2). Entry only from a gate-passed candidate (`[이 후보로 개발 착수]` / agent
-  `develop_candidate`) or the CBD demo (`source: cbd_paper`, enables "논문 값으로 채우기" + "논문 표와 비교").
+  `develop_candidate`, both through `app.js startDevelopment` → evidence gate → waiver textarea when gaps remain) or the CBD demo
+  (`source: cbd_paper`, enables "논문 값으로 채우기" + "참고 · 논문의 판단"). **Papers are reference, not ground truth** (user, 2026-09-28):
+  judgement cells that differ from the paper are review points, not errors; only computed values (matrix-from-justification, regression/ANOVA,
+  joint probability) are pinned to reproduce. The paper's own regression choices can trip our overfit rule — that is shown, not hidden.
 - **Immutable Handoff** (`web/server.py:_handoff`): candidate composition, request context (request · target_population · dose · dosage form ·
-  drug_loading_pct · pinned excipients · stage-1 soft/escalate signals) + sha256 fingerprint in `study.source.handoff`. The editable prototype
+  drug_loading_pct · pinned excipients · stage-1 soft/escalate signals · evidence-gate verdict/open gaps/waiver) + sha256 fingerprint in `study.source.handoff`. The editable prototype
   is a copy; drafts read the handoff via `agent._ctx` (this is how "저함량 → 혼합 시간 × 함량균일성 High" reaches the risk draft).
 - **HITL on `StudyStore`** (idempotency key, expected version, append-only events): only the current step can change;
   `approve` is blocked by `model.check` blocking codes; `reopen` marks later steps `stale` (never deletes) and unlocks vplan.
@@ -616,12 +625,20 @@ cards, grayscale tokens from `styles.css`, black pill primary buttons. No sideba
   A drq card already in the thread never disappears — `renderDataRequests` leaves a "남은 요청 없음" line instead of hiding it.
 - Right column is open by default above 1180 px (pref in `localStorage f1:drawer`), fixed overlay below, full screen ≤ 760 px.
 - Demo cards = the presentation's scenarios: ① Lornoxicam full pipeline (flow inputs 42°/22 %/1.28, then 개발 착수 → CSV → Design Space),
-  ② geriatric amlodipine + pinned lactose (infeasible), ③ VX-770 cold start (after the run the card's measurement sentence is **placed in the
+  ② geriatric amlodipine + pinned lactose (infeasible — `renderInfeasible` puts the conclusion **first inside the candidates card**: blocking rule
+  deduped · alternatives · also-blocking rules · `planned_judges` = who *would* have reviewed, computed by `node_infeasible` from
+  `registry.active_judges` with no LLM call; presentation p.11 "고령자 → 고령자 안전 + 공정 실현성"), ③ VX-770 cold start (after the run the card's measurement sentence is **placed in the
   input box, not sent**), ④ CBD Stage 2. Values are the pharmacy team's demo query cards (`scripts/report/devfix_check.py CASES`).
 - Stage-2 cards: collapsed steps show a one-line summary (`summary()` in stage2.js); editing marks the shown checks as "저장된 판" (stale) until saved.
 - `.s2-t` is the stage-2 *table* class — don't reuse it for text (step title class is `.s2-ttl`). Surface grid CSS (`.rsg*`) lives in `stage2.css`.
 - Free Groq's **daily** token limit is shared with live; a full browser run can exhaust it → run LLM suites with `F1_LLM=dacon` against a local
-  container that has the contest key.
+  container that has the contest key. For password (full) sessions `llm_choice` turns "groq" into `groq+dacon` (`client.GROQ_THEN_DACON`:
+  Groq first, contest API only when Groq fails) — this is what fixed "시연 버튼을 눌렀는데 후보가 비는" demos. Guests stay Groq-only.
+- Demo length (user, 2026-09-28: long parts hurt the demo): structural flags show only detected ones (rest folded), descriptors show 12 key rows
+  (2 columns ≤ 760 px), judge notes clamp to 3 lines (2 on phones) with "더 보기", rejected cards drop confidence/refinement lines.
+- Phone (≤ 760 px): bottom dock stays under ~¼ screen (chips one scrolling row, tagline hidden), stage-2 edit tables keep min column widths and
+  scroll sideways inside `.s2-scroll`, the hello textarea is tall enough for the full placeholder. Check with a 390 px walk + scrollWidth.
+- `.dev-start` (candidate → stage 2) is the original black pill; `.hold` (evidence gaps) = dashed outline. It had lost its style when studio.css was deleted.
 
 ## Front part merged (PR #1 spec) + input agent (2026-09-24)
 

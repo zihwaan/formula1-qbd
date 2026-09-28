@@ -145,6 +145,8 @@ def llm_choice(request: Request, requested: Optional[str]) -> str:
         raise HTTPException(403, "대회 API 모델은 비밀번호로 접속한 경우에만 쓸 수 있습니다 — 게스트는 무료 모델(Groq)만 사용합니다.")
     if choice == "dacon" and not choice_available("dacon"):
         raise HTTPException(400, "대회 API 키가 설정돼 있지 않습니다.")
+    if choice == "groq" and access_role(request) == "full" and choice_available("dacon"):
+        return llm_client.GROQ_THEN_DACON      # 무료 모델이 실패할 때만 대회 API로 — 시연이 빈 결과로 끝나지 않게
     return choice
 
 
@@ -563,6 +565,72 @@ class AgentRequest(BaseModel):
 
 
 _agent_catalog: Optional[Dict[str, Dict[str, Any]]] = None
+
+
+# ---------------------------------------------------------------------------
+# 근거 결손 게이트(발표 자료 ⑤) — 룰북을 통과한 후보마다 필수 근거(수분·열 안정성, 배합적합성, 실험 용해도, 결정형 …)가
+# 있는지 evidence_requirements.csv로 판정하고, 없으면 66종 확인시험 마스터에서 필요한 시험만 요청한다.
+# 후보 목록(1단계 출력)은 그대로 두고, 결손이 남은 후보의 2단계 진입(개발 착수)만 보류한다 — 결과가 들어오면 다시 판정한다.
+# 반려 권한은 여전히 룰북에만 있다. 부적합 결과는 전제의 부정이라 개발 착수를 막는다.
+# ---------------------------------------------------------------------------
+def _require_run(run_id: str) -> Run:
+    execution = RUNS.get(run_id)
+    if execution is None:
+        raise HTTPException(404, "run 없음")
+    return execution
+
+
+def _evidence_payload(execution: Run, assessment) -> Dict[str, Any]:
+    return {**assessment.model_dump(mode="json"), "protocol": execution.evidence_gate.protocol(assessment),
+            "blocking": [g.requirement_id for g in assessment.blocking], "failed": [g.requirement_id for g in assessment.failed]}
+
+
+def _evidence_one(execution: Run, result: Dict[str, Any]):
+    spec = execution.final.get("spec")
+    cid = result["candidate_id"]
+    a = execution.evidence_gate.assess(spec, result["recipe"], result.get("derived"), resolved=execution.confirmations.get(cid, {}))
+    execution.evidence_store[cid] = {"spec": spec, "recipe": result["recipe"], "derived": result.get("derived"), "assessment": a}
+    return a
+
+
+def _evidence_all(execution: Run) -> Dict[str, Any]:
+    return {r["candidate_id"]: _evidence_payload(execution, _evidence_one(execution, r))
+            for r in (execution.final.get("results") or []) if r.get("passed")}
+
+
+@app.get("/api/runs/{run_id}/evidence")
+async def get_evidence(run_id: str) -> Dict[str, Any]:
+    """통과 후보별 근거 결손 판정과 요청 확인시험(같은 입력이면 같은 판정 — LLM 없음)."""
+    execution = _require_run(run_id)
+    if not execution.final:
+        raise HTTPException(409, "설계가 끝난 뒤에 판정합니다.")
+    return {"candidates": _evidence_all(execution), "gate": execution.evidence_gate.summary()}
+
+
+@app.post("/api/runs/{run_id}/confirmation")
+async def submit_confirmation(run_id: str, payload: ConfirmationRequest) -> Dict[str, Any]:
+    """확인시험 결과 → 근거 재판정. 숫자 결과는 스펙의 실측값 자리에 들어가 다른 후보의 판정에도 쓰인다. 부적합은 전제의 부정이다."""
+    execution = _require_run(run_id)
+    cid = payload.candidate_id
+    result = next((r for r in (execution.final or {}).get("results") or [] if r["candidate_id"] == cid and r.get("passed")), None)
+    if result is None:
+        raise HTTPException(404, "룰북을 통과한 후보가 아닙니다.")
+    if not payload.entries:
+        raise HTTPException(422, "확인시험 결과가 비어 있습니다.")
+    known = {g.requirement_id for g in _evidence_one(execution, result).gaps}
+    store = execution.confirmations.setdefault(cid, {})
+    unknown = [e.requirement_id for e in payload.entries if e.requirement_id not in known]
+    for e in payload.entries:
+        if e.requirement_id in known:
+            store[e.requirement_id] = ConfirmationResult(**e.model_dump())
+    if unknown and len(unknown) == len(payload.entries):
+        raise HTTPException(422, f"이 후보에 요구되지 않은 항목입니다: {', '.join(unknown)}")
+    assessment = execution.reassess(cid)
+    out = {"candidate": _evidence_payload(execution, assessment), "unknown_requirements": unknown,
+           "applied_measurements": execution.applied_results.get(cid, {}), "candidates": _evidence_all(execution)}
+    execution.bus.publish(TraceEvent(run_id=run_id, node="evidence", kind=EventKind.CONFIRMATION,
+                                     payload={"candidate_id": cid, "readiness": assessment.readiness.value, "summary": assessment.summary}))
+    return out
 
 
 def agent_catalog() -> Dict[str, Dict[str, Any]]:
@@ -1191,7 +1259,7 @@ def _prototype_from_candidate(recipe: Dict[str, Any], spec: Dict[str, Any]) -> D
 
 
 def _handoff(run_id: str, execution: Any, result: Dict[str, Any], recipe: Dict[str, Any], spec: Dict[str, Any],
-             proto: Dict[str, Any]) -> Dict[str, Any]:
+             proto: Dict[str, Any], evidence: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """1단계 → 2단계 불변 Handoff — 연구자가 고른 후보의 조성·공정과 요청 맥락(QTPP 씨앗), 1단계 신호. fingerprint로 변조를 알아본다.
     2단계의 프로토타입(1단계)은 연구자가 고칠 수 있지만 Handoff는 바뀌지 않는다."""
     mp = spec.get("measured_params") or {}
@@ -1210,6 +1278,8 @@ def _handoff(run_id: str, execution: Any, result: Dict[str, Any], recipe: Dict[s
             "process_steps": recipe.get("process_steps") or [],
             "ingredients": [{"name": i["name"], "mg": i.get("amount_mg"), "role": i.get("role")} for i in recipe.get("ingredients") or []],
             "signals": signals[:12]}
+    if evidence is not None:
+        body["evidence"] = evidence          # 근거 결손 판정과 연구자 사유도 지문에 들어간다
     body["fingerprint"] = hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()[:16]
     return body
 
@@ -1218,6 +1288,7 @@ class Stage2Create(BaseModel):
     source: str = Field(..., pattern="^(candidate|cbd_paper)$")
     run_id: Optional[str] = None
     candidate_id: Optional[str] = None
+    evidence_waiver: Optional[str] = Field(default=None, max_length=500)   # 근거 결손이 남은 채 진행하는 연구자 사유
 
 
 @app.post("/api/stage2/studies")
@@ -1241,9 +1312,22 @@ async def stage2_create(req: Stage2Create, idempotency_key: Optional[str] = Head
         spec = execution.final.get("spec")
         spec_d = spec.model_dump(mode="json") if hasattr(spec, "model_dump") else (spec or {})
         recipe = result["recipe"].model_dump(mode="json")
+        # 근거 결손 게이트 — 결손이 남았으면 결과를 넣거나(재판정) 연구자가 사유를 적어야 2단계로 간다. 부적합은 막는다.
+        ev = _evidence_one(execution, result)
+        if ev.failed:
+            raise HTTPException(409, {"message": "확인시험 결과가 부적합입니다(" + ", ".join(g.label for g in ev.failed) + ") — 이 후보는 개발로 넘기지 않습니다. 재설계가 필요합니다.",
+                                      "code": "EVIDENCE_FAILED"})
+        waiver = (req.evidence_waiver or "").strip()
+        if ev.blocking and not waiver:
+            raise HTTPException(409, {"message": f"근거 결손 {len(ev.blocking)}건 — 확인시험 결과를 넣거나, 결손을 기록할 사유를 적어야 개발에 착수합니다.",
+                                      "code": "EVIDENCE_GAPS", "gaps": [{"requirement_id": g.requirement_id, "label": g.label, "test_id": g.test_id,
+                                                                         "test_name": g.test_name} for g in ev.blocking]})
         proto = _prototype_from_candidate(recipe, spec_d)
         title = f"{proto['api']} · {recipe.get('strategy') or ''} ({req.candidate_id})"
-        proto["source"]["handoff"] = _handoff(req.run_id, execution, result, recipe, spec_d, proto)
+        proto["source"]["handoff"] = _handoff(req.run_id, execution, result, recipe, spec_d, proto, evidence={
+            "readiness": ev.readiness.value, "summary": ev.summary,
+            "open": [{"requirement_id": g.requirement_id, "label": g.label, "test_id": g.test_id, "test_name": g.test_name} for g in ev.blocking],
+            "satisfied": [g.requirement_id for g in ev.satisfied], "waiver": waiver or None})
         return await asyncio.to_thread(svc.create, proto, title=title, source=proto["source"], reference=False, actor=actor_id,
                                        idempotency_key=idempotency_key, origin={"kind": "candidate", "run_id": req.run_id})
     except HTTPException:

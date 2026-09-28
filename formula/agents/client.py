@@ -114,6 +114,9 @@ _DACON_EXHAUSTED = {"flag": False}
 # contextvar라 LangGraph 노드 스레드까지 따라간다(이벤트 버스와 같은 방식). 권한 검사는 web/server.py가 한다.
 LLM_CHOICES = ("groq", "dacon")
 DEFAULT_CHOICE = "groq"
+# 서버 내부 선택(화면에는 없다): 비밀번호 세션이 무료 모델을 고른 경우 — Groq이 먼저, Groq이 실패(일일 한도 등)하면 대회 API.
+# 시연 중 무료 한도가 바닥나 설계가 비는 것을 막는다. 게스트에게는 주지 않는다(대회 API 권한이 없다).
+GROQ_THEN_DACON = "groq+dacon"
 _CHOICE: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("f1_llm_choice", default=None)
 
 
@@ -129,7 +132,7 @@ class use_llm:
     """`with use_llm("dacon"):` 안의 호출은 그 선택으로 간다(대회 API → 실패·소진 시 Groq)."""
 
     def __init__(self, choice: Optional[str]):
-        self.choice = choice if choice in LLM_CHOICES else DEFAULT_CHOICE
+        self.choice = choice if choice in LLM_CHOICES + (GROQ_THEN_DACON,) else DEFAULT_CHOICE
         self._token = None
 
     def __enter__(self):
@@ -150,6 +153,8 @@ def providers() -> Tuple[str, ...]:
     choice = _CHOICE.get()
     if choice == "groq":
         return tuple(p for p in base if p == "groq")
+    if choice == GROQ_THEN_DACON:
+        return tuple(p for p in ("groq", "dacon") if p in base)
     if choice == "dacon":
         return tuple(p for p in ("dacon", "groq") if p in base)
     return base

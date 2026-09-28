@@ -63,14 +63,18 @@
     run = { id: d.runId, drqShown: false, candsShown: false, wantCands: false };
     $("chem-empty").hidden = false;
     $("chem-body").hidden = true;
-    place($("panel-chem"), "API 물리화학 — 구조에서 계산한 값과 경고", "wide");
+    const chemRow = place($("panel-chem"), "API 물리화학 — 구조에서 계산한 값과 경고", "wide");
+    // 위쪽 시연 카드를 눌러도 새 설계가 보이게 — 요청 말풍선부터 화면에 올린다(부드러운 스크롤은 긴 대화에서 도중에 끊긴다)
+    const bubble = chemRow.previousElementSibling && chemRow.previousElementSibling.classList.contains("user") ? chemRow.previousElementSibling : chemRow;
+    requestAnimationFrame(() => bubble.scrollIntoView({ block: "start", behavior: "auto" }));
     $("drawer-toggle").classList.add("live");
   });
 
   function showCands() {
     if (!run || run.candsShown) return;
     run.candsShown = true;
-    place($("panel-cands"), "후보 처방 — 룰북 게이트 · 심사관 점수 · 다음 행동", "wide");
+    const row = place($("panel-cands"), "후보 처방 — 룰북 게이트 · 심사관 점수 · 다음 행동", "wide");
+    requestAnimationFrame(() => row.scrollIntoView({ block: "start", behavior: "smooth" }));
     document.dispatchEvent(new CustomEvent("f1:flowready", { detail: { runId: run.id, phase: "cands" } }));
   }
 
@@ -85,7 +89,8 @@
     if (!run.drqShown && pending > 0 && !run.candsShown) {
       run.drqShown = true;
       $("drq").hidden = false;
-      place($("drq"), "데이터 요청 — 판정이 갈리는 지점의 실측값", "wide");
+      const row = place($("drq"), "데이터 요청 — 판정이 갈리는 지점의 실측값", "wide");
+      requestAnimationFrame(() => row.scrollIntoView({ block: "start", behavior: "smooth" }));
       document.dispatchEvent(new CustomEvent("f1:flowready", { detail: { runId: run.id, phase: "drq" } }));
       return;
     }
