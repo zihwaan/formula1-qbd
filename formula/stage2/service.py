@@ -1,4 +1,4 @@
-"""Stage2Service — 2단계 Design Space 도출 study. docs/stage2/DESIGN.md의 12단계 표가 곧 이 파일이다.
+"""Stage2Service — 2단계 Design Space 도출 study. docs/stage2/DESIGN.md의 15단계 표가 곧 이 파일이다.
 
 - 지금 단계만 바꿀 수 있다. 편집 단계는 [LLM 초안 | 논문 값(CBD 논문 프로토타입만) | 연구자 편집] → 승인, 파생 단계(5·7·11·12)는 코드가 만들고 연구자가 확인한다.
 - 앞 단계를 다시 열면 뒤 단계는 '다시 확인 필요(stale)'가 된다 — 지우지 않는다.
@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import base64
 import copy
+import hashlib
+import json
 
 import os
 import uuid
@@ -20,8 +22,9 @@ import numpy as np
 from formula.stage2 import agent as AG
 from formula.stage2 import doe as T
 from formula.stage2 import reference as REF
+from formula.stage2 import space as SP
 from formula.stage2.model import (DERIVED, EDITABLE, LLM_STEPS, MAX_DOE, MAX_FACTORS, MAX_RESPONSES, STEPS, TABLE, TITLE,
-                                  candidates, check, material_controls, matrix_of, numbers_not_in, risk_cqas)
+                                  candidates, check, material_controls, matrix_of, numbers_not_in, risk_cqas, watch_list)
 from formula.stage2.store import StudyError, StudyStore, VersionConflict
 
 ACTIONS = ("run", "draft", "use_reference", "save", "approve", "reopen", "attach_images")
@@ -111,6 +114,14 @@ class Stage2Service:
         out["factor_choices"] = [{"id": i, "name": f["name"]} for i, f in enumerate(design["factors"])] if k == 3 else []
         return _plain(out)
 
+    def space_slice(self, sid: str, fixed: Optional[int] = None, level: Optional[float] = None) -> Dict[str, Any]:
+        st, _ = self._load(sid)
+        d = st["steps"]["space"]["data"]
+        if not d or not st["steps"]["regression"]["data"]:
+            raise StudyError("영역을 아직 계산하지 않았습니다.", status=409)
+        return _plain(SP.slice_map(st["steps"]["design"]["data"], st["steps"]["regression"]["data"], d.get("specs") or [],
+                                   fixed=fixed, level=level))
+
     def images(self, sid: str) -> Dict[str, bytes]:
         st, _ = self._load(sid)
         return {k: base64.b64decode(v) for k, v in (st.get("images") or {}).items()}
@@ -164,7 +175,7 @@ class Stage2Service:
             old = s["data"] or {}
             cands = candidates(ctx["fp_matrix"])
             names = {c["variable"] for c in cands}
-            self._set(st, step, {"candidates": cands, "material_controls": material_controls(ctx["rm_matrix"]),
+            self._set(st, step, {"candidates": cands, "watch": watch_list(ctx["fp_matrix"]), "material_controls": material_controls(ctx["rm_matrix"]),
                                  "rule_rank": [c["variable"] for c in cands if c["high"]][:MAX_DOE],
                                  "recommended": [r for r in old.get("recommended") or [] if r["variable"] in names], "note": old.get("note", ""),
                                  "rec_source": old.get("rec_source"), "selected": [x for x in old.get("selected") or [] if x in names]},
@@ -189,6 +200,43 @@ class Stage2Service:
             self._set(st, step, {"responses": [r["response"] for r in ctx["regression"]["responses"] if not r.get("aliased")]}, source="code", actor="system")
         elif step == "anova":
             self._set(st, step, _plain(self._anova(ctx)), source="code", actor="system")
+        elif step == "space":
+            old = {x["response"]: x for x in ((s["data"] or {}).get("specs") or [])}
+            specs = [old.get(r["response"]) or {"response": r["response"], "unit": r.get("unit") or "", "op": "", "lower": None, "upper": None, "basis": ""}
+                     for r in ctx["regression"]["responses"] if not r.get("aliased")]
+            self._set(st, step, self._space(ctx, specs), source=s["source"] or "code", actor="system")
+        elif step == "vplan":
+            old = s["data"] or {}
+            self._set(st, step, self._vplan(ctx, old.get("delta", SP.ROBUST_DELTA), old.get("reference")), source=s["source"] or "code", actor="system")
+        elif step == "verify":
+            old = s["data"] or {}
+            self._set(st, step, self._verify(ctx, old.get("observations") or [], bool(old.get("independent")), old.get("batches") or {}),
+                      source=s["source"] or "code", actor="system")
+
+    def _space(self, ctx, specs) -> Dict[str, Any]:
+        specs = [_spec(x) for x in specs]
+        ok = any(x["op"] in SP.OPS for x in specs) and all(
+            x["op"] not in SP.OPS or all(v is not None for v in ({"LE": [x["upper"]], "GE": [x["lower"]], "BETWEEN": [x["lower"], x["upper"]]}[x["op"]]))
+            for x in specs)
+        region = _plain(SP.region(ctx["design"], ctx["regression"], specs)) if ok else None
+        return {"specs": specs, "region": region}
+
+    def _vplan(self, ctx, delta, reference) -> Dict[str, Any]:
+        try:
+            delta = min(max(float(delta), 0.0), 1.0)
+        except (TypeError, ValueError):
+            delta = SP.ROBUST_DELTA
+        sp = ctx["space"] or {}
+        plan = _plain(SP.plan(ctx["design"], ctx["regression"], sp.get("specs") or [], sp.get("region") or {}, delta=delta, reference=reference))
+        return {"delta": delta, "reference": reference, "plan": plan}
+
+    def _verify(self, ctx, observations, independent, batches) -> Dict[str, Any]:
+        plan = (ctx["vplan"] or {}).get("plan") or {}
+        roles = [p["role"] for p in plan.get("points") or []]
+        obs = {o.get("role"): o for o in observations or []}
+        observations = [{"role": r, "values": {k: _f(v) for k, v in ((obs.get(r) or {}).get("values") or {}).items()}} for r in roles]
+        return {"independent": bool(independent), "batches": {r: str((batches or {}).get(r) or "").strip() for r in roles},
+                "observations": observations, "judgement": _plain(SP.judge(plan, observations))}
 
     def _anova(self, ctx) -> Dict[str, Any]:
         fn, X, rn, Y = T.table_arrays(ctx["design"])
@@ -208,11 +256,11 @@ class Stage2Service:
     def _draft(self, st, step, p, actor):
         if step not in LLM_STEPS:
             raise StudyError(f"'{TITLE[step]}'는 LLM이 만들지 않습니다.", status=422)
-        ctx = self._ctx(st)
+        ctx = {**self._ctx(st), "handoff": (st.get("source") or {}).get("handoff")}
         if step == "recommend":
             ctx = {**ctx, "candidates": st["steps"]["recommend"]["data"]["candidates"]}
             if not ctx["candidates"]:
-                raise StudyError("High·Medium인 제형·공정 변수가 없어 추천할 변수가 없습니다.", status=409)
+                raise StudyError("High인 제형·공정 변수가 없어 추천할 변수가 없습니다.", status=409)
         try:
             out = AG.draft(step, ctx)
         except AG.LLMUnavailable as exc:
@@ -240,6 +288,14 @@ class Stage2Service:
             data = cur
         elif step == "regression":
             data = _plain(T.regression(self._ctx(st)["design"], REF.PAPER_FAMILIES))
+        elif step == "space":
+            ctx = self._ctx(st)
+            paper = REF.specs()
+            data = self._space(ctx, [paper.get(r["response"]) or {"response": r["response"], "unit": r.get("unit") or "", "op": ""}
+                                     for r in ctx["regression"]["responses"] if not r.get("aliased")])
+        elif step == "vplan":
+            ctx = self._ctx(st)
+            data = self._vplan(ctx, (st["steps"]["vplan"]["data"] or {}).get("delta", SP.ROBUST_DELTA), REF.reference_point())
         else:
             data = REF.step(step)
             if data is None:
@@ -261,6 +317,15 @@ class Stage2Service:
             cur = copy.deepcopy(st["steps"]["recommend"]["data"])
             cur["selected"] = [str(x) for x in data.get("selected") or []]
             norm = cur
+        elif step == "space":
+            norm = self._space(self._ctx(st), data.get("specs") or [])
+        elif step == "vplan":
+            ref = data.get("reference")
+            ref = ({"label": str(ref.get("label") or "참고 배치")[:80], "settings": {str(k): _f(v) for k, v in (ref.get("settings") or {}).items()}}
+                   if isinstance(ref, dict) and any(_f(v) is not None for v in (ref.get("settings") or {}).values()) else None)
+            norm = self._vplan(self._ctx(st), data.get("delta", SP.ROBUST_DELTA), ref)
+        elif step == "verify":
+            norm = self._verify(self._ctx(st), data.get("observations") or [], bool(data.get("independent")), data.get("batches") or {})
         else:
             norm = _normalize(step, data)
         checks = self._set(st, step, norm, source="user", actor=actor)
@@ -272,8 +337,16 @@ class Stage2Service:
             raise StudyError("승인할 내용이 없습니다 — 초안을 만들거나 입력하세요.", status=409)
         s["checks"] = check(step, s["data"], self._ctx(st)) + [c for c in s["checks"] if c["code"] == "LLM_NUMBERS"]
         blocking = [c for c in s["checks"] if c["level"] == "blocking"]
+        note = (p.get("note") or "").strip()
+        if step == "regression" and any(c["code"] == "REG_OVERFIT" for c in s["checks"]) and not note:
+            s["checks"].append({"level": "blocking", "code": "REG_OVERFIT_REASON",
+                                "message": "과적합 의심 모형을 그대로 쓰려면 수용 사유를 적어 주세요(또는 차수를 낮추세요)."})
+            blocking = [c for c in s["checks"] if c["level"] == "blocking"]
         if blocking:
             return {"blocked": [c["code"] for c in blocking]}
+        if step == "vplan":            # 승인 = 결과 전에 확인계획을 잠근다(잠근 뒤에는 다시 열어야만 바뀐다)
+            s["data"]["locked_at"] = _now()
+            s["data"]["plan_hash"] = hashlib.sha256(json.dumps(s["data"]["plan"], sort_keys=True, default=str).encode()).hexdigest()[:16]
         s["status"] = "approved"
         st["approvals"].append({"step": step, "version": s["version"], "source": s["source"], "by": actor, "at": _now(),
                                 "note": (p.get("note") or "").strip() or None})
@@ -282,7 +355,7 @@ class Stage2Service:
         st["status"] = nxt or "done"
         st["timeline"].append({"step": step, "event": "approved", "version": s["version"], "by": actor, "at": _now()})
         if nxt:
-            if nxt in DERIVED or nxt in ("recommend", "design", "regression"):
+            if nxt in DERIVED or nxt in ("recommend", "design", "regression", "space", "vplan", "verify"):
                 try:
                     self._enter(st, nxt)
                 except (ValueError, np.linalg.LinAlgError) as exc:
@@ -300,8 +373,10 @@ class Stage2Service:
             if st["steps"][later]["status"] in ("approved", "draft"):
                 st["steps"][later]["status"] = "stale" if st["steps"][later]["data"] is not None else "empty"
         st["status"] = step
-        if step in DERIVED or step in ("recommend", "regression"):
+        if step in DERIVED or step in ("recommend", "regression", "space", "vplan"):
             self._enter(st, step)
+        if step == "vplan" and st["steps"]["vplan"]["data"]:
+            st["steps"]["vplan"]["data"].pop("locked_at", None)
         st["timeline"].append({"step": step, "event": "reopened", "by": actor, "at": _now(), "reason": p.get("reason")})
         return {}
 
@@ -351,6 +426,14 @@ def _f(v) -> Optional[float]:
         return None if v in (None, "") else float(v)
     except (TypeError, ValueError):
         return None
+
+
+def _spec(x: Dict[str, Any]) -> Dict[str, Any]:
+    op = str(x.get("op") or "").upper()
+    op = op if op in SP.OPS else ""
+    return {"response": str(x.get("response") or ""), "unit": str(x.get("unit") or ""), "op": op,
+            "lower": _f(x.get("lower")) if op in ("GE", "BETWEEN") else None, "upper": _f(x.get("upper")) if op in ("LE", "BETWEEN") else None,
+            "basis": str(x.get("basis") or "").strip()[:300]}
 
 
 def _normalize(step: str, d: Dict[str, Any]) -> Dict[str, Any]:

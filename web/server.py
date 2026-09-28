@@ -17,22 +17,24 @@
   POST /api/agent/turn            입력 에이전트 — 말 → 제안 카드(실행은 사용자가 확인)
   POST /api/agent/nudge           입력 에이전트 — 상태 변화에 맞춘 다음 행동 제안
 
-2단계 — Design Space 도출 (formula/stage2/, docs/stage2/DESIGN.md)
+2단계 — Design Space 도출 15단계 (formula/stage2/, docs/stage2/DESIGN.md)
   POST /api/stage2/studies                      통과 후보(run_id·candidate_id) 또는 CBD 논문 Table 1 → study
   GET  /api/stage2/studies                      최근 study 목록
-  GET  /api/stage2/studies/{id}                 12단계 상태·데이터·검사(+ 논문 비교값)
+  GET  /api/stage2/studies/{id}                 15단계 상태·데이터·검사(+ 논문 비교값)
   POST /api/stage2/studies/{id}/actions/{a}     run · draft · use_reference · save · approve · reopen · attach_images
                                                 (Idempotency-Key · Expected-State-Version · Actor-ID 헤더)
   GET  /api/stage2/studies/{id}/surfaces        선택 회귀식의 반응 곡면 격자(?slice=요인 번호)
+  GET  /api/stage2/studies/{id}/space           13단계 공동확률 단면(?fixed=요인 번호&level=coded)
   GET  /api/stage2/studies/{id}/trace           승인·이벤트·결정 원장
   GET  /api/stage2/studies/{id}/risk-report.pdf 위험평가 보고서(8단계 승인 뒤)
-  GET  /api/stage2/studies/{id}/report.pdf      최종 보고서(12단계 뒤)
+  GET  /api/stage2/studies/{id}/report.pdf      최종 보고서(12단계 뒤 — 13–15단계가 있으면 함께)
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import re
 import uuid
@@ -1188,6 +1190,30 @@ def _prototype_from_candidate(recipe: Dict[str, Any], spec: Dict[str, Any]) -> D
             "source": {"candidate_ref": f"{recipe.get('candidate_id')}", "strategy": recipe.get("strategy")}}
 
 
+def _handoff(run_id: str, execution: Any, result: Dict[str, Any], recipe: Dict[str, Any], spec: Dict[str, Any],
+             proto: Dict[str, Any]) -> Dict[str, Any]:
+    """1단계 → 2단계 불변 Handoff — 연구자가 고른 후보의 조성·공정과 요청 맥락(QTPP 씨앗), 1단계 신호. fingerprint로 변조를 알아본다.
+    2단계의 프로토타입(1단계)은 연구자가 고칠 수 있지만 Handoff는 바뀌지 않는다."""
+    mp = spec.get("measured_params") or {}
+    tot = sum(float(i.get("amount_mg") or 0) for i in recipe.get("ingredients") or [])
+    api = next((i for i in recipe.get("ingredients") or [] if i.get("role") == "api"), {})
+    signals = []
+    for v in result.get("verdicts") or []:
+        st = getattr(v.status, "value", v.status)
+        if st in ("soft_flag", "escalate", "exclude_route") and v.rule_id:
+            signals.append({"rule_id": v.rule_id, "status": st, "message": (v.reason or v.suggestion or "")[:240]})
+    body = {"run_id": run_id, "candidate_id": recipe.get("candidate_id"), "strategy": recipe.get("strategy"),
+            "request": (getattr(execution, "state", {}) or {}).get("request") if isinstance(getattr(execution, "state", None), dict) else None,
+            "api": spec.get("api_name"), "target_population": spec.get("target_patient"), "dosage_form": spec.get("dosage_form"),
+            "dose_mg": mp.get("dose_mg"), "drug_loading_pct": round(100 * float(api.get("amount_mg") or 0) / tot, 2) if tot and api.get("amount_mg") else None,
+            "required_excipients": spec.get("required_excipients") or [], "process": recipe.get("process"),
+            "process_steps": recipe.get("process_steps") or [],
+            "ingredients": [{"name": i["name"], "mg": i.get("amount_mg"), "role": i.get("role")} for i in recipe.get("ingredients") or []],
+            "signals": signals[:12]}
+    body["fingerprint"] = hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()[:16]
+    return body
+
+
 class Stage2Create(BaseModel):
     source: str = Field(..., pattern="^(candidate|cbd_paper)$")
     run_id: Optional[str] = None
@@ -1217,6 +1243,7 @@ async def stage2_create(req: Stage2Create, idempotency_key: Optional[str] = Head
         recipe = result["recipe"].model_dump(mode="json")
         proto = _prototype_from_candidate(recipe, spec_d)
         title = f"{proto['api']} · {recipe.get('strategy') or ''} ({req.candidate_id})"
+        proto["source"]["handoff"] = _handoff(req.run_id, execution, result, recipe, spec_d, proto)
         return await asyncio.to_thread(svc.create, proto, title=title, source=proto["source"], reference=False, actor=actor_id,
                                        idempotency_key=idempotency_key, origin={"kind": "candidate", "run_id": req.run_id})
     except HTTPException:
@@ -1260,6 +1287,15 @@ async def stage2_surfaces(study_id: str, slice: Optional[int] = None) -> Dict[st
         raise _study_error(exc)
 
 
+@app.get("/api/stage2/studies/{study_id}/space")
+async def stage2_space(study_id: str, fixed: Optional[int] = None, level: Optional[float] = None) -> Dict[str, Any]:
+    """13단계 화면용 공동확률 단면(요인 3개면 하나를 고정한 2D 지도)."""
+    try:
+        return await asyncio.to_thread(stage2().space_slice, study_id, fixed, level)
+    except Exception as exc:   # noqa: BLE001
+        raise _study_error(exc)
+
+
 @app.get("/api/stage2/studies/{study_id}/trace")
 async def stage2_trace(study_id: str) -> Dict[str, Any]:
     try:
@@ -1288,14 +1324,14 @@ async def stage2_risk_report(study_id: str):
 
 @app.get("/api/stage2/studies/{study_id}/report.pdf")
 async def stage2_final_report(study_id: str):
-    """12단계 산출물 — 위험평가 + 실험 설계 · 회귀식 · 반응 곡면 · ANOVA."""
+    """최종 보고서 — 위험평가 + 실험 설계 · 회귀식 · 반응 곡면 · ANOVA (+ 있으면 Design Space · 확인계획 · 확인배치)."""
     from formula.stage2 import report
     try:
         st = stage2().raw(study_id)
         imgs = stage2().images(study_id)
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
-    if st["status"] != "done":
+    if st["steps"]["anova"]["status"] != "approved":
         raise HTTPException(409, "12단계(ANOVA)까지 확인해야 최종 보고서를 만들 수 있습니다.")
     return _pdf_response(await asyncio.to_thread(report.final_report, st, imgs), f"design_space_{study_id}.pdf")
 

@@ -52,6 +52,27 @@ PAPER_DOE_VARIABLES = ["Compression force", "MCC", "CCS"]
 PAPER_FAMILIES = {"Hardness": "Linear", "DT": "Quadratic", "Friability": "2FI"}
 
 
+_RESP = {"hardness_kgf": "Hardness", "dt_s": "DT", "friability_pct": "Friability"}
+
+
+def specs() -> Dict[str, Dict[str, Any]]:
+    """논문의 반응 규격(Table 2 · Methods — 경도 4–6 kgf, 붕해 ≤ 30 s, 마손도 ≤ 1 %) — 설계 표의 반응 이름으로."""
+    out = {}
+    for r in doe()["responses"]:
+        name = _RESP.get(r["id"])
+        if not name:
+            continue
+        out[name] = {"response": name, "unit": r.get("unit") or "", "op": r.get("operator"), "lower": r.get("lower"), "upper": r.get("upper"),
+                     "basis": f"Monton 2026 ({r.get('name')} 규격)"}
+    return out
+
+
+def reference_point() -> Dict[str, Any]:
+    """논문 최적 처방(1400 psi · MCC 35 % · CCS 1 %) — 확인계획의 참고점(결과가 이미 공개돼 승격 근거로 쓰지 않는다)."""
+    o = doe()["optimum"]
+    return {"label": "논문 최적 처방(Table 12 확인 lot)", "settings": {"Force": o["force_psi"], "MCC": o["mcc_pct"], "CCS": o["ccs_pct"]}}
+
+
 def step(name: str) -> Optional[Dict[str, Any]]:
     r = risk()
     if name == "prototype":
@@ -71,4 +92,4 @@ def step(name: str) -> Optional[Dict[str, Any]]:
 
 LOCATOR = {"prototype": "Table 1", "qtpp": "Table 3", "cqa": "Table 4 · Results 3.3", "rm_just": "Table 6", "rm_matrix": "Table 5",
            "fp_just": "Table 8", "fp_matrix": "Table 7", "recommend": "Results 3.3 · Table 2", "design": "Table 9",
-           "regression": "Table 10", "surface": "Figure 1", "anova": "Table 11"}
+           "regression": "Table 10", "surface": "Figure 1", "anova": "Table 11", "space": "Table 2 규격", "vplan": "Table 12"}

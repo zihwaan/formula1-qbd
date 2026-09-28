@@ -8,27 +8,34 @@
  5 rm_matrix : {cqas[], variables[], levels[[..]]}  ← 4에서 코드가 만든다                                                                    (Table 5)
  6 fp_just   : {variables[{name, kind:"formulation"|"process"}], items[...]}                                                                (Table 8)
  7 fp_matrix : ← 6에서                                                                                                                       (Table 7)
- 8 recommend : {candidates[{variable, kind, high[], medium[]}], recommended[{variable, reason}], source, selected[]}
+ 8 recommend : {candidates[{variable, kind, high[], medium[]}](High만), watch[](Medium만), recommended[{variable, reason}], source, selected[]}
  9 design    : {factors[{name, unit}], responses[{name, unit}], rows[{std, run, x[], y[]}]}                                               (Table 9)
 10 regression: doe.regression(...) + chosen{response: family}                                                                               (Table 10)
 11 surface   : {images?}  곡면은 10의 선택 모형으로 그때그때 계산
 12 anova     : doe.anova(...)                                                                                                                (Table 11)
+13 space     : {specs[{response, unit, op, lower, upper, basis}], region}  ← space.region (공동확률 ≥ 0.90 · 설정점)
+14 vplan     : {delta, reference?, plan}  ← space.plan (SETPOINT · BOUNDARY · ROBUSTNESS, Bonferroni 예측구간 — 승인 = 잠금)
+15 verify    : {independent, observations[{role, values}], judgement}  ← space.judge (규격 통과 × 예측구간 2×2)
 """
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-STEPS = ["prototype", "qtpp", "cqa", "rm_just", "rm_matrix", "fp_just", "fp_matrix", "recommend", "design", "regression", "surface", "anova"]
+STEPS = ["prototype", "qtpp", "cqa", "rm_just", "rm_matrix", "fp_just", "fp_matrix", "recommend", "design", "regression", "surface", "anova",
+         "space", "vplan", "verify"]
 TITLE = {"prototype": "프로토타입", "qtpp": "QTPP", "cqa": "CQA 판별", "rm_just": "원료 물성 위험평가", "rm_matrix": "원료 위험평가 정리",
          "fp_just": "제형·공정 변수 위험평가", "fp_matrix": "제형·공정 위험평가 정리", "recommend": "종합 정리 · DoE 변수 추천",
-         "design": "실험 설계 입력", "regression": "회귀식", "surface": "반응 곡면", "anova": "ANOVA · 최종 보고서"}
+         "design": "실험 설계 입력", "regression": "회귀식 · 모형 진단", "surface": "반응 곡면", "anova": "ANOVA",
+         "space": "Design Space (공동확률)", "vplan": "확인계획 잠금", "verify": "확인배치 · 2×2 판정"}
 TABLE = {"prototype": "Table 1", "qtpp": "Table 3", "cqa": "Table 4", "rm_just": "Table 6", "rm_matrix": "Table 5", "fp_just": "Table 8",
-         "fp_matrix": "Table 7", "design": "Table 9", "regression": "Table 10", "surface": "Figure 1", "anova": "Table 11"}
+         "fp_matrix": "Table 7", "design": "Table 9", "regression": "Table 10", "surface": "Figure 1", "anova": "Table 11",
+         "space": "Peterson 2008", "vplan": "확인점 3", "verify": "2×2"}
 # 연구자가 편집하는 단계 / 코드가 만드는 단계(확인만)
-EDITABLE = {"prototype", "qtpp", "cqa", "rm_just", "fp_just", "recommend", "design", "regression"}
+EDITABLE = {"prototype", "qtpp", "cqa", "rm_just", "fp_just", "recommend", "design", "regression", "space", "vplan", "verify"}
 DERIVED = {"rm_matrix", "fp_matrix", "surface", "anova"}
 LLM_STEPS = {"qtpp", "cqa", "rm_just", "fp_just", "recommend"}
 LEVELS = ("High", "Medium", "Low")
@@ -197,6 +204,13 @@ def check(step: str, data: Dict[str, Any], ctx: Dict[str, Any]) -> List[Dict[str
                 out.append(_c("blocking", "RISK_PROCESS_IS_ROUTE", f"공정 변수 자리에 공정 이름이 있습니다({', '.join(bad)}) — 압축력·혼합 시간처럼 조절 가능한 공정 파라미터로 바꾸세요."))
             if not any(v.get("kind") == "process" for v in vars_):
                 out.append(_c("warning", "RISK_NO_PROCESS", "공정 변수가 없습니다 — 압축력 같은 공정 파라미터도 평가하는지 확인하세요."))
+            pct = low_dose(ctx)
+            if pct is not None:
+                blend_hi = any(BLEND_RE.search(str(it.get("variable") or "")) and it.get("level") == "High"
+                               and any(CU_RE.search(c) for c in it.get("cqas") or []) for it in data.get("items") or [])
+                if not blend_hi:
+                    out.append(_c("warning", "RISK_LOW_DOSE", f"약물 함량 {pct:.1f} %(< 5 %, RTE008) — 혼합 공정(혼합 시간 등) × 함량균일성 위험을 "
+                                  "High로 평가했는지 확인하세요. 저함량 API는 혼합 균일성이 함량균일성을 좌우합니다."))
     elif step == "recommend":
         sel = data.get("selected") or []
         allowed = {c["variable"] for c in data.get("candidates") or []}
@@ -205,7 +219,7 @@ def check(step: str, data: Dict[str, Any], ctx: Dict[str, Any]) -> List[Dict[str
         if len(sel) > MAX_DOE:
             out.append(_c("blocking", "REC_TOO_MANY", f"DoE 변수는 최대 {MAX_DOE}개입니다."))
         if any(s not in allowed for s in sel):
-            out.append(_c("blocking", "REC_NOT_CANDIDATE", "위험평가에서 High·Medium이 아닌 변수는 고를 수 없습니다."))
+            out.append(_c("blocking", "REC_NOT_CANDIDATE", "위험평가에서 High가 아닌 변수는 DoE 요인으로 고를 수 없습니다."))
     elif step == "design":
         f, r, rows = data.get("factors") or [], data.get("responses") or [], data.get("rows") or []
         if not 1 <= len(f) <= MAX_FACTORS:
@@ -237,9 +251,53 @@ def check(step: str, data: Dict[str, Any], ctx: Dict[str, Any]) -> List[Dict[str
         for r in data.get("responses") or []:
             if r.get("aliased"):
                 out.append(_c("blocking", "REG_ALIASED", f"{r['response']}: {r['family']} 모형은 이 설계로 추정할 수 없습니다(항 수 ≥ run 수 또는 별칭) — 더 낮은 차수를 고르세요."))
-            elif r["summary"]["suggested"] != r["family"]:
+                continue
+            if r["summary"]["suggested"] != r["family"]:
                 out.append(_c("warning", "REG_NOT_SUGGESTED", f"{r['response']}: 제안 모형은 {r['summary']['suggested']}, 선택은 {r['family']} — 연구자 선택으로 기록합니다."))
+            if overfit(r.get("adj_r2"), r.get("pred_r2")):
+                out.append(_c("warning", "REG_OVERFIT", f"{r['response']}: 과적합 의심 — 예측 R² {r['pred_r2']:.3f}가 수정 R² {r['adj_r2']:.3f}보다 "
+                              f"{OVERFIT_GAP} 넘게 낮습니다. 차수를 낮추거나(계층성 유지) 사유를 적고 수용하세요.", response=r["response"]))
+    elif step == "space":
+        specs = data.get("specs") or []
+        if not any(s.get("op") in ("LE", "GE", "BETWEEN") for s in specs):
+            out.append(_c("blocking", "SPACE_NO_SPEC", "규격을 하나 이상 적어야 영역을 계산합니다(반응마다 ≤ · ≥ · 범위)."))
+        for s in specs:
+            op = s.get("op")
+            if op in (None, "", "NONE"):
+                if not str(s.get("basis") or "").strip():
+                    out.append(_c("blocking", "SPACE_EXCLUDE_REASON", f"{s.get('response')}: 영역 계산에서 빼려면 이유를 적어 주세요."))
+                continue
+            need = {"LE": ("upper",), "GE": ("lower",), "BETWEEN": ("lower", "upper")}.get(op)
+            if not need or any(not _isnum(s.get(k)) for k in need):
+                out.append(_c("blocking", "SPACE_SPEC", f"{s.get('response')}: 규격 값이 비었거나 숫자가 아닙니다."))
+            elif op == "BETWEEN" and float(s["lower"]) >= float(s["upper"]):
+                out.append(_c("blocking", "SPACE_SPEC", f"{s.get('response')}: 하한이 상한보다 작아야 합니다."))
+        reg = data.get("region") or {}
+        if reg.get("status") == "EMPTY":
+            out.append(_c("blocking", "SPACE_EMPTY", f"공동 통과확률 ≥ {reg.get('p_min', 0.9):.2f}인 점이 없습니다(최대 {reg.get('max_joint', 0):.3f}). "
+                          "규격을 완화하지 않습니다 — 모형·요인 범위·위험평가를 다시 검토하세요."))
+    elif step == "vplan":
+        roles = [p["role"] for p in (data.get("plan") or {}).get("points") or []]
+        if "SETPOINT" not in roles:
+            out.append(_c("blocking", "VPLAN_NONE", "확인점을 만들 수 없습니다 — 13단계에서 영역이 있어야 합니다."))
+        elif len([r for r in roles if r != "REFERENCE"]) < 3:
+            out.append(_c("warning", "VPLAN_FEW", "필수 확인점 3개 중 일부를 만들 수 없었습니다(경계·강건성 점이 지지 영역 밖)."))
+    elif step == "verify":
+        if not data.get("independent"):
+            out.append(_c("blocking", "VERIFY_INDEPENDENT", "확인배치가 모형 적합에 쓰지 않은 새 독립 배치인지 확인해 주세요."))
+        j = data.get("judgement") or {}
+        if j.get("verdict") in (None, "INCOMPLETE"):
+            out.append(_c("blocking", "VERIFY_MISSING", "필수 확인점 3개의 모든 반응 실측값이 필요합니다."))
+        elif j.get("verdict") == "INVALIDATED":
+            out.append(_c("warning", "VERIFY_INVALIDATED", "확인 실패 — 승인하면 '영역 무효화'로 기록됩니다. " + " ".join(j.get("advice") or [])))
     return out
+
+
+OVERFIT_GAP = 0.2       # Design-Expert 관행: 예측 R²가 수정 R²보다 0.2 넘게 낮으면 과적합 의심
+
+
+def overfit(adj: Optional[float], pred: Optional[float]) -> bool:
+    return adj is not None and pred is not None and (adj - pred > OVERFIT_GAP or pred < 0)
 
 
 def numbers_not_in(text: str, source: str) -> List[str]:
@@ -256,16 +314,41 @@ def _isnum(v: Any) -> bool:
         return False
 
 
-def candidates(fp_matrix: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """DoE 후보 = 제형·공정 변수 중 하나 이상의 CQA에 High 또는 Medium. High 개수 → Medium 개수 순."""
+def _rated(matrix: Dict[str, Any], min_level: str) -> List[Dict[str, Any]]:
     out = []
-    for j, v in enumerate(fp_matrix.get("variables") or []):
-        hi = [c for i, c in enumerate(fp_matrix["cqas"]) if fp_matrix["levels"][i][j] == "High"]
-        md = [c for i, c in enumerate(fp_matrix["cqas"]) if fp_matrix["levels"][i][j] == "Medium"]
-        if hi or md:
+    for j, v in enumerate(matrix.get("variables") or []):
+        hi = [c for i, c in enumerate(matrix["cqas"]) if matrix["levels"][i][j] == "High"]
+        md = [c for i, c in enumerate(matrix["cqas"]) if matrix["levels"][i][j] == "Medium"]
+        if hi or (md and min_level == "Medium"):
             out.append({"variable": v["name"], "kind": v.get("kind"), "high": hi, "medium": md})
     return sorted(out, key=lambda x: (-len(x["high"]), -len(x["medium"])))
 
 
+def candidates(fp_matrix: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """DoE 후보 = 제형·공정 변수 중 하나 이상의 CQA에 High인 것(발표 자료: 'High만 DoE 요인으로'). High 개수 → Medium 개수 순."""
+    return _rated(fp_matrix, "High")
+
+
+def watch_list(fp_matrix: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """High는 없고 Medium만 있는 변수 — DoE 요인은 아니지만 관리·모니터링 대상으로 보여 준다."""
+    return [c for c in _rated(fp_matrix, "Medium") if not c["high"]]
+
+
 def material_controls(rm_matrix: Dict[str, Any]) -> List[Dict[str, Any]]:
-    return candidates(rm_matrix)
+    return _rated(rm_matrix, "Medium")
+
+
+LOW_DOSE_PCT = 5.0          # RTE008(route_decision_tree.csv) — 약물 함량 < 5 %면 함량균일성이 관건
+BLEND_RE = re.compile(r"blend|mix|혼합", re.I)
+CU_RE = re.compile(r"uniform|균일", re.I)
+
+
+def low_dose(ctx: Dict[str, Any]) -> Optional[float]:
+    """프로토타입에서 계산한 약물 함량(%). 5 % 미만이면 값, 아니면 None."""
+    p = ctx.get("prototype") or {}
+    api = next((i for i in p.get("ingredients") or [] if i.get("role") == "api"), None)
+    tot = sum(float(i.get("mg") or 0) for i in p.get("ingredients") or []) or float(p.get("unit_weight_mg") or 0)
+    if not api or not api.get("mg") or not tot:
+        return None
+    pct = 100 * float(api["mg"]) / tot
+    return pct if pct < LOW_DOSE_PCT else None

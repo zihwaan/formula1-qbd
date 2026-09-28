@@ -1,7 +1,7 @@
 """2단계 보고서 PDF — 논문 표 형식(Table 1·3·4·5·6·7·8 · 9·10·11 · Figure 1).
 
 - risk_report: 8단계 산출물 — 프로토타입부터 위험평가·DoE 변수까지(제형 DoE의 출발점).
-- final_report: 12단계 산출물 — 위 내용 + 실험 설계 표 · 회귀식 · 반응 곡면(화면에서 받은 그림) · ANOVA.
+- final_report: 12단계(ANOVA) 뒤 — 위 내용 + 실험 설계 표 · 회귀식 · 반응 곡면(화면에서 받은 그림) · ANOVA, 있으면 Design Space · 확인계획 · 확인배치.
 승인된 단계만 싣고, 표마다 출처(LLM 초안 · 논문 값 · 연구자 수정 · 코드 계산)와 승인 기록을 붙인다. 폰트는 나눔고딕(OFL, fonts/OFL.txt).
 """
 from __future__ import annotations
@@ -282,7 +282,66 @@ def final_report(st: Dict[str, Any], images: Optional[Dict[str, bytes]] = None) 
     _table(pdf, ["Source", "Sum of squares", "df", "Mean square", "F-value", "p-value"], rows, [40, 30, 14, 30, 30, 36], 7.6,
            align=["LEFT", "RIGHT", "CENTER", "RIGHT", "RIGHT", "RIGHT"])
     _p(pdf, "* p < 0.05. 항의 제곱합은 부분(Type III) 제곱합, 잔차 = 적합결여 + 순수오차(같은 설정의 반복 run).", 8)
+    ap = [a for a in st["approvals"] if a["step"] == "regression" and a.get("note")]
+    if ap:
+        _p(pdf, f"모형 수용 사유(연구자): {ap[-1]['note']}", 8)
+    _space_sections(pdf, st)
     return bytes(pdf.output())
+
+
+ROLE_KO = {"SETPOINT": "설정점", "BOUNDARY": "경계점", "ROBUSTNESS": "강건성(최악 변동)", "REFERENCE": "참고 배치"}
+VERDICT_KO = {"VERIFIED": "VERIFIED — 내부 사전계획 통과(규제 승인 설계공간 아님)", "INVALIDATED": "영역 무효화 — 진단 필요",
+              "INCOMPLETE": "실측값 미완"}
+
+
+def _space_sections(pdf, st: Dict[str, Any]) -> None:
+    s = st["steps"]
+    sd = s["space"]["data"] if s.get("space") else None
+    if not sd or not sd.get("region"):
+        return
+    r = sd["region"]
+    pdf.add_page(orientation="P")
+    _h(pdf, "Design Space — 미래 배치 공동 통과확률")
+    _meta(pdf, st, "space")
+    _table(pdf, ["반응", "규격", "근거"], [[x["response"] + (f" ({x['unit']})" if x.get("unit") else ""),
+                                          {"LE": f"≤ {_g(x.get('upper'))}", "GE": f"≥ {_g(x.get('lower'))}",
+                                           "BETWEEN": f"{_g(x.get('lower'))}–{_g(x.get('upper'))}"}.get(x["op"], "영역 계산 제외"),
+                                          x.get("basis") or ""] for x in sd["specs"]], [45, 40, 95], 8)
+    sp = r.get("setpoint") or {}
+    rows = [["지지 영역(설계점 convex hull) 격자점", f"{r['grid_points_in_domain']:,} / {r['grid_points_total']:,} (축마다 {r['grid']}점)"],
+            ["평균 예측이 모든 규격 안", f"{100 * r['mean_ok_fraction']:.1f} %"],
+            [f"공동 통과확률 ≥ {r['p_min']:.2f}", f"{100 * r['feasible_fraction']:.1f} % ({r['feasible_points']:,}점)"],
+            ["최대 공동 통과확률", f"{r['max_joint']:.3f}"],
+            ["경계를 정하는 반응(미달 격자점 수)", ", ".join(f"{k} {v:,}" for k, v in (r.get("binding") or {}).items()) or "—"]]
+    if sp:
+        rows.append(["권장 설정점", " · ".join(f"{k} {_g(v)}" for k, v in sp["actual"].items()) + f" (공동확률 {sp['joint']:.3f})"])
+    _table(pdf, ["지표", "값"], rows, [80, 100], 8.2)
+    _p(pdf, "반응별 예측분포 = t(자유도 = 잔차 자유도), 척도 = √(평균 SE² + 잔차분산). 공동확률 = 반응별 통과확률의 곱(반응 간 독립 가정). "
+            "평균 예측만 보는 영역은 미래 배치의 변동을 무시한다. 영역이 비면 규격을 완화하지 않는다(Peterson 2008).", 8)
+    vp = (s.get("vplan") or {}).get("data") or {}
+    plan = vp.get("plan") or {}
+    if plan.get("points"):
+        _h(pdf, "확인계획" + (f" — {vp['locked_at'][:16].replace('T', ' ')} UTC 잠금 · {vp.get('plan_hash')}" if vp.get("locked_at") else " (미잠금)"), 10.5)
+        pol = plan.get("pi_policy") or {}
+        rows = []
+        for pt in plan["points"]:
+            for n, pr in pt["predicted"].items():
+                rows.append([ROLE_KO.get(pt["role"], pt["role"]) if n == next(iter(pt["predicted"])) else "",
+                             " · ".join(f"{_g(v)}" for v in pt["settings"].values()) if n == next(iter(pt["predicted"])) else "",
+                             n, pr["spec"], _g(round(pr["mean"], 3)), f"{_g(round(pr['pi_lower'], 3))}–{_g(round(pr['pi_upper'], 3))}" + (" *" if pr.get("pi_truncated") else "")])
+        _table(pdf, ["확인점", "설정(" + " · ".join((r.get("setpoint") or {}).get("actual", {}).keys()) + ")", "반응", "규격", "예측 평균", "예측구간"],
+               rows, [26, 40, 30, 26, 26, 32], 7.6)
+        _p(pdf, f"예측구간: {pol.get('comparisons')}개 비교(필수 확인점 3 × 규격 반응)의 Bonferroni 동시구간, 개별 수준 {100 * pol.get('per_comparison_level', 0):.2f} %. "
+                "* 하한이 음수라 0에서 자름. 참고 배치는 결과가 이미 공개돼 승격·무효화 근거로 쓰지 않는다.", 8)
+    vd = (s.get("verify") or {}).get("data") or {}
+    j = vd.get("judgement") or {}
+    if j.get("rows") and any(x.get("observed") is not None for x in j["rows"]):
+        _h(pdf, "확인배치 판정 — 규격 통과 × 예측구간", 10.5)
+        _table(pdf, ["확인점", "반응", "실측", "예측구간", "규격", "판정"],
+               [[ROLE_KO.get(x["role"], x["role"]), x["response"], _g(x.get("observed")), f"{_g(round(x['pi'][0], 3))}–{_g(round(x['pi'][1], 3))}" if x.get("pi") else "",
+                 "통과" if x.get("spec_pass") else ("실패" if x.get("spec_pass") is False else ""), {"PASS_IN": "통과 · 구간 안", "PASS_OUT": "통과 · 구간 밖",
+                 "FAIL_IN": "실패 · 구간 안", "FAIL_OUT": "실패 · 구간 밖"}.get(x.get("cell"), "")] for x in j["rows"]], [30, 30, 24, 34, 20, 42], 7.8)
+        _p(pdf, f"결론: {VERDICT_KO.get(j.get('verdict'), j.get('verdict'))}. " + " ".join(j.get("advice") or []), 8.5)
 
 
 __all__ = ["risk_report", "final_report", "STEPS", "TITLE"]

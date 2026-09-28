@@ -1,7 +1,8 @@
-"""2단계 Design Space 도출 — 12단계 HITL, 결정론 검사, toolkit(논문 Table 10·11 재현), 보고서."""
+"""2단계 Design Space 도출 — 15단계 HITL, 결정론 검사, toolkit(논문 Table 10·11 재현), 보고서."""
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -24,10 +25,12 @@ def cbd(svc):
     return svc.create(REF.prototype(), title="CBD", source={"locator": "Table 1"}, reference=True)["study"]["study_id"]
 
 
-EDIT_REF = {"qtpp", "cqa", "rm_just", "fp_just", "recommend", "design"}
+EDIT_REF = {"qtpp", "cqa", "rm_just", "fp_just", "recommend", "design", "space"}
+NOTE = "논문이 보고한 모형 차수를 그대로 비교하려고 수용"
 
 
-def walk(svc, sid, upto=None, families=None):
+def walk(svc, sid, upto="space", families=None):
+    """CBD 논문 값으로 진행. 기본은 13단계(영역) 앞까지 — CBD는 공동확률 ≥ 0.90 영역이 비어 13단계에서 멈추는 것이 정답이다."""
     out = svc.act(sid, "run", {})
     for s in STEPS[1:]:
         if s == upto:
@@ -36,7 +39,7 @@ def walk(svc, sid, upto=None, families=None):
             svc.act(sid, "use_reference", {})
         if s == "regression" and families:
             svc.act(sid, "save", {"data": {"chosen": families}})
-        out = svc.act(sid, "approve", {})
+        out = svc.act(sid, "approve", {"note": NOTE})
         assert not out["action_result"].get("blocked"), (s, out["action_result"], out["study"]["steps"][s]["checks"])
     return out
 
@@ -58,7 +61,13 @@ def test_derived_matrices_equal_paper_tables_5_and_7():
 def test_full_walk_with_paper_values(svc):
     sid = cbd(svc)
     out = walk(svc, sid)
-    assert out["done"] and len(out["study"]["approvals"]) == 12
+    assert out["current"] == "space" and len(out["study"]["approvals"]) == 12
+    svc.act(sid, "use_reference", {})                                # 논문 규격: 경도 4–6 kgf · 붕해 ≤ 30 s · 마손도 ≤ 1 %
+    out = svc.act(sid, "approve", {})
+    reg13 = out["study"]["steps"]["space"]["data"]["region"]
+    # 평균 예측으로는 영역이 있어 보이지만 미래 배치 공동확률 ≥ 0.90은 없다(경도 4–6 kgf 폭이 잔차에 비해 좁다) — 규격을 완화하지 않는다
+    assert out["action_result"]["blocked"] == ["SPACE_EMPTY"] and reg13["status"] == "EMPTY"
+    assert reg13["mean_ok_fraction"] > 0.4 and reg13["max_joint"] < 0.9 and next(iter(reg13["binding"])) == "Hardness"
     st = svc.raw(sid)
     rec = st["steps"]["recommend"]["data"]
     assert rec["selected"] == ["Compression force", "MCC", "CCS"] and rec["rule_rank"][:3] == ["MCC", "Compression force", "CCS"]
@@ -138,6 +147,17 @@ def test_recommend_limits_and_design_checks(svc):
     assert {"DESIGN_TOO_FEW", "DESIGN_ONE_LEVEL"} <= set(out["action_result"]["blocking"])
 
 
+def test_regression_overfit_needs_reason(svc):
+    sid = cbd(svc)
+    walk(svc, sid, upto="regression")
+    svc.act(sid, "use_reference", {})                                 # 논문 차수: DT 2차 · 마손도 2FI → 예측 R²가 수정 R²보다 한참 낮다
+    out = svc.act(sid, "approve", {})
+    assert "REG_OVERFIT_REASON" in out["action_result"]["blocked"]
+    assert {c["response"] for c in out["study"]["steps"]["regression"]["checks"] if c["code"] == "REG_OVERFIT"} >= {"DT"}
+    out = svc.act(sid, "approve", {"note": NOTE})
+    assert out["current"] == "surface" and out["study"]["approvals"][-1]["note"] == NOTE
+
+
 def test_regression_choice_aliased_blocks_and_reopen_marks_stale(svc):
     sid = cbd(svc)
     walk(svc, sid, upto="regression")
@@ -210,3 +230,95 @@ def test_recommend_names_are_matched_to_candidates(monkeypatch):
     out = AG.draft("recommend", {"prototype": REF.prototype(), "candidates": cands})["data"]
     assert [r["variable"] for r in out["recommended"]] == ["Compression force", "MCC"]
     assert "Tablet shape" in out["note"]
+
+
+
+# ── 13–15 Design Space · 확인계획 · 확인배치 — Almotairi 2022 로르녹시캄 분산정(실측 15 run) ─────────────────────────
+def lornoxicam_design():
+    import csv
+    rows = list(csv.DictReader(open(Path(__file__).parent / "fixtures" / "lornoxicam_table3.csv", encoding="utf-8")))
+    return {"factors": [{"name": "MCC:Mannitol", "unit": ""}, {"name": "Mixing time", "unit": "min"}, {"name": "Crospovidone", "unit": "%"}],
+            "responses": [{"name": "DT", "unit": "s"}, {"name": "Friability", "unit": "%"}, {"name": "DE30", "unit": "%"}, {"name": "AV", "unit": ""}],
+            "rows": [{"std": int(r["run"]), "run": int(r["run"]),
+                      "x": [float(r["x1_mcc_mannitol_ratio"]), float(r["x2_mixing_time_min"]), float(r["x3_crospovidone_pct"])],
+                      "y": [float(r["y1_dispersibility_s"]), float(r["y2_friability_pct"]), float(r["y3_de30_pct"]), float(r["y4_cu_av"])]} for r in rows]}
+
+
+LX_SPECS = [{"response": "DT", "op": "LE", "upper": 180, "basis": "분산정 분산 3분 이내"}, {"response": "Friability", "op": "LE", "upper": 1.0, "basis": "USP <1216>"},
+            {"response": "DE30", "op": "GE", "lower": 75, "basis": "프로젝트 목표(가정)"}, {"response": "AV", "op": "LE", "upper": 15, "basis": "USP <905> L1"}]
+
+
+def test_lornoxicam_design_space_reproduces_golden_values():
+    """발표 자료 10쪽: 평균 반응면 77.2 % → 공동확률 ≥ 0.90 47.6 %, 설정점 2.7 · 12.5분 · 6.8 %(P 0.991), DE30 예측구간 71.9–92.8."""
+    from formula.stage2 import space as SP
+    from formula.stage2.model import check as chk
+    d = lornoxicam_design()
+    auto = T.regression(d)
+    assert {r["response"]: r["suggested"] for r in auto["responses"]} == {"DT": "Quadratic", "Friability": "Linear", "DE30": "Quadratic", "AV": "Quadratic"}
+    flags = {c["response"] for c in chk("regression", auto, {}) if c["code"] == "REG_OVERFIT"}
+    assert flags == {"AV"}                                             # AV 2차: 수정 R² 0.884 vs 예측 R² 0.481
+    fr = next(r for r in auto["responses"] if r["response"] == "Friability")
+    quad = next(x for x in fr["summary"]["rows"] if x["model"] == "Quadratic")
+    assert round(quad["pred_r2"], 3) == 0.251 and round(fr["pred_r2"], 3) == 0.824   # 마손도는 2차 과적합 → 선형으로 제안
+    R = SP.region(d, auto, LX_SPECS)
+    assert (R["grid_points_total"], R["grid_points_in_domain"]) == (9261, 7501)
+    assert round(R["mean_ok_fraction"], 3) == 0.772 and round(R["feasible_fraction"], 3) == 0.476 and next(iter(R["binding"])) == "DE30"
+    sp = R["setpoint"]
+    assert sp["actual"] == {"MCC:Mannitol": 2.7, "Mixing time": 12.5, "Crospovidone": 6.8} and round(sp["joint"], 3) == 0.991
+    V = SP.plan(d, auto, LX_SPECS, R, reference={"label": "논문 최적", "settings": {"MCC:Mannitol": 3, "Mixing time": 11, "Crospovidone": 6.23}})
+    assert [p["role"] for p in V["points"]] == ["SETPOINT", "BOUNDARY", "ROBUSTNESS", "REFERENCE"] and V["pi_policy"]["comparisons"] == 12
+    de = V["points"][0]["predicted"]["DE30"]
+    assert (round(de["mean"], 1), round(de["pi_lower"], 1), round(de["pi_upper"], 1)) == (82.3, 71.9, 92.8)
+    sl = SP.slice_map(d, auto, LX_SPECS, fixed=1, level=0.5)
+    assert sl["kind"] == "MAP" and sl["fixed"]["actual"] == 12.5 and len(sl["P"]) == 21 and len(sl["P"][0]) == 21
+
+
+def test_space_vplan_verify_steps(svc):
+    """13 규격 → 영역 · 14 확인계획(승인 = 잠금) · 15 확인배치 2×2. 확인 실측값은 테스트 전용 값이다(화면·보고서의 시연 데이터 아님)."""
+    sid = cbd(svc)
+    walk(svc, sid, upto="design")
+    svc.act(sid, "save", {"data": lornoxicam_design()})
+    svc.act(sid, "approve", {})
+    out = svc.act(sid, "approve", {})                                  # 10 회귀 — AV 과적합이라 사유 없이는 막힌다
+    assert "REG_OVERFIT_REASON" in out["action_result"]["blocked"]
+    svc.act(sid, "approve", {"note": "AV는 예측 R² 0.48 — 사유를 기록하고 수용"})
+    svc.act(sid, "approve", {})
+    svc.act(sid, "approve", {})
+    assert svc.view(sid)["current"] == "space"
+    out = svc.act(sid, "approve", {})
+    assert "SPACE_NO_SPEC" in out["action_result"]["blocked"]
+    out = svc.act(sid, "save", {"data": {"specs": LX_SPECS}})
+    assert round(out["study"]["steps"]["space"]["data"]["region"]["feasible_fraction"], 3) == 0.476
+    out = svc.act(sid, "approve", {})
+    assert out["current"] == "vplan"
+    plan = out["study"]["steps"]["vplan"]["data"]["plan"]
+    assert [p["role"] for p in plan["points"]] == ["SETPOINT", "BOUNDARY", "ROBUSTNESS"]
+    out = svc.act(sid, "approve", {})
+    vp = out["study"]["steps"]["vplan"]["data"]
+    assert vp["locked_at"] and vp["plan_hash"] and out["current"] == "verify"
+    out = svc.act(sid, "approve", {})
+    assert {"VERIFY_INDEPENDENT", "VERIFY_MISSING"} <= set(out["action_result"]["blocked"])
+    obs = [{"role": p["role"], "values": {n: round(v["mean"], 2) for n, v in p["predicted"].items()}} for p in plan["points"]]
+    out = svc.act(sid, "save", {"data": {"independent": True, "observations": obs}})
+    assert out["study"]["steps"]["verify"]["data"]["judgement"]["verdict"] == "VERIFIED"
+    obs[0]["values"]["DE30"] = 60.0                                   # 설정점 DE30 규격 실패 → 무효화(경고와 함께 승인 가능)
+    out = svc.act(sid, "save", {"data": {"independent": True, "observations": obs}})
+    j = out["study"]["steps"]["verify"]["data"]["judgement"]
+    assert j["verdict"] == "INVALIDATED" and any("진단" in a for a in j["advice"])
+    out = svc.act(sid, "approve", {})
+    assert out["done"]
+    st = svc.raw(sid)
+    pdf = report.final_report(st, {})
+    assert pdf[:4] == b"%PDF" and len(pdf) > 60000
+    out = svc.act(sid, "reopen", {"step": "vplan"})                   # 다시 열면 잠금이 풀리고 확인배치는 stale
+    assert "locked_at" not in out["study"]["steps"]["vplan"]["data"] and out["study"]["steps"]["verify"]["status"] == "stale"
+
+
+def test_candidates_are_high_only_and_low_dose_warning():
+    from formula.stage2.model import candidates, watch_list
+    m = {"cqas": ["Assay", "Content uniformity"], "variables": [{"name": "A", "kind": "formulation"}, {"name": "B", "kind": "process"}],
+         "levels": [["High", "Medium"], ["Low", "Medium"]]}
+    assert [c["variable"] for c in candidates(m)] == ["A"] and [c["variable"] for c in watch_list(m)] == ["B"]
+    ctx = {"cqa": REF.step("cqa"), "prototype": REF.prototype()}          # CBD 10/250 mg = 4 % < 5 %
+    codes = {c["code"] for c in check("fp_just", REF.step("fp_just"), ctx)}
+    assert "RISK_LOW_DOSE" in codes                                      # 논문 Table 8에는 혼합 공정 변수가 없다 — 경고로 알린다

@@ -55,6 +55,23 @@ def _proto(p: Dict[str, Any]) -> str:
             + (f"\n공정 단계: {' → '.join(p['process_steps'])}" if p.get("process_steps") else ""))
 
 
+def _ctx(ctx: Dict[str, Any]) -> str:
+    """프로토타입 + 1단계에서 넘어온 요청 맥락(불변 Handoff) — 대상 환자·용량·제형 요청·1단계 신호."""
+    out = "## 프로토타입\n" + _proto(ctx["prototype"])
+    h = ctx.get("handoff") or {}
+    if h:
+        ctx_lines = [f"- 요청: {h['request']}" if h.get("request") else "",
+                     f"- 대상 환자: {h['target_population']}" if h.get("target_population") else "",
+                     f"- 1회 용량: {h['dose_mg']} mg" if h.get("dose_mg") is not None else "",
+                     f"- 요청 제형: {h['dosage_form']}" if h.get("dosage_form") else "",
+                     f"- 약물 함량: {h['drug_loading_pct']:.1f} %" if h.get("drug_loading_pct") is not None else ""]
+        ctx_lines += [f"- 1단계 신호 {g['rule_id']}: {g['message']}" for g in h.get("signals") or []]
+        ctx_lines = [x for x in ctx_lines if x]
+        if ctx_lines:
+            out += "\n\n## 1단계에서 넘어온 맥락\n" + "\n".join(ctx_lines)
+    return out
+
+
 def _call(schema, system: str, user: str, max_tokens: int):
     """무료 모델은 긴 JSON에서 가끔 400(json_validate_failed)을 낸다 — 한 번만 다시 묻는다."""
     try:
@@ -87,7 +104,7 @@ def draft(step: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
 요소: 제형/설계 · 투여 경로 · 함량 · 약동학 · 안정성 · 제품 품질특성(하위: 물리적 특성, 확인시험, 함량, 제제균일성, 붕해, 용출, 분해산물,
 미생물 한도, 중금속, 잔류용매 — 제형에 맞게) · 용기·마개. 제품 품질특성의 하위 항목은 element='제품 품질특성', sub_element로 쓴다.
 각 요소의 target과 justification(환자·임상·제형 목적과 연결한 이유)을 쓴다."""
-        return {"data": _call(QTPPOut, sys, "## 프로토타입\n" + _proto(p), 3500).model_dump(mode="json"), "provider": prov}
+        return {"data": _call(QTPPOut, sys, _ctx(ctx), 3500).model_dump(mode="json"), "provider": prov}
     if step == "cqa":
         q = "\n".join(f"- {i['element']}{(' / ' + i['sub_element']) if i.get('sub_element') else ''}: {i['target']}" for i in ctx["qtpp"]["items"])
         sys = COMMON + """
@@ -99,7 +116,7 @@ short는 표준 영문 짧은 이름: Assay, Content uniformity, Hardness, Friab
 Microbial limits, Heavy metals, Residual solvents, Appearance, Odor, Size, Score configuration 등(축약어 금지).
 in_risk_assessment: 제형·공정 변수가 영향을 주어 이번 초기 위험평가에서 볼 CQA만 true. CQA이지만 이번에 보지 않는 것(원료 입고 시 평가하는 확인시험,
 R&D 단계에서 평가하지 않는 미생물·중금속·잔류용매 등)은 false와 exclusion_reason."""
-        return {"data": _call(CQAOut, sys, "## 프로토타입\n" + _proto(p) + "\n\n## 승인된 QTPP\n" + q, 4000).model_dump(mode="json"), "provider": prov}
+        return {"data": _call(CQAOut, sys, _ctx(ctx) + "\n\n## 승인된 QTPP\n" + q, 4000).model_dump(mode="json"), "provider": prov}
     if step in ("rm_just", "fp_just"):
         cqas = risk_cqas(ctx["cqa"])
         cq = "\n".join(f"- {c['short']}: {c['target']}" for c in ctx["cqa"]["items"] if c.get("in_risk_assessment"))
@@ -113,12 +130,13 @@ Chemical stability). 주성분 함량이 낮으면 혼합 균일성 관련 물�
             exc = [i["name"] for i in p.get("ingredients", []) if i.get("role") != "api"]
             task = f"""열(variables): 처방의 모든 부형제를 빠짐없이 이 이름 그대로 kind='formulation'로({', '.join(exc)}), 그리고 핵심 공정변수를 kind='process'로.
 공정변수는 공정 이름(direct_compression 등)이 아니라 조절 가능한 공정 파라미터다 — 직접타정이면 Compression force, Blending time,
-Lubrication time; 습식과립이면 과립액 양·과립 시간·건조 온도 등. 사용량이 적고 기능이 해당 CQA와 무관하면 Low."""
+Lubrication time; 습식과립이면 과립액 양·과립 시간·건조 온도 등. 사용량이 적고 기능이 해당 CQA와 무관하면 Low.
+약물 함량이 5 % 미만(저함량)이면 혼합 공정(Blending time 등)이 혼합 균일성을 통해 함량균일성을 좌우한다 — 이 칸을 빠뜨리지 말고 기전으로 판단한다."""
         sys = COMMON + f"""
 ## 과제: {what} 초기 위험평가 — 등급 격자
 {task}
 행(rows)은 아래 CQA를 이 순서 그대로 전부: {', '.join(cqas)}. 각 칸은 그 변수가 그 CQA에 줄 수 있는 위험(High/Medium/Low)."""
-        grid = _call(_Grid, sys, "## 프로토타입\n" + _proto(p) + "\n\n## 확정 CQA\n" + cq, 2500)
+        grid = _call(_Grid, sys, _ctx(ctx) + "\n\n## 확정 CQA\n" + cq, 2500)
         vars_ = [{"name": v.name, "kind": v.kind} for v in grid.variables]
         rows = {r.cqa: list(r.levels) for r in grid.rows}
         if step == "fp_just":            # LLM이 빠뜨린 부형제는 빈 열로 — 연구자가 채우게 한다(숨기지 않는다)
@@ -140,7 +158,7 @@ Lubrication time; 습식과립이면 과립액 양·과립 시간·건조 온도
             for k in range(0, len(todo), 8):
                 chunk = todo[k:k + 8]
                 lines = "\n".join(f"[{n}] {gs[n]['variable']} → {', '.join(gs[n]['cqas'])} : {gs[n]['level']}" for n in chunk)
-                out = _call(_Texts, tsys, "## 프로토타입\n" + _proto(p) + f"\n\n## 근거를 쓸 묶음\n{lines}", 2600)
+                out = _call(_Texts, tsys, _ctx(ctx) + f"\n\n## 근거를 쓸 묶음\n{lines}", 2600)
                 texts.update({t.group: t for t in out.items if t.group in chunk and t.text.strip()})
             todo = [n for n in todo if n not in texts]
             if not todo:
@@ -152,10 +170,10 @@ Lubrication time; 습식과립이면 과립액 양·과립 시간·건조 온도
         lines = "\n".join(f"- {c['variable']} ({c['kind']}): High → {', '.join(c['high']) or '없음'} / Medium → {', '.join(c['medium']) or '없음'}" for c in cands)
         sys = COMMON + f"""
 ## 과제: DoE로 조절해 볼 변수 추천(최대 {MAX_DOE}개)
-아래는 연구자가 승인한 제형·공정 변수 위험평가에서 High·Medium인 변수다. 이 중에서만 고른다(목록 밖 이름 금지).
+아래는 연구자가 승인한 제형·공정 변수 위험평가에서 하나 이상의 CQA에 High인 변수다. 이 중에서만 고른다(목록 밖 이름 금지).
 기준: 여러 핵심 CQA에 High인가, 실험에서 수준을 바꿀 수 있는가(연속 변수로 범위를 정할 수 있는가), 다른 변수와 역할이 겹치지 않는가
 (예: 두 충전제 중 하나가 나머지를 채우는 균형 성분이면 하나만). 추천하지 않은 High 변수가 있으면 note에 이유."""
-        out = _call(RecOut, sys, "## 프로토타입\n" + _proto(p) + f"\n\n## 후보 변수\n{lines}", 1500)
+        out = _call(RecOut, sys, _ctx(ctx) + f"\n\n## 후보 변수\n{lines}", 1500)
         # 목록에 적어 준 "이름 (종류)" 형식을 그대로 돌려주는 경우가 있다 — 꼬리 괄호·대소문자만 걷어 후보 이름과 맞춘다(목록 밖은 버림)
         canon = {_key(c["variable"]): c["variable"] for c in cands}
         rec, seen, dropped = [], set(), []
