@@ -532,7 +532,7 @@
    },
    {
     "key": "recommend",
-    "title": "종합 정리 · DoE 변수 추천"
+    "title": "종합 정리 · 위험평가 보고서"
    },
    {
     "key": "design",
@@ -2931,10 +2931,10 @@
     }
    ],
    "approvals": 12,
-   "events": 22,
-   "decisions": 21,
-   "risk_pdf_kb": 81,
-   "final_pdf_kb": 110
+   "events": 21,
+   "decisions": 20,
+   "risk_pdf_kb": 78,
+   "final_pdf_kb": 108
   },
   "check_codes": {
    "blocking": [
@@ -2963,9 +2963,6 @@
     "PROTO_NO_API",
     "QTPP_EMPTY",
     "QTPP_FIELD",
-    "REC_NONE",
-    "REC_NOT_CANDIDATE",
-    "REC_TOO_MANY",
     "REG_ALIASED",
     "RISK_EXCIPIENT_MISSING",
     "RISK_NO_VARS",
@@ -2985,6 +2982,7 @@
     "REG_NOT_SUGGESTED",
     "REG_OVERFIT",
     "RISK_LOW_DOSE",
+    "RISK_NO_HIGH",
     "RISK_NO_PROCESS",
     "VERIFY_INVALIDATED",
     "VPLAN_FEW"

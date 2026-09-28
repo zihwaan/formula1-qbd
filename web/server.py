@@ -1228,7 +1228,7 @@ async def index() -> HTMLResponse:
     return HTMLResponse(html, headers={"Cache-Control": "no-cache, must-revalidate"})
 
 
-# ── 2단계 — Design Space 도출(프로토타입 → QTPP → CQA → 위험평가·정리 → DoE 변수 → 실험 설계 → 회귀식 → 곡면 → ANOVA) ─────
+# ── 2단계 — Design Space 도출(프로토타입 → QTPP → CQA → 위험평가·정리 → 종합 정리 → 실험 설계 → 회귀식 → 곡면 → ANOVA → 영역) ─────
 # 1단계 통과 후보 카드의 [이 후보로 개발 착수]가 연다. 단계마다 LLM 초안·논문 값·연구자 편집 → 승인. formula/stage2/ · 화면 web/static/stage2.js
 _S2_SERVICE = None
 
@@ -1395,14 +1395,16 @@ def _pdf_response(pdf: bytes, name: str):
 
 @app.get("/api/stage2/studies/{study_id}/risk-report.pdf")
 async def stage2_risk_report(study_id: str):
-    """8단계 산출물 — 프로토타입부터 위험평가·DoE 변수까지(제형 DoE의 출발점)."""
+    """8단계 산출물 — 프로토타입부터 위험평가 종합 정리까지(제형 DoE의 출발점)."""
     from formula.stage2 import report
     try:
         st = stage2().raw(study_id)
     except Exception as exc:   # noqa: BLE001
         raise _study_error(exc)
-    if st["steps"]["recommend"]["status"] != "approved":
-        raise HTTPException(409, "8단계(DoE 변수 선택)까지 승인해야 위험평가 보고서를 만들 수 있습니다.")
+    # 8단계 종합 정리는 코드가 만든다(고를 것이 없다) — 7단계까지 승인돼 8단계에 들어오면 바로 보고서가 나온다
+    rec = st["steps"]["recommend"]
+    if rec["data"] is None or rec["status"] not in ("draft", "approved") or st["steps"]["fp_matrix"]["status"] != "approved":
+        raise HTTPException(409, "7단계까지 승인해 8단계(종합 정리)에 들어와야 위험평가 보고서를 만들 수 있습니다.")
     return _pdf_response(await asyncio.to_thread(report.risk_report, st), f"risk_assessment_{study_id}.pdf")
 
 

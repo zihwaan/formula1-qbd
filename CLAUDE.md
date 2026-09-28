@@ -573,7 +573,8 @@ Monton 2026 (CBD ODT, PMC13519653) / Almotairi 2022 (Lornoxicam, Table 3). Code:
 UI `web/static/stage2.{js,css}`.
 
 - **15 steps** (`model.STEPS`): prototype(T1) → qtpp(T3) → cqa(T4) → rm_just(T6) → rm_matrix(T5) → fp_just(T8) → fp_matrix(T7) →
-  recommend(**High-only** candidates, ≤4, risk PDF) → design(T9, CSV import) → regression(T10 + overfit flag) → surface(Fig 1) → anova(T11, final PDF)
+  recommend(= 종합 정리, **derived**: merged matrix + High-only DoE-variable candidates as a list, **no selection** — user 2026-09-28; risk PDF is available
+  as soon as step 8 is entered and its link sits right under the candidate list) → design(T9: factors typed by the researcher, High variables only as a datalist hint; CSV import) → regression(T10 + overfit flag) → surface(Fig 1) → anova(T11, final PDF)
   → space(joint P ≥ 0.90) → vplan(lock) → verify(2×2). Entry only from a gate-passed candidate (`[이 후보로 개발 착수]` / agent
   `develop_candidate`, both through `app.js startDevelopment` → evidence gate → waiver textarea when gaps remain) or the CBD demo
   (`source: cbd_paper`, enables "논문 값으로 채우기" + "참고 · 논문의 판단"). **Papers are reference, not ground truth** (user, 2026-09-28):
@@ -598,8 +599,9 @@ UI `web/static/stage2.{js,css}`.
   (spec pass × inside PI); all three required points PASS_IN → VERIFIED, else INVALIDATED with advice. This is the old v6.1 engine's
   math ported 1:1 — pinned golden values: Lornoxicam 7,501/9,261, mean-ok 0.772, joint 0.476, setpoint 2.7/12.5/6.8 (P 0.991), DE30 PI 71.9–92.8;
   CBD with paper specs → mean-ok 0.479, joint 0 (max 0.883, Hardness binds) → stops at step 13 (that is correct, not a bug).
-- **Measured LLM quality** (`scripts/report/stage2_llm.py` → `docs/report/stage2_llm.json`): drafts pass every check but only 17/42 and 24/42
-  risk cells match the paper — the reason steps are "draft + approve".
+- **Measured LLM quality** (`scripts/report/stage2_llm.py` → `docs/report/stage2_llm.json`): steps 2–7 drafted by the contest API pass every check but only 21/35
+  (material) and 21/35 (formulation/process) same-name risk cells match the paper (22 of 28 differing cells rated higher) — the reason steps are
+  "draft + approve". The paper is a reference, not the answer key; the match rate is not a quality score.
 - **PDFs** (`report.py`, fpdf2 + NanumGothic): `PDF.normalize_text` replaces U+2212 on every path. The final report is available once ANOVA is
   approved and includes 13–15 when present.
 - Example data for the demo: `web/static/data/almotairi2022_table3.csv` (real, cited in its `#` header; `X:`/`Y:` header prefixes set column roles).

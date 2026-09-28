@@ -39,7 +39,7 @@ def main():
     ref = v["reference"]
     v = call(f"/api/stage2/studies/{sid}/actions/run", {"payload": {}}, v["study"]["state_version"])
     steps, stopped = [], None
-    for step in ["qtpp", "cqa", "rm_just", "rm_matrix", "fp_just", "fp_matrix", "recommend"]:
+    for step in ["qtpp", "cqa", "rm_just", "rm_matrix", "fp_just", "fp_matrix"]:
         t = time.time()
         if step not in ("rm_matrix", "fp_matrix"):
             d = call(f"/api/stage2/studies/{sid}/actions/draft", {"payload": {}}, v["study"]["state_version"])
@@ -66,9 +66,6 @@ def main():
             same = [k for k in common if a[k] == b[k]]
             rec.update(cells=len(a), common=len(common), same=len(same),
                        differ=[{"cqa": k[0], "variable": k[1], "llm": a[k], "paper": b[k]} for k in common if a[k] != b[k]])
-        if step == "recommend":
-            rec.update(recommended=[r["variable"] for r in s["data"]["recommended"]], reasons={r["variable"]: r["reason"] for r in s["data"]["recommended"]},
-                       note=s["data"].get("note"), rule_rank=s["data"]["rule_rank"], paper=ref["recommend"]["selected"])
         a = call(f"/api/stage2/studies/{sid}/actions/approve", {"payload": {}}, v["study"]["state_version"])
         rec["blocked"] = (a.get("action_result") or {}).get("blocked") or []
         steps.append(rec)

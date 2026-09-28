@@ -8,7 +8,7 @@
  5 rm_matrix : {cqas[], variables[], levels[[..]]}  ← 4에서 코드가 만든다                                                                    (Table 5)
  6 fp_just   : {variables[{name, kind:"formulation"|"process"}], items[...]}                                                                (Table 8)
  7 fp_matrix : ← 6에서                                                                                                                       (Table 7)
- 8 recommend : {candidates[{variable, kind, high[], medium[]}](High만), watch[](Medium만), recommended[{variable, reason}], source, selected[]}
+ 8 recommend : {candidates[{variable, kind, high[], medium[]}](High만), watch[](Medium만), material_controls[]}  ← 5·7에서 코드가 만든다(선택 없음)
  9 design    : {factors[{name, unit}], responses[{name, unit}], rows[{std, run, x[], y[]}]}                                               (Table 9)
 10 regression: doe.regression(...) + chosen{response: family}                                                                               (Table 10)
 11 surface   : {images?}  곡면은 10의 선택 모형으로 그때그때 계산
@@ -28,19 +28,18 @@ from pydantic import BaseModel, Field
 STEPS = ["prototype", "qtpp", "cqa", "rm_just", "rm_matrix", "fp_just", "fp_matrix", "recommend", "design", "regression", "surface", "anova",
          "space", "vplan", "verify"]
 TITLE = {"prototype": "프로토타입", "qtpp": "QTPP", "cqa": "CQA 판별", "rm_just": "원료 물성 위험평가", "rm_matrix": "원료 위험평가 정리",
-         "fp_just": "제형·공정 변수 위험평가", "fp_matrix": "제형·공정 위험평가 정리", "recommend": "종합 정리 · DoE 변수 추천",
+         "fp_just": "제형·공정 변수 위험평가", "fp_matrix": "제형·공정 위험평가 정리", "recommend": "종합 정리 · 위험평가 보고서",
          "design": "실험 설계 입력", "regression": "회귀식 · 모형 진단", "surface": "반응 곡면", "anova": "ANOVA",
          "space": "Design Space (공동확률)", "vplan": "확인계획 잠금", "verify": "확인배치 · 2×2 판정"}
 TABLE = {"prototype": "Table 1", "qtpp": "Table 3", "cqa": "Table 4", "rm_just": "Table 6", "rm_matrix": "Table 5", "fp_just": "Table 8",
          "fp_matrix": "Table 7", "design": "Table 9", "regression": "Table 10", "surface": "Figure 1", "anova": "Table 11",
          "space": "Peterson 2008", "vplan": "확인점 3", "verify": "2×2"}
 # 연구자가 편집하는 단계 / 코드가 만드는 단계(확인만)
-EDITABLE = {"prototype", "qtpp", "cqa", "rm_just", "fp_just", "recommend", "design", "regression", "space", "vplan", "verify"}
-DERIVED = {"rm_matrix", "fp_matrix", "surface", "anova"}
-LLM_STEPS = {"qtpp", "cqa", "rm_just", "fp_just", "recommend"}
+EDITABLE = {"prototype", "qtpp", "cqa", "rm_just", "fp_just", "design", "regression", "space", "vplan", "verify"}
+DERIVED = {"rm_matrix", "fp_matrix", "recommend", "surface", "anova"}
+LLM_STEPS = {"qtpp", "cqa", "rm_just", "fp_just"}
 LEVELS = ("High", "Medium", "Low")
 BASIS = ("처방 자료", "약전·가이드라인", "일반 제제학 지식", "문헌(출처 기재)", "추정 — 확인 필요")
-MAX_DOE = 4
 MAX_FACTORS, MAX_RESPONSES = 3, 4
 
 Level = Literal["High", "Medium", "Low"]
@@ -92,16 +91,6 @@ class JustVarOut(BaseModel):
 class JustOut(BaseModel):
     variables: List[JustVarOut]
     items: List[JustItemOut]
-
-
-class RecItemOut(BaseModel):
-    variable: str
-    reason: str = Field(description="왜 이 변수를 DoE에서 조절해 보아야 하는가(어느 CQA에 High인지, 조절 가능성, 범위 설정 가능성)")
-
-
-class RecOut(BaseModel):
-    recommended: List[RecItemOut] = Field(description=f"최대 {MAX_DOE}개, 중요한 순서")
-    note: str = Field("", description="추천하지 않은 High 변수가 있으면 그 이유(예: 기능상 고정 관리가 적절)")
 
 
 # ── 검사 ────────────────────────────────────────────────────────────────────
@@ -212,14 +201,8 @@ def check(step: str, data: Dict[str, Any], ctx: Dict[str, Any]) -> List[Dict[str
                     out.append(_c("warning", "RISK_LOW_DOSE", f"약물 함량 {pct:.1f} %(< 5 %, RTE008) — 혼합 공정(혼합 시간 등) × 함량균일성 위험을 "
                                   "High로 평가했는지 확인하세요. 저함량 API는 혼합 균일성이 함량균일성을 좌우합니다."))
     elif step == "recommend":
-        sel = data.get("selected") or []
-        allowed = {c["variable"] for c in data.get("candidates") or []}
-        if not sel:
-            out.append(_c("blocking", "REC_NONE", "DoE로 볼 변수를 하나 이상 고르세요."))
-        if len(sel) > MAX_DOE:
-            out.append(_c("blocking", "REC_TOO_MANY", f"DoE 변수는 최대 {MAX_DOE}개입니다."))
-        if any(s not in allowed for s in sel):
-            out.append(_c("blocking", "REC_NOT_CANDIDATE", "위험평가에서 High가 아닌 변수는 DoE 요인으로 고를 수 없습니다."))
+        if not data.get("candidates"):
+            out.append(_c("warning", "RISK_NO_HIGH", "High인 제형·공정 변수가 없습니다 — 실험 설계(9단계)의 요인은 위험평가 근거를 보고 정하세요."))
     elif step == "design":
         f, r, rows = data.get("factors") or [], data.get("responses") or [], data.get("rows") or []
         if not 1 <= len(f) <= MAX_FACTORS:

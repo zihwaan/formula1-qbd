@@ -23,7 +23,7 @@ from formula.stage2 import agent as AG
 from formula.stage2 import doe as T
 from formula.stage2 import reference as REF
 from formula.stage2 import space as SP
-from formula.stage2.model import (DERIVED, EDITABLE, LLM_STEPS, MAX_DOE, MAX_FACTORS, MAX_RESPONSES, STEPS, TABLE, TITLE,
+from formula.stage2.model import (DERIVED, EDITABLE, LLM_STEPS, MAX_FACTORS, MAX_RESPONSES, STEPS, TABLE, TITLE,
                                   candidates, check, material_controls, matrix_of, numbers_not_in, risk_cqas, watch_list)
 from formula.stage2.store import StudyError, StudyStore, VersionConflict
 
@@ -171,27 +171,18 @@ class Stage2Service:
             self._set(st, step, matrix_of(ctx["rm_just"], cq), source="code", actor="system")
         elif step == "fp_matrix":
             self._set(st, step, matrix_of(ctx["fp_just"], cq), source="code", actor="system")
-        elif step == "recommend":
-            old = s["data"] or {}
-            cands = candidates(ctx["fp_matrix"])
-            names = {c["variable"] for c in cands}
-            self._set(st, step, {"candidates": cands, "watch": watch_list(ctx["fp_matrix"]), "material_controls": material_controls(ctx["rm_matrix"]),
-                                 "rule_rank": [c["variable"] for c in cands if c["high"]][:MAX_DOE],
-                                 "recommended": [r for r in old.get("recommended") or [] if r["variable"] in names], "note": old.get("note", ""),
-                                 "rec_source": old.get("rec_source"), "selected": [x for x in old.get("selected") or [] if x in names]},
-                      source=s["source"] or "code", actor="system")
+        elif step == "recommend":         # 5·7의 종합 정리 — 코드가 만든다(DoE 변수를 고르는 단계가 아니다)
+            self._set(st, step, {"candidates": candidates(ctx["fp_matrix"]), "watch": watch_list(ctx["fp_matrix"]),
+                                 "material_controls": material_controls(ctx["rm_matrix"])}, source="code", actor="system")
         elif step == "design" and s["data"] is None:
-            sel = (ctx["recommend"] or {}).get("selected") or []
+            # 요인은 연구자가 정한다(8단계에서 고르지 않는다) — 빈 요인 열 하나로 시작하고, 반응은 High 변수가 걸린 CQA부터
             hi = {}
             for c in (ctx["recommend"] or {}).get("candidates") or []:
-                if c["variable"] in sel:
-                    for q in c["high"]:
-                        hi[q] = hi.get(q, 0) + 1
+                for q in c["high"]:
+                    hi[q] = hi.get(q, 0) + 1
             resp = [q for q, _ in sorted(hi.items(), key=lambda kv: -kv[1])][:MAX_RESPONSES] or cq[:1]
-            f = [{"name": n, "unit": ""} for n in sel[:MAX_FACTORS]]
-            self._set(st, step, {"factors": f, "responses": [{"name": q, "unit": ""} for q in resp],
-                                 "rows": [{"std": 1, "run": 1, "x": [None] * len(f), "y": [None] * len(resp)}],
-                                 "note": (f"DoE 변수 {len(sel)}개 중 요인은 최대 {MAX_FACTORS}개 — 앞의 {MAX_FACTORS}개로 시작합니다." if len(sel) > MAX_FACTORS else "")},
+            self._set(st, step, {"factors": [{"name": "", "unit": ""}], "responses": [{"name": q, "unit": ""} for q in resp],
+                                 "rows": [{"std": 1, "run": 1, "x": [None], "y": [None] * len(resp)}], "note": ""},
                       source="code", actor="system")
         elif step == "regression":
             chosen = {r["response"]: r["family"] for r in (s["data"] or {}).get("responses") or [] if s["source"] and "user" in s["source"]}
@@ -257,36 +248,19 @@ class Stage2Service:
         if step not in LLM_STEPS:
             raise StudyError(f"'{TITLE[step]}'는 LLM이 만들지 않습니다.", status=422)
         ctx = {**self._ctx(st), "handoff": (st.get("source") or {}).get("handoff")}
-        if step == "recommend":
-            ctx = {**ctx, "candidates": st["steps"]["recommend"]["data"]["candidates"]}
-            if not ctx["candidates"]:
-                raise StudyError("High인 제형·공정 변수가 없어 추천할 변수가 없습니다.", status=409)
         try:
             out = AG.draft(step, ctx)
         except AG.LLMUnavailable as exc:
             st["steps"][step]["llm"] = {"provider": None, "error": str(exc)[:200], "at": _now()}
             raise StudyError(f"LLM 응답이 없습니다 — 초안을 만들지 못했습니다. 직접 입력하거나 잠시 후 다시 시도하세요. ({str(exc)[:120]})", status=503)
         data = out["data"]
-        if step == "recommend":
-            cur = copy.deepcopy(st["steps"]["recommend"]["data"])
-            cur.update({"recommended": data["recommended"], "note": data.get("note", ""), "rec_source": "llm",
-                        "selected": [r["variable"] for r in data["recommended"]]})
-            data = cur
         checks = self._set(st, step, data, source="llm", actor=actor, provider=out["provider"])
         return {"provider": out["provider"], "blocking": [c["code"] for c in checks if c["level"] == "blocking"]}
 
     def _use_reference(self, st, step, p, actor):
         if not st.get("reference"):
             raise StudyError("논문 값은 CBD 논문 프로토타입으로 시작한 study에만 있습니다.", status=422)
-        if step == "recommend":
-            cur = copy.deepcopy(st["steps"]["recommend"]["data"])
-            names = {c["variable"] for c in cur["candidates"]}
-            pick = [v for v in REF.PAPER_DOE_VARIABLES if v in names]
-            cur.update({"recommended": [{"variable": v, "reason": "논문이 고위험으로 분류해 DoE에서 평가한 변수(Results 3.3 · Table 2)"} for v in pick],
-                        "note": "Spray-dried mannitol은 Hardness에 High지만 논문은 MCC·CCS 비율을 바꾸고 만니톨을 나머지로 채웠다(Table 2 · Methods 2.2.1).",
-                        "rec_source": "paper", "selected": pick})
-            data = cur
-        elif step == "regression":
+        if step == "regression":
             data = _plain(T.regression(self._ctx(st)["design"], REF.PAPER_FAMILIES))
         elif step == "space":
             ctx = self._ctx(st)
@@ -313,10 +287,6 @@ class Stage2Service:
         if step == "regression":
             chosen = {k: v for k, v in (data.get("chosen") or {}).items() if v in T.FAMILIES}
             norm = _plain(T.regression(self._ctx(st)["design"], chosen))
-        elif step == "recommend":
-            cur = copy.deepcopy(st["steps"]["recommend"]["data"])
-            cur["selected"] = [str(x) for x in data.get("selected") or []]
-            norm = cur
         elif step == "space":
             norm = self._space(self._ctx(st), data.get("specs") or [])
         elif step == "vplan":
@@ -355,7 +325,7 @@ class Stage2Service:
         st["status"] = nxt or "done"
         st["timeline"].append({"step": step, "event": "approved", "version": s["version"], "by": actor, "at": _now()})
         if nxt:
-            if nxt in DERIVED or nxt in ("recommend", "design", "regression", "space", "vplan", "verify"):
+            if nxt in DERIVED or nxt in ("design", "regression", "space", "vplan", "verify"):
                 try:
                     self._enter(st, nxt)
                 except (ValueError, np.linalg.LinAlgError) as exc:
@@ -373,7 +343,7 @@ class Stage2Service:
             if st["steps"][later]["status"] in ("approved", "draft"):
                 st["steps"][later]["status"] = "stale" if st["steps"][later]["data"] is not None else "empty"
         st["status"] = step
-        if step in DERIVED or step in ("recommend", "regression", "space", "vplan"):
+        if step in DERIVED or step in ("regression", "space", "vplan"):
             self._enter(st, step)
         if step == "vplan" and st["steps"]["vplan"]["data"]:
             st["steps"]["vplan"]["data"].pop("locked_at", None)
@@ -399,7 +369,7 @@ class Stage2Service:
         ref = {s: REF.step(s) for s in ("prototype", "qtpp", "cqa", "rm_just", "fp_just", "design")}
         ref["rm_matrix"] = matrix_of(ref["rm_just"], cq)
         ref["fp_matrix"] = matrix_of(ref["fp_just"], cq)
-        ref["recommend"] = {"selected": REF.PAPER_DOE_VARIABLES}
+        ref["recommend"] = {"doe_factors": REF.PAPER_DOE_VARIABLES}   # 참고: 논문이 DoE 요인으로 쓴 변수(선택 단계는 없다)
         ref["regression"] = {"families": REF.PAPER_FAMILIES}
         return ref
 

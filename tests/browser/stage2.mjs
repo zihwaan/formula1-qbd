@@ -94,31 +94,34 @@ async function walk(page, label, { edits }) {
   check(`[${label}] fp_just → fp_matrix`, await current(page) === 'fp_matrix');
   check(`[${label}] 제형·공정 행렬(Table 7) = 논문과 같음`, await page.locator('#s2 .s2-step.current .s2-cmp', { hasText: '모든 칸이 같습니다' }).count() === 1);
   await act(page, 'approve');
-  check(`[${label}] → 종합 정리 · DoE 변수`, await current(page) === 'recommend');
+  check(`[${label}] → 8단계 종합 정리`, await current(page) === 'recommend');
   check(`[${label}] 종합 행렬(원료 + 제형·공정)`, await page.locator('#s2 .s2-step.current table.merged').count() === 1);
-  if (edits) {
-    const boxes = page.locator('#s2 .s2-step.current [data-pick]');
-    const nb = await boxes.count();
-    for (let i = 0; i < Math.min(nb, 5); i++) await boxes.nth(i).check().catch(() => {});
-    check(`[${label}] DoE 변수는 4개까지만 체크`, await page.locator('#s2 .s2-step.current [data-pick]:checked').count() <= 4, `후보 ${nb}`);
-  }
-  await act(page, 'use_reference');
+  check(`[${label}] DoE 변수 후보는 목록만(고르는 칸·LLM 추천 없음)`, await page.locator('#s2 .s2-step.current [data-pick], #s2 .s2-step.current [data-act="draft"], #s2 .s2-step.current [data-act="use_reference"]').count() === 0
+    && await page.locator('#s2 .s2-step.current .s2-cands li').count() >= 1);
+  // 위험평가 보고서는 8단계에 들어오자마자 — DoE 변수 후보 목록 바로 아래
+  const riskA = page.locator('#s2 .s2-step.current .s2-risk-pdf a', { hasText: '위험평가' });
+  check(`[${label}] 위험평가 보고서 PDF가 8단계 카드(DoE 변수 후보 아래)에`, await riskA.count() === 1
+    && await page.evaluate(() => { const l = document.querySelector('#s2 .s2-step.current .s2-cands'), a = document.querySelector('#s2 .s2-step.current .s2-risk-pdf');
+      return !!(l && a && (l.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING)); }));
+  const risk = await page.request.get(new globalThis.URL(await riskA.getAttribute('href'), URL).href);
+  check(`[${label}] 위험평가 보고서 PDF(확인 전에 바로)`, risk.ok() && (await risk.body()).slice(0, 4).toString() === '%PDF');
   await shot('08_recommend');
   await act(page, 'approve');
-  check(`[${label}] 추천 승인 → 실험 설계`, await current(page) === 'design');
-  const riskHref = await page.locator('#s2 .s2-links a', { hasText: '위험평가' }).getAttribute('href');
-  const risk = await page.request.get(new globalThis.URL(riskHref, URL).href);
-  check(`[${label}] 위험평가 보고서 PDF`, risk.ok() && (await risk.body()).slice(0, 4).toString() === '%PDF');
+  check(`[${label}] 확인만으로 → 실험 설계`, await current(page) === 'design');
+  check(`[${label}] 8단계를 지나면 맨 아래 링크 모음에 위험평가 보고서`, await page.locator('#s2 > .s2-links a', { hasText: '위험평가' }).count() === 1);
 
   const heads = (k) => page.locator(`#s2 .s2-step.current th.${k} input[data-k="name"]`).count();
   if (edits) {
     const f0 = await heads('f');
-    check(`[${label}] 설계 표 초안 = 고른 DoE 변수 3개가 요인`, f0 === 3);
+    const n0 = await page.locator('#s2 .s2-step.current th.f input[data-k="name"]').first().inputValue();
+    check(`[${label}] 설계 표 초안 = 빈 요인 열 1개(요인은 연구자가 정함)`, f0 === 1 && n0 === '', `요인 ${f0} · "${n0}"`);
+    check(`[${label}] 요인 이름칸에 High 변수 제안 목록`, await page.locator('#s2-factor-hints option').count() >= 1);
+    await page.click('#s2 .s2-step.current [data-col-add="f"]');
+    await page.click('#s2 .s2-step.current [data-col-add="f"]');
+    check(`[${label}] 요인 열 추가(최대 3)`, await heads('f') === 3);
     check(`[${label}] 요인 3개면 [+ 요인] 잠김`, await page.locator('#s2 .s2-step.current [data-col-add="f"]').isDisabled());
     await page.locator('#s2 .s2-step.current th.f [data-col-del]').last().click();
     check(`[${label}] 요인 열 삭제`, await heads('f') === 2);
-    await page.click('#s2 .s2-step.current [data-col-add="f"]');
-    check(`[${label}] 요인 열 추가`, await heads('f') === 3);
     const r1 = await heads('r');
     await page.locator('#s2 .s2-step.current th.r [data-col-del]').last().click();
     await page.click('#s2 .s2-step.current [data-col-add="r"]');

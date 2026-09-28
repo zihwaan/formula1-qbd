@@ -1,5 +1,5 @@
 // 발표 자료 10쪽 — 로르녹시캄 분산정 전체 파이프라인을 화면 클릭으로 끝까지(실제 LLM 사용).
-// 시연 카드 ① → 설계(유동성 42° → 직접타정 유지) → 후보 카드 '이 후보로 개발 착수'(불변 Handoff) → 2단계 LLM 초안으로 1–8단계 →
+// 시연 카드 ① → 설계(유동성 42° → 직접타정 유지) → 후보 카드 '이 후보로 개발 착수'(불변 Handoff) → 2단계 LLM 초안으로 1–7단계 → 8 종합 정리(위험평가 PDF) →
 // 9단계 CSV(Almotairi 2022 Table 3 실측 15 run) → 10 회귀(AV 과적합 → 사유) → 11 곡면 → 12 ANOVA →
 // 13 규격 입력 → 평균 77.2 % → 공동확률 47.6 %, 설정점 2.7 · 12.5 · 6.8 → 14 확인계획 잠금(참고: 논문 최적 3 · 11 · 6.23).
 //   F1_LLM=dacon CHROME=<chrome> node tests/browser/pipeline.mjs http://localhost:8104/ [스크린샷 폴더]
@@ -47,7 +47,7 @@ await page.waitForSelector('#agent-log #panel-cands .dev-start', { timeout: 1200
 await shot('02_cands');
 check('후보 카드에 개발 착수 버튼', true);
 
-console.log('\n[2단계] 개발 착수 → 1–8단계(LLM 초안)');
+console.log('\n[2단계] 개발 착수 → 1–7단계(LLM 초안) → 8 종합 정리');
 const evHead = (await page.locator('#agent-log #panel-cands .ev-box summary').first().textContent().catch(() => '')).replace(/\s+/g, ' ');
 check('후보 카드에 근거 결손 게이트 판정(발표 ⑤)', /근거 (결손|충족|부적합)/.test(evHead), evHead.slice(0, 90));
 await page.locator('#agent-log #panel-cands .dev-start').first().click();
@@ -85,11 +85,12 @@ if (await cur() === 'fp_just') {
   await act('approve');
 }
 if (await cur() === 'fp_matrix') await act('approve');
-check('종합 정리 · DoE 변수', await cur() === 'recommend', await cur());
-await act('draft');
+check('8단계 종합 정리(고르는 칸 없음)', await cur() === 'recommend' && await page.locator('#s2 .s2-step.current [data-pick]').count() === 0, await cur());
+const riskA = page.locator('#s2 .s2-step.current .s2-risk-pdf a');
+check('위험평가 보고서 PDF가 8단계 카드(DoE 변수 후보 아래)에 바로', await riskA.count() === 1);
+const riskPdf = await page.request.get(new globalThis.URL(await riskA.getAttribute('href'), URL).href);
+check('위험평가 보고서 PDF 내려받기', riskPdf.ok() && (await riskPdf.body()).slice(0, 4).toString() === '%PDF');
 await shot('05_recommend');
-const recB = await blocked();
-if (recB.length) check('DoE 변수 추천이 검사 통과', false, recB.join(' | '));
 await act('approve');
 
 console.log('\n[2단계] 9 실험 설계 — CSV 불러오기');

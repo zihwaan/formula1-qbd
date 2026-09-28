@@ -112,11 +112,8 @@
 .s2-vars .icon-btn { width: 26px; height: 26px; font-size: 12px; }
 
 .s2-cands { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.s2-cands li { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); font-size: 13px; }
-.s2-cands li.on { background: var(--primary-soft); }
-.s2-cands label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; cursor: pointer; }
-.s2-cands label small { margin: 0; }
-.s2-why { margin: 6px 0 0 24px; font-size: 12.5px; color: var(--ink-2); line-height: 1.55; }
+.s2-cands li { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.s2-cands li small { margin: 0; }
 
 .s2-reg { display: grid; gap: 8px; padding: 12px 0; border-top: 1px solid var(--grid); }
 .s2-reg:first-child { border-top: 0; padding-top: 0; }
@@ -158,6 +155,8 @@
 .s2-out.warn { color: var(--status-warn); font-weight: 600; }
 
 .s2-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.s2-risk-pdf { align-items: center; margin-top: 10px; }
+.s2-risk-pdf .s2-muted { font-size: 12px; }
 .s2-file {
   display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius-pill); text-decoration: none;
   border: 1px solid var(--border); color: var(--ink-1); font-weight: 650; font-size: 12.5px; background: var(--surface-1);

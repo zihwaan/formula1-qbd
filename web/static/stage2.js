@@ -1,7 +1,7 @@
 /* 2단계 — Design Space 도출. 1단계 후보(또는 CBD 논문 Table 1)를 프로토타입으로 받아 15단계를 대화에 차례로 쌓는다.
 
    1 프로토타입(Table 1) → 2 QTPP(Table 3) → 3 CQA(Table 4) → 4 원료 물성 위험평가(Table 6) → 5 정리(Table 5)
-   → 6 제형·공정 변수 위험평가(Table 8) → 7 정리(Table 7) → 8 종합 정리 · DoE 변수 추천(위험평가 보고서 PDF)
+   → 6 제형·공정 변수 위험평가(Table 8) → 7 정리(Table 7) → 8 종합 정리(확인만 · 위험평가 보고서 PDF)
    → 9 실험 설계 입력(Table 9) → 10 회귀식 · 모형 진단(Table 10) → 11 반응 곡면(Figure 1) → 12 ANOVA(Table 11)
    → 13 Design Space(미래 배치 공동 통과확률) → 14 확인계획 잠금(확인점 3 · 동시 예측구간) → 15 확인배치 2×2 판정
 
@@ -25,7 +25,7 @@
     rm_matrix: "4단계 근거에서 코드가 만든 위험 행렬입니다. 칸마다 그 칸을 덮은 근거의 등급이라 근거와 어긋날 수 없습니다.",
     fp_just: "처방의 모든 부형제와 조절 가능한 공정 파라미터(압축력 등)를 CQA마다 평가합니다.",
     fp_matrix: "6단계 근거에서 코드가 만든 위험 행렬입니다.",
-    recommend: "두 위험 행렬을 합친 종합 정리입니다. High·Medium인 제형·공정 변수만 DoE 후보가 되고, 최대 4개를 고릅니다.",
+    recommend: "두 위험 행렬을 합친 종합 정리입니다(코드가 만듭니다 — 고를 것 없음). 확인하면 위험평가 보고서가 나오고, 실험 설계의 요인은 9단계에서 정합니다.",
     design: "실험을 실제로 한 표를 적습니다. 요인 1–3개, 반응 1–4개, 행은 필요한 만큼 — 엑셀에서 복사해 붙여 넣을 수도 있습니다.",
     regression: "반응마다 평균·선형·2요인 교호작용·2차 모형을 순차 F 검정과 예측 R²로 비교해 제안합니다. 예측 R²가 수정 R²보다 0.2 넘게 낮으면 과적합 의심 — 차수를 낮추거나 사유를 적고 수용합니다.",
     surface: "선택한 회귀식으로 그린 반응 곡면입니다. 점은 실험값, 세로줄은 잔차입니다. [확인]을 누르면 그림이 보고서에 들어갑니다.",
@@ -128,12 +128,22 @@
     if (V.current === "space" && !V.done && (V.study.steps.space.data || {}).region) drawSpace();
   }
 
+  // 위험평가 보고서 — 8단계 종합 정리가 만들어지면(7단계 승인 뒤) 바로 나온다. 서버 조건과 같다.
+  function riskReady() {
+    const r = V.study.steps.recommend;
+    return !!r.data && ["draft", "approved"].includes(r.status) && V.study.steps.fp_matrix.status === "approved";
+  }
+  function riskLink() {
+    return `<a class="s2-file" href="${E(api(`/api/stage2/studies/${encodeURIComponent(V.study.study_id)}/risk-report.pdf`))}" target="_blank" rel="noopener">위험평가 보고서 PDF</a>`;
+  }
+
   function links() {
     const id = encodeURIComponent(V.study.study_id);
-    const rec = V.study.steps.recommend.status === "approved";
+    // 8단계에 있는 동안은 그 카드 안(DoE 변수 후보 아래)에 뜬다 — 여기(맨 아래)는 8단계를 확인한 뒤부터
+    const rec = riskReady() && V.study.steps.recommend.status === "approved";
     if (!rec) return "";
     return `<div class="s2-links">
-      <a class="s2-file" href="${E(api(`/api/stage2/studies/${id}/risk-report.pdf`))}" target="_blank" rel="noopener">위험평가 보고서 PDF</a>
+      ${riskLink()}
       ${V.study.steps.anova.status === "approved" ? `<a class="s2-file primary" href="${E(api(`/api/stage2/studies/${id}/report.pdf`))}" target="_blank" rel="noopener">최종 보고서 PDF</a>` : ""}
     </div>`;
   }
@@ -172,7 +182,7 @@
         case "cqa": return `품질특성 ${c(d.items)}개 · 위험평가 CQA ${d.items.filter((i) => i.in_risk_assessment).map((i) => i.short).join(", ")}`;
         case "rm_just": case "fp_just": return `변수 ${c(d.variables)}개 · 근거 ${c(d.items)}행`;
         case "rm_matrix": case "fp_matrix": return `High ${d.levels.flat().filter((x) => x === "High").length}칸 · Medium ${d.levels.flat().filter((x) => x === "Medium").length}칸 / ${d.levels.flat().length}칸`;
-        case "recommend": return `DoE 변수 ${(d.selected || []).join(", ") || "—"}`;
+        case "recommend": return `High 변수 ${(d.candidates || []).length}개${(d.candidates || []).length ? ` — ${(d.candidates || []).slice(0, 4).map((c) => c.variable).join(", ")}${(d.candidates || []).length > 4 ? " …" : ""}` : ""}`;
         case "design": return `요인 ${d.factors.map((f) => f.name).join(" · ")} · 반응 ${c(d.responses)}개 · ${c(d.rows)} run`;
         case "regression": return d.responses.map((r) => `${r.response} ${FAMILY_KO[r.family] || r.family}${r.pred_r2 != null ? ` (예측 R² ${num(r.pred_r2, 3)})` : ""}`).join(" · ");
         case "surface": return `반응 ${(d.responses || []).join(", ")}`;
@@ -209,12 +219,12 @@
     const k = meta.key, b = [];
     const dis = busy ? "disabled" : "";
     if (k === "prototype") b.push(`<button type="button" class="primary" data-act="run" ${dis}>실행</button>`);
-    if (meta.llm) b.push(`<button type="button" data-act="draft" ${dis}>${k === "recommend" ? "LLM 추천 받기" : s.data ? "LLM 초안 다시 받기" : "LLM 초안 받기"}</button>`);
-    if (V.study.reference && ["qtpp", "cqa", "rm_just", "fp_just", "recommend", "design", "regression", "space", "vplan"].includes(k))
+    if (meta.llm) b.push(`<button type="button" data-act="draft" ${dis}>${s.data ? "LLM 초안 다시 받기" : "LLM 초안 받기"}</button>`);
+    if (V.study.reference && ["qtpp", "cqa", "rm_just", "fp_just", "design", "regression", "space", "vplan"].includes(k))
       b.push(`<button type="button" class="ghost" data-act="use_reference" ${dis}>논문 값으로 채우기</button>`);
     if (meta.editable && k !== "prototype") b.push(`<button type="button" class="ghost" data-act="save" ${dis}>저장</button>`);
     if (k !== "prototype") {
-      const label = meta.derived ? (k === "anova" ? "확인 · 최종 보고서 만들기" : "확인") : k === "recommend" ? "승인 · 위험평가 보고서"
+      const label = meta.derived ? (k === "anova" ? "확인 · 최종 보고서 만들기" : k === "recommend" ? "확인 · 위험평가 보고서" : "확인")
         : k === "vplan" ? "확인계획 잠금" : k === "verify" ? "판정 기록" : k === "space" ? "영역 승인" : "승인";
       b.push(`<button type="button" class="primary" data-act="approve" ${dis}>${label}</button>`);
     }
@@ -353,28 +363,27 @@
         <tr><th rowspan="2">CQA</th><th colspan="${rm.variables.length}" class="grp">원료 물성</th><th colspan="${fp.variables.length}" class="grp">제형 · 공정 변수</th></tr>
         <tr>${rm.variables.map((v) => `<th>${E(v.name)}</th>`).join("")}${fp.variables.map((v) => `<th>${E(v.name)}</th>`).join("")}</tr></thead>
       <tbody>${cq.map((c) => `<tr><th>${E(c)}</th>${rm.variables.map((_, j) => `<td class="c">${lv(cell(rm, c, j))}</td>`).join("")}${fp.variables.map((_, j) => `<td class="c">${lv(cell(fp, c, j))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` : "";
-    const recBy = Object.fromEntries((d.recommended || []).map((r) => [r.variable, r.reason]));
-    const selSet = new Set(d.selected || []);
-    const cands = (d.candidates || []).map((c) => `<li class="${selSet.has(c.variable) ? "on" : ""}"><label>
-        ${ro ? (selSet.has(c.variable) ? "✓" : "") : `<input type="checkbox" data-pick="${E(c.variable)}" ${selSet.has(c.variable) ? "checked" : ""}>`}
+    const cands = (d.candidates || []).map((c) => `<li>
         <b>${E(c.variable)}</b> <small>${E(c.kind === "process" ? "공정" : "제형")}</small>
-        ${c.high.length ? `<span class="lv lv-high">High</span> ${E(c.high.join(", "))}` : ""} ${c.medium.length ? `<span class="lv lv-medium">Medium</span> ${E(c.medium.join(", "))}` : ""}</label>
-        ${recBy[c.variable] ? `<p class="s2-why">${d.rec_source === "paper" ? "논문" : "추천"} — ${E(recBy[c.variable])}</p>` : ""}</li>`).join("");
+        ${c.high.length ? `<span class="lv lv-high">High</span> ${E(c.high.join(", "))}` : ""} ${c.medium.length ? `<span class="lv lv-medium">Medium</span> ${E(c.medium.join(", "))}` : ""}</li>`).join("");
     const mc = (d.material_controls || []).filter((c) => c.high.length);
     const watch = d.watch || [];
+    const paper = V.study.reference && V.reference && V.reference.recommend ? V.reference.recommend.doe_factors || [] : [];
     return `<h4 class="s2-h">종합 위험평가 (Table 5 + Table 7)</h4>${merged}
-      <h4 class="s2-h">DoE 변수 후보 <small>High인 제형·공정 변수만 · 최대 4개 선택 · 선택 ${selSet.size}개</small></h4>
-      <p class="s2-muted">규칙 순위(High 개수 순): ${E((d.rule_rank || []).join(" › ") || "—")}</p>
-      <ul class="s2-cands">${cands || `<li class="s2-muted">후보가 없습니다 — 6단계의 등급을 확인하세요.</li>`}</ul>
-      ${d.note ? `<p class="s2-note">${E(d.note)}</p>` : ""}
-      ${watch.length ? `<p class="s2-muted">Medium만 있는 변수 — DoE 요인이 아니라 관리·모니터링 대상: ${E(watch.map((c) => `${c.variable}(${c.medium.join(", ")})`).join(" · "))}</p>` : ""}
-      ${mc.length ? `<p class="s2-muted">원료 물성 중 High — DoE 대신 원료 규격으로 관리: ${E(mc.map((c) => `${c.variable}(${c.high.join(", ")})`).join(" · "))}</p>` : ""}`;
+      <h4 class="s2-h">DoE 변수 후보 — High인 제형·공정 변수 <small>${(d.candidates || []).length}개 · 고르지 않습니다 · 9단계 실험 설계에서 요인을 정할 때 참고</small></h4>
+      <ul class="s2-cands">${cands || `<li class="s2-muted">High인 제형·공정 변수가 없습니다 — 6단계의 등급을 확인하세요.</li>`}</ul>
+      ${riskReady() ? `<div class="s2-links s2-risk-pdf">${riskLink()}<span class="s2-muted">프로토타입 · QTPP · CQA · 위험평가 · 이 종합 정리까지</span></div>` : ""}
+      ${watch.length ? `<p class="s2-muted">Medium만 있는 변수 — 관리·모니터링 대상: ${E(watch.map((c) => `${c.variable}(${c.medium.join(", ")})`).join(" · "))}</p>` : ""}
+      ${mc.length ? `<p class="s2-muted">원료 물성 중 High — 원료 규격으로 관리: ${E(mc.map((c) => `${c.variable}(${c.high.join(", ")})`).join(" · "))}</p>` : ""}
+      ${paper.length ? `<p class="s2-muted">참고 · 논문이 DoE 요인으로 쓴 변수: ${E(paper.join(", "))}</p>` : ""}`;
   }
 
   function vDesign(d, ro) {
     const F = d.factors || [], R = d.responses || [];
+    // 요인은 연구자가 정한다 — 8단계 종합 정리의 High 변수는 이름 입력칸의 제안 목록으로만 보인다
+    const hints = ((V.study.steps.recommend || {}).data || {}).candidates || [];
     const colHead = (x, kind, i) => ro ? `<th class="${kind}">${E(x.name)}${x.unit ? `<small>${E(x.unit)}</small>` : ""}</th>`
-      : `<th class="${kind}"><div class="s2-colh"><input data-col="${kind}" data-i="${i}" data-k="name" value="${E(x.name)}" placeholder="${kind === "f" ? "요인" : "반응"} 이름" aria-label="${kind === "f" ? "요인" : "반응"} ${i + 1} 이름">
+      : `<th class="${kind}"><div class="s2-colh"><input data-col="${kind}" data-i="${i}" data-k="name" value="${E(x.name)}" placeholder="${kind === "f" ? "요인" : "반응"} 이름" ${kind === "f" ? 'list="s2-factor-hints"' : ""} aria-label="${kind === "f" ? "요인" : "반응"} ${i + 1} 이름">
         <button type="button" class="icon-btn" data-col-del="${kind}" data-i="${i}" aria-label="열 삭제" ${(kind === "f" ? F : R).length <= 1 ? "disabled" : ""}>✕</button>
         <input data-col="${kind}" data-i="${i}" data-k="unit" value="${E(x.unit)}" placeholder="단위" class="unit" aria-label="단위"></div></th>`;
     const cellI = (v, a) => ro ? `<td class="n">${E(v ?? "")}</td>` : `<td class="n"><input ${a} value="${E(v ?? "")}" inputmode="decimal"></td>`;
@@ -395,6 +404,8 @@
         <textarea data-paste rows="4" placeholder="Std,Run,X: 요인1 (단위),Y: 반응1 (단위)&#10;1,5,1500,4.97"></textarea>
         <div data-map></div>
         <button type="button" class="ghost sm" data-paste-read>열 읽기</button> <button type="button" class="primary sm" data-paste-apply hidden>표에 넣기</button></details>`}
+      ${ro || !hints.length ? "" : `<p class="s2-muted">요인은 직접 정합니다 — 참고: 위험평가에서 High인 변수 ${E(hints.map((c) => c.variable).join(" · "))}</p>
+        <datalist id="s2-factor-hints">${hints.map((c) => `<option value="${E(c.variable)}">`).join("")}</datalist>`}
       ${d.note ? `<p class="s2-note">${E(d.note)}</p>` : ""}`;
   }
 
@@ -532,7 +543,6 @@
       const items = rowObjs("items").map(({ o, tr }) => ({ ...o, cqas: [...tr.querySelectorAll("[data-cqa]:checked")].map((x) => x.dataset.cqa) }));
       return { variables, items };
     }
-    if (k === "recommend") return { selected: q("[data-pick]:checked").map((x) => x.dataset.pick) };
     if (k === "design") return collectDesign(box);
     if (k === "regression") return { chosen: Object.fromEntries(q(".s2-reg[data-resp]").map((r) => [r.dataset.resp, r.querySelector("[data-family]").value])) };
     if (k === "space") return { specs: q("tr[data-spec]").map((tr) => ({ response: tr.dataset.resp, unit: tr.dataset.unit,
@@ -695,12 +705,6 @@
     };
     const sp = box.querySelector("[data-space-fixed]");
     if (sp) sp.onchange = () => { spaceView.fixed = Number(sp.value); spaceView.level = null; drawSpace(); };
-    box.querySelectorAll("[data-pick]").forEach((c) => {
-      c.onchange = () => {
-        const n = box.querySelectorAll("[data-pick]:checked").length;
-        if (n > 4) { c.checked = false; out("DoE 변수는 최대 4개입니다.", "warn"); }
-      };
-    });
   }
 
   function parseTable(text) {

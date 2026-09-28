@@ -25,7 +25,7 @@ def cbd(svc):
     return svc.create(REF.prototype(), title="CBD", source={"locator": "Table 1"}, reference=True)["study"]["study_id"]
 
 
-EDIT_REF = {"qtpp", "cqa", "rm_just", "fp_just", "recommend", "design", "space"}
+EDIT_REF = {"qtpp", "cqa", "rm_just", "fp_just", "design", "space"}
 NOTE = "논문이 보고한 모형 차수를 그대로 비교하려고 수용"
 
 
@@ -69,8 +69,9 @@ def test_full_walk_with_paper_values(svc):
     assert out["action_result"]["blocked"] == ["SPACE_EMPTY"] and reg13["status"] == "EMPTY"
     assert reg13["mean_ok_fraction"] > 0.4 and reg13["max_joint"] < 0.9 and next(iter(reg13["binding"])) == "Hardness"
     st = svc.raw(sid)
-    rec = st["steps"]["recommend"]["data"]
-    assert rec["selected"] == ["Compression force", "MCC", "CCS"] and rec["rule_rank"][:3] == ["MCC", "Compression force", "CCS"]
+    rec = st["steps"]["recommend"]["data"]                            # 8단계는 코드가 만든 종합 정리 — 고르는 칸이 없다
+    assert [c["variable"] for c in rec["candidates"]][:3] == ["MCC", "Compression force", "CCS"] and "selected" not in rec
+    assert st["steps"]["recommend"]["source"] == "code"
     reg = {r["response"]: r for r in st["steps"]["regression"]["data"]["responses"]}
     assert reg["Hardness"]["family"] == reg["Hardness"]["suggested"] == "Linear"
     assert st["steps"]["surface"]["data"]["responses"] == ["Hardness", "DT", "Friability"]
@@ -132,15 +133,20 @@ def test_justification_gaps_block(svc):
     assert {"RISK_EXCIPIENT_MISSING", "RISK_PROCESS_IS_ROUTE", "JUST_MISSING"} <= set(out["action_result"]["blocked"])
 
 
-def test_recommend_limits_and_design_checks(svc):
+def test_summary_step_needs_no_selection_and_design_factors_are_researchers(svc):
     sid = cbd(svc)
     walk(svc, sid, upto="recommend")
-    out = svc.act(sid, "save", {"data": {"selected": ["MCC", "CCS", "Compression force", "Spray-dried mannitol", "Sucralose"]}})
-    assert {"REC_TOO_MANY", "REC_NOT_CANDIDATE"} <= set(out["action_result"]["blocking"])
-    svc.act(sid, "save", {"data": {"selected": ["MCC", "CCS"]}})
-    out = svc.act(sid, "approve", {})
+    v = svc.view(sid)
+    assert v["current"] == "recommend" and not v["study"]["steps"]["recommend"]["checks"]
+    with pytest.raises(StudyError):
+        svc.act(sid, "save", {"data": {"selected": ["MCC"]}})       # 8단계는 코드가 만든 정리 — 저장할 것이 없다
+    with pytest.raises(StudyError):
+        svc.act(sid, "draft", {})                                    # LLM 추천도 없다
+    out = svc.act(sid, "approve", {})                                # 확인만으로 다음 단계
+    assert out["current"] == "design" and not out["action_result"].get("blocked")
     d = out["study"]["steps"]["design"]["data"]
-    assert [f["name"] for f in d["factors"]] == ["MCC", "CCS"] and d["responses"][0]["name"] in ("Disintegration", "Dissolution")
+    assert [f["name"] for f in d["factors"]] == [""] and d["responses"][0]["name"]      # 요인은 연구자가 적는다
+    assert "DESIGN_NAMES" in {c["code"] for c in out["study"]["steps"]["design"]["checks"]}
     bad = {"factors": [{"name": "MCC", "unit": "%"}], "responses": [{"name": "H", "unit": ""}],
            "rows": [{"std": 1, "run": 1, "x": [40], "y": [5]}, {"std": 2, "run": 2, "x": [40], "y": ["a"]}]}
     out = svc.act(sid, "save", {"data": bad})
@@ -217,20 +223,6 @@ def test_one_factor_design_line():
     sf = T.surfaces(d, reg)
     assert sf["kind"] == "LINE" and len(sf["responses"][0]["points"]) == 7
     assert np.isfinite(reg["responses"][0]["r2"])
-
-
-def test_recommend_names_are_matched_to_candidates(monkeypatch):
-    """LLM이 목록 형식('이름 (종류)')이나 대소문자를 바꿔 돌려줘도 후보 이름으로 맞추고, 목록 밖 이름은 버린 뒤 note에 남긴다."""
-    from formula.stage2.model import RecItemOut, RecOut
-    cands = [{"variable": "Compression force", "kind": "process", "high": ["Hardness"], "medium": []},
-             {"variable": "MCC", "kind": "formulation", "high": ["Hardness"], "medium": []}]
-    monkeypatch.setattr(AG, "_call", lambda *a, **k: RecOut(recommended=[
-        RecItemOut(variable="Compression force (process)", reason="a"), RecItemOut(variable="mcc", reason="b"),
-        RecItemOut(variable="Tablet shape", reason="c")], note=""))
-    out = AG.draft("recommend", {"prototype": REF.prototype(), "candidates": cands})["data"]
-    assert [r["variable"] for r in out["recommended"]] == ["Compression force", "MCC"]
-    assert "Tablet shape" in out["note"]
-
 
 
 # ── 13–15 Design Space · 확인계획 · 확인배치 — Almotairi 2022 로르녹시캄 분산정(실측 15 run) ─────────────────────────

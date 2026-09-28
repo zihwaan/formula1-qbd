@@ -122,7 +122,7 @@
       lead: `시스템은 <b>두 단계</b>로 나뉜다. ① <b>후보 탐색</b>은 요청을 받아 전략을 좁히고
              후보 처방을 경쟁시켜 규칙으로 걸러 <b>후보 목록</b>을 낸다. ② <b>2단계</b>는 연구자가
              그중 <b>하나를 골라 [이 후보로 개발 착수]를 눌렀을 때만</b> 시작해, 그 처방을 프로토타입으로
-             QTPP → CQA → 위험평가 → DoE 변수 → 실험 설계 → 회귀식 → 반응 곡면 → ANOVA → <b>공동확률 Design Space</b> →
+             QTPP → CQA → 위험평가 → 종합 정리 → 실험 설계 → 회귀식 → 반응 곡면 → ANOVA → <b>공동확률 Design Space</b> →
              확인계획 잠금 → 확인배치까지 간다.
              둘은 내부 상태를 공유하지 않고, 고른 후보의 <b>처방(프로토타입)과 불변 Handoff</b> 하나로만 이어진다 —
              그 사이에서 <b>근거 결손 게이트</b>가 “알고 있는가”를 묻는다.`,
@@ -159,7 +159,7 @@
             <div class="f1-sub f1-chain">
               <div class="f1-pill-sm">QTPP</div><div class="f1-pill-sm">CQA 판별</div>
               <div class="f1-pill-sm">원료 위험평가</div><div class="f1-pill-sm">제형·공정 위험평가</div>
-              <div class="f1-pill-sm">DoE 변수 ≤ 4</div><div class="f1-pill-sm">실험 설계 표</div>
+              <div class="f1-pill-sm">종합 정리</div><div class="f1-pill-sm">실험 설계 표</div>
               <div class="f1-pill-sm">회귀식 · 진단</div><div class="f1-pill-sm">반응 곡면</div><div class="f1-pill-sm">ANOVA</div>
               <div class="f1-pill-sm">공동확률 영역</div><div class="f1-pill-sm">확인계획 잠금</div><div class="f1-pill-sm">확인배치 2×2</div>
             </div>
@@ -168,7 +168,7 @@
           </div>
           <div class="f1-flowmark">▼</div>
           <div class="f1-cols c2">
-            <div class="f1-io">위험평가 보고서 PDF — 8단계 승인 후</div>
+            <div class="f1-io">위험평가 보고서 PDF — 8단계 종합 정리에서</div>
             <div class="f1-io win">✓ 최종 보고서 PDF — 회귀식 · 곡면 · ANOVA · Design Space · 확인계획</div>
           </div>
         </div>`,
@@ -196,7 +196,7 @@
             <div class="f1-box f1-llm"><b>후보 처방</b><span>게이트 판정 · 심사 점수 · [이 후보로 개발 착수]</span></div>
           </div>
           <div class="f1-flowmark">▼ 2단계 — 단계마다 한 장, 지금 단계만 펼쳐진다</div>
-          <div class="f1-io">프로토타입 → QTPP → CQA → 위험평가 → 정리 → DoE 변수 → 설계 표 → 회귀식 → 곡면 → ANOVA → 영역 → 확인계획 → 확인배치</div>
+          <div class="f1-io">프로토타입 → QTPP → CQA → 위험평가 → 정리 → 종합 정리 → 설계 표 → 회귀식 → 곡면 → ANOVA → 영역 → 확인계획 → 확인배치</div>
           <div class="f1-flowmark">▶ 오른쪽 칼럼</div>
           <div class="f1-io">에이전트 흐름 · 지금 무슨 일이 · 실행 트레이스 — 탭으로 바꾸고, 크게/작게 · 접기</div>
         </div>`,
@@ -448,8 +448,8 @@
       title: "고른 후보 하나를, 회귀식과 검증 가능한 Design Space까지",
       lead: `후보 처방은 “이렇게 만들면 될 것 같다”까지다. 2단계는 그 처방을 <b>프로토타입</b>으로 받아
              ICH Q8의 순서 그대로 간다 — 목표 제품 프로파일(<b>QTPP</b>)을 정하고, 품질특성마다 <b>CQA</b>인지 근거와 함께 가리고,
-             원료 물성과 제형·공정 변수가 각 CQA에 얼마나 위험한지 <b>기전으로</b> 평가한다. 위험이 높은 변수 중
-             최대 4개를 <b>DoE 변수</b>로 골라 실험하고, 그 결과로 <b>회귀식 · 반응 곡면 · ANOVA</b>를 만든 뒤,
+             원료 물성과 제형·공정 변수가 각 CQA에 얼마나 위험한지 <b>기전으로</b> 평가한다. 코드가 두 행렬을 합쳐 High인 변수를
+             <b>DoE 변수 후보</b>로 정리하면(위험평가 보고서), 연구자가 실험 설계 표에 요인을 적어 실험하고, 그 결과로 <b>회귀식 · 반응 곡면 · ANOVA</b>를 만든 뒤,
              미래 배치가 모든 규격을 동시에 통과할 확률로 <b>Design Space</b>를 정하고 확인계획을 결과 전에 잠근다.
              후보의 조성과 요청 맥락(대상 · 용량 · 약물 함량 · 1단계 신호)은 <b>불변 Handoff</b>로 넘어온다.`,
       art: `
@@ -459,7 +459,7 @@
           <div class="f1-lvl"><span class="n">3</span>CQA (Table 4) — CQA 여부의 논리적 근거, 위험평가에 넣을 CQA 확정</div>
           <div class="f1-lvl"><span class="n">4–5</span>원료 물성 위험평가 (Table 6 근거 → Table 5 행렬)</div>
           <div class="f1-lvl"><span class="n">6–7</span>제형·공정 변수 위험평가 (Table 8 근거 → Table 7 행렬) — 처방의 모든 부형제 + 조절 가능한 공정 파라미터</div>
-          <div class="f1-lvl"><span class="n">8</span>종합 정리 · DoE 변수 추천 (High인 변수만, ≤ 4) → 위험평가 보고서 PDF</div>
+          <div class="f1-lvl"><span class="n">8</span>종합 정리 — 두 행렬 병합 · DoE 변수 후보(High인 변수, 고르지 않음) · 바로 아래 위험평가 보고서 PDF</div>
           <div class="f1-lvl"><span class="n">9</span>실험 설계 표 (Table 9) — 요인 1–3 · 반응 1–4 · 행은 필요한 만큼, CSV 불러오기 · 엑셀 붙여넣기</div>
           <div class="f1-lvl"><span class="n">10</span>회귀식 (Table 10) — 평균·선형·2FI·2차를 순차 F와 예측 R²로 비교, 과적합 의심이면 수용 사유</div>
           <div class="f1-lvl"><span class="n">11</span>반응 곡면 (Figure 1) — 실험점 · 잔차 · 설계 지지 영역</div>
@@ -500,11 +500,11 @@
              지금 단계만 고칠 수 있고, 앞 단계를 다시 열면 뒤 단계는 지우지 않고 <b>“다시 확인 필요”</b>로 표시한다.`,
       art: `
         <div class="f1-cols c3 f1-seq">
-          <div class="f1-box f1-llm"><b>LLM — 초안만</b><span>QTPP · CQA 근거 · 위험평가 근거 · DoE 변수 추천.
+          <div class="f1-box f1-llm"><b>LLM — 초안만</b><span>QTPP · CQA 근거 · 위험평가 근거.
             입력에 없는 수치를 쓰면 “출처 확인” 경고가 붙는다. 응답이 없으면 아무것도 채우지 않는다</span></div>
           <div class="f1-box f1-det"><b>코드 — 계산과 검사</b><span>행렬 · 후보 변수(High) · 회귀 · 곡면 · ANOVA · 공동확률 영역 · 확인점.
-            빠진 칸, 확정 CQA 밖의 열, 공정 이름을 공정 변수로 쓴 경우, 5개 이상 DoE 변수, 추정 불가 모형, 사유 없는 과적합, 빈 영역은 승인 불가</span></div>
-          <div class="f1-box"><b>연구자 — 선택과 승인</b><span>행 추가·삭제·수정, DoE 변수 선택, 회귀 모형 선택(제안과 다르면 기록),
+            빠진 칸, 확정 CQA 밖의 열, 공정 이름을 공정 변수로 쓴 경우, 이름 없는 요인, 추정 불가 모형, 사유 없는 과적합, 빈 영역은 승인 불가</span></div>
+          <div class="f1-box"><b>연구자 — 선택과 승인</b><span>행 추가·삭제·수정, 실험 요인 결정(9단계 표), 회귀 모형 선택(제안과 다르면 기록),
             단계마다 승인. 누가 언제 어떤 출처의 몇 번째 판을 승인했는지 이력으로 남는다</span></div>
         </div>`,
       note: `CBD 논문으로 시작한 시연에서는 단계마다 <b>논문 값으로 채우기</b>와 <b>참고 · 논문의 판단</b>이 열려,

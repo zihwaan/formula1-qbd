@@ -1,6 +1,6 @@
 """2단계 보고서 PDF — 논문 표 형식(Table 1·3·4·5·6·7·8 · 9·10·11 · Figure 1).
 
-- risk_report: 8단계 산출물 — 프로토타입부터 위험평가·DoE 변수까지(제형 DoE의 출발점).
+- risk_report: 8단계 산출물 — 프로토타입부터 위험평가 종합 정리까지(제형 DoE의 출발점).
 - final_report: 12단계(ANOVA) 뒤 — 위 내용 + 실험 설계 표 · 회귀식 · 반응 곡면(화면에서 받은 그림) · ANOVA, 있으면 Design Space · 확인계획 · 확인배치.
 승인된 단계만 싣고, 표마다 출처(LLM 초안 · 논문 값 · 연구자 수정 · 코드 계산)와 승인 기록을 붙인다. 폰트는 나눔고딕(OFL, fonts/OFL.txt).
 """
@@ -139,14 +139,14 @@ def _risk_sections(pdf, st):
     s = st["steps"]
     rec = s["recommend"]["data"] or {}
     _h(pdf, "요약 — 제형 DoE의 출발점")
-    _p(pdf, "제형·공정 변수 위험평가(표 7·8)에서 CQA에 High로 평가된 변수가 DoE 후보이고, 연구자가 그중 DoE로 볼 변수를 골랐다(최대 4개). "
-            "원료 물성의 High 항목(표 5·6)은 원료 규격·관리로 다룬다.")
-    recd = {r["variable"]: r["reason"] for r in rec.get("recommended") or []}
-    _table(pdf, ["DoE 변수(연구자 선택)", "High인 CQA", "Medium인 CQA", "추천 근거"],
-           [[c["variable"], ", ".join(c["high"]) or "—", ", ".join(c["medium"]) or "—", recd.get(c["variable"], "")]
-            for c in rec.get("candidates") or [] if c["variable"] in (rec.get("selected") or [])] or [["(없음)", "", "", ""]], [38, 45, 32, 65], 7.6)
-    if rec.get("note"):
-        _p(pdf, f"추천 메모: {rec['note']}", 8)
+    _p(pdf, "제형·공정 변수 위험평가(표 7·8)에서 하나 이상의 CQA에 High로 평가된 변수다. 실험 설계(요인)는 이 정리를 보고 연구자가 정한다. "
+            "Medium만 있는 변수는 관리·모니터링 대상이고, 원료 물성의 High 항목(표 5·6)은 원료 규격·관리로 다룬다.")
+    _table(pdf, ["DoE 변수 후보(High인 제형·공정 변수)", "구분", "High인 CQA", "Medium인 CQA"],
+           [[c["variable"], "공정" if c.get("kind") == "process" else "제형", ", ".join(c["high"]) or "—", ", ".join(c["medium"]) or "—"]
+            for c in rec.get("candidates") or []] or [["(없음)", "", "", ""]], [56, 14, 62, 48], 7.6)
+    if rec.get("watch"):
+        _table(pdf, ["Medium만 있는 변수(관리·모니터링)", "Medium인 CQA"],
+               [[x["variable"], ", ".join(x["medium"]) or "—"] for x in rec["watch"]], [70, 110])
     if rec.get("material_controls"):
         _table(pdf, ["원료 관리 대상 물성", "High인 CQA", "Medium인 CQA"],
                [[x["variable"], ", ".join(x["high"]) or "—", ", ".join(x["medium"]) or "—"] for x in rec["material_controls"]], [55, 75, 50])

@@ -16,7 +16,7 @@ const sid = await p.evaluate(async () => {
   const act = async (a) => { v = await post(`/api/stage2/studies/${id}/actions/${a}`, { payload: a === 'approve' ? { note: '논문이 보고한 모형 차수를 그대로 비교' } : {} }, v.study.state_version); };
   await act('run');
   for (const s of ['qtpp', 'cqa', 'rm_just', 'rm_matrix', 'fp_just', 'fp_matrix', 'recommend', 'design', 'regression']) {
-    if (!s.endsWith('matrix')) await act('use_reference');
+    if (!s.endsWith('matrix') && s !== 'recommend') await act('use_reference');   // 5·7·8단계는 코드가 만든 정리(확인만)
     await act('approve');
   }
   return id;

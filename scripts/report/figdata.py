@@ -137,7 +137,7 @@ def stage2_block() -> dict:
     svc.act(sid, "run", {}, actor="report")
     blocked = []
     for st in STEPS[1:]:
-        if st in ("qtpp", "cqa", "rm_just", "fp_just", "recommend", "design", "regression", "space"):
+        if st in ("qtpp", "cqa", "rm_just", "fp_just", "design", "regression", "space"):
             svc.act(sid, "use_reference", {}, actor="report")
         out = svc.act(sid, "approve", {"note": "논문이 보고한 모형 차수를 그대로 비교"}, actor="report")
         if out["action_result"].get("blocked"):

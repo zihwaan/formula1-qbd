@@ -1,13 +1,13 @@
 {
  "llm": "dacon",
  "llm_calls": {
-  "dacon": 12
+  "dacon": 9
  },
- "study_id": "S2-7dea7e1058",
+ "study_id": "S2-8a993c655e",
  "steps": [
   {
    "step": "qtpp",
-   "seconds": 32.6,
+   "seconds": 38.9,
    "provider": "dacon",
    "checks": [
     {
@@ -15,18 +15,22 @@
      "code": "LLM_NUMBERS"
     }
    ],
-   "items": 16,
+   "items": 17,
    "paper_items": 16,
    "blocked": []
   },
   {
    "step": "cqa",
-   "seconds": 28.7,
+   "seconds": 39.3,
    "provider": "dacon",
-   "checks": [],
-   "items": 16,
+   "checks": [
+    {
+     "level": "warning",
+     "code": "LLM_NUMBERS"
+    }
+   ],
+   "items": 19,
    "in_risk": [
-    "Hardness",
     "Friability",
     "Assay",
     "Content uniformity",
@@ -45,12 +49,14 @@
    "only_llm": [
     "Friability"
    ],
-   "only_paper": [],
+   "only_paper": [
+    "Hardness"
+   ],
    "blocked": []
   },
   {
    "step": "rm_just",
-   "seconds": 52.9,
+   "seconds": 46.0,
    "provider": "dacon",
    "checks": [],
    "variables": [
@@ -62,7 +68,7 @@
     "Residual solvents",
     "Chemical stability"
    ],
-   "rows": 17,
+   "rows": 15,
    "paper_variables": [
     "Particle size distribution",
     "Flow properties",
@@ -80,35 +86,11 @@
    "seconds": 0.0,
    "provider": null,
    "checks": [],
-   "cells": 49,
-   "common": 42,
-   "same": 17,
+   "cells": 42,
+   "common": 35,
+   "same": 21,
    "differ": [
     {
-     "cqa": "Hardness",
-     "variable": "Particle size distribution",
-     "llm": "Medium",
-     "paper": "Low"
-    },
-    {
-     "cqa": "Hardness",
-     "variable": "Flow properties",
-     "llm": "Medium",
-     "paper": "Low"
-    },
-    {
-     "cqa": "Hardness",
-     "variable": "Hygroscopicity",
-     "llm": "Medium",
-     "paper": "Low"
-    },
-    {
-     "cqa": "Hardness",
-     "variable": "Moisture content",
-     "llm": "Medium",
-     "paper": "Low"
-    },
-    {
      "cqa": "Assay",
      "variable": "Particle size distribution",
      "llm": "Medium",
@@ -127,18 +109,6 @@
      "paper": "Low"
     },
     {
-     "cqa": "Assay",
-     "variable": "Solubility",
-     "llm": "Medium",
-     "paper": "Low"
-    },
-    {
-     "cqa": "Assay",
-     "variable": "Residual solvents",
-     "llm": "Medium",
-     "paper": "Low"
-    },
-    {
      "cqa": "Content uniformity",
      "variable": "Hygroscopicity",
      "llm": "Medium",
@@ -147,12 +117,6 @@
     {
      "cqa": "Content uniformity",
      "variable": "Moisture content",
-     "llm": "Medium",
-     "paper": "Low"
-    },
-    {
-     "cqa": "Content uniformity",
-     "variable": "Solubility",
      "llm": "Medium",
      "paper": "Low"
     },
@@ -161,18 +125,6 @@
      "variable": "Chemical stability",
      "llm": "Medium",
      "paper": "High"
-    },
-    {
-     "cqa": "Disintegration",
-     "variable": "Particle size distribution",
-     "llm": "Medium",
-     "paper": "Low"
-    },
-    {
-     "cqa": "Disintegration",
-     "variable": "Flow properties",
-     "llm": "Medium",
-     "paper": "Low"
     },
     {
      "cqa": "Disintegration",
@@ -211,12 +163,6 @@
      "paper": "Medium"
     },
     {
-     "cqa": "Dissolution",
-     "variable": "Chemical stability",
-     "llm": "High",
-     "paper": "Medium"
-    },
-    {
      "cqa": "Degradation products",
      "variable": "Hygroscopicity",
      "llm": "Medium",
@@ -226,12 +172,6 @@
      "cqa": "Degradation products",
      "variable": "Moisture content",
      "llm": "High",
-     "paper": "Low"
-    },
-    {
-     "cqa": "Degradation products",
-     "variable": "Residual solvents",
-     "llm": "Medium",
      "paper": "Low"
     }
    ],
@@ -239,7 +179,7 @@
   },
   {
    "step": "fp_just",
-   "seconds": 73.3,
+   "seconds": 78.5,
    "provider": "dacon",
    "checks": [],
    "variables": [
@@ -249,13 +189,11 @@
     "Fumed silica",
     "Sucralose",
     "MgSt",
-    "Sieve aperture",
-    "Geometric dilution blending time",
-    "Lubrication time",
     "Compression force",
-    "Tablet fill weight"
+    "Blending time",
+    "Lubrication time"
    ],
-   "rows": 29,
+   "rows": 22,
    "paper_variables": [
     "Spray-dried mannitol",
     "MCC",
@@ -273,28 +211,10 @@
    "seconds": 0.0,
    "provider": null,
    "checks": [],
-   "cells": 77,
-   "common": 42,
-   "same": 24,
+   "cells": 54,
+   "common": 35,
+   "same": 21,
    "differ": [
-    {
-     "cqa": "Hardness",
-     "variable": "Spray-dried mannitol",
-     "llm": "Medium",
-     "paper": "High"
-    },
-    {
-     "cqa": "Hardness",
-     "variable": "CCS",
-     "llm": "Medium",
-     "paper": "Low"
-    },
-    {
-     "cqa": "Hardness",
-     "variable": "MgSt",
-     "llm": "High",
-     "paper": "Low"
-    },
     {
      "cqa": "Assay",
      "variable": "MCC",
@@ -304,14 +224,14 @@
     {
      "cqa": "Content uniformity",
      "variable": "Spray-dried mannitol",
-     "llm": "High",
+     "llm": "Medium",
      "paper": "Low"
     },
     {
      "cqa": "Content uniformity",
-     "variable": "CCS",
+     "variable": "MCC",
      "llm": "Medium",
-     "paper": "Low"
+     "paper": "High"
     },
     {
      "cqa": "Content uniformity",
@@ -376,50 +296,13 @@
     {
      "cqa": "Degradation products",
      "variable": "CCS",
-     "llm": "Medium",
-     "paper": "Low"
-    },
-    {
-     "cqa": "Degradation products",
-     "variable": "MgSt",
      "llm": "Medium",
      "paper": "Low"
     }
    ],
    "blocked": []
-  },
-  {
-   "step": "recommend",
-   "seconds": 11.0,
-   "provider": "dacon",
-   "checks": [],
-   "recommended": [
-    "MgSt",
-    "Compression force",
-    "CCS",
-    "Geometric dilution blending time"
-   ],
-   "reasons": {
-    "MgSt": "Hardness, Friability, Disintegration 및 Dissolution에 High이며, 함량을 연속적으로 조절하여 범위를 설정할 수 있다. 윤활 수준이 정제 결합성과 물 침투·용출에 동시에 영향을 줄 수 있으므로 우선 평가한다. basis: 일반 제제학 지식.",
-    "Compression force": "Hardness, Friability, Disintegration 및 Dissolution에 High이며, direct compression 공정에서 연속 공정변수로 수준과 범위를 설정할 수 있다. MgSt 함량과 구별되는 압축·치밀화 효과 및 상호작용을 평가할 수 있다. basis: 일반 제제학 지식.",
-    "CCS": "ODT의 핵심 CQA인 Disintegration 및 Dissolution에 High이며, 처방 내 함량을 연속적으로 조절할 수 있다. MgSt 및 Compression force에 따른 물 침투 저하를 보완하거나 상호작용할 가능성을 평가할 수 있다. basis: 처방 자료 | 일반 제제학 지식.",
-    "Geometric dilution blending time": "Content uniformity에 High이며, 저함량 CBD의 geometric dilution 공정에서 혼합 시간을 연속적으로 설정할 수 있다. 기계적 강도·붕해 중심의 다른 추천 변수와 역할이 겹치지 않고 혼합 균일성 및 과혼합 가능성을 평가할 수 있다. basis: 처방 자료 | 일반 제제학 지식."
-   },
-   "note": "추천하지 않은 High 변수: Lubrication time (process)는 MgSt (formulation)와 동일한 윤활 관련 CQA에 주로 영향을 주어 역할 중복을 줄이기 위해 제외했으며, 후속 DoE 또는 MgSt 고정 조건에서 별도 평가가 가능하다. MCC (formulation)는 Hardness, Friability 및 Content uniformity에 High이나 Spray-dried mannitol과 함께 정제 중량을 구성하는 균형 성분이고 Compression force와 기계적 CQA 영향이 일부 중복되어 제외했다. Tablet fill weight (process)는 Assay와 Content uniformity에 High이나 CBD 용량과 목표 정제 중량을 직접 좌우하므로 개발 DoE에서 의도적으로 넓게 변경하기보다 설정값과 공정 변동으로 관리하는 것이 적절하다. Spray-dried mannitol (formulation)은 Content uniformity에 High이나 MCC와의 균형 성분이며 독립 인자로 동시에 변경하면 총 정제 중량 제약과 해석상 교락이 생길 수 있어 제외했다. Sieve aperture (process)는 Content uniformity에 High이나 이산적인 표준 체 규격으로 운용될 가능성이 높아 연속 범위 설정 적합성이 낮고, 우선적으로 Geometric dilution blending time을 선택했다. basis: 처방 자료 | 일반 제제학 지식.",
-   "rule_rank": [
-    "MgSt",
-    "Lubrication time",
-    "Compression force",
-    "MCC"
-   ],
-   "paper": [
-    "Compression force",
-    "MCC",
-    "CCS"
-   ],
-   "blocked": []
   }
  ],
  "stopped": null,
- "at": "2026-09-27 18:19"
+ "at": "2026-09-28 06:27"
 }

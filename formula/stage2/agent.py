@@ -5,14 +5,12 @@
 """
 from __future__ import annotations
 
-import re
-
 from typing import Any, Dict, List, Literal
 
 from pydantic import BaseModel, Field
 
 from formula.agents.client import LLMUnavailable, parse_structured, providers
-from formula.stage2.model import BASIS, MAX_DOE, CQAOut, Level, QTPPOut, RecOut, risk_cqas
+from formula.stage2.model import BASIS, CQAOut, Level, QTPPOut, risk_cqas
 
 WAIT = 90.0
 COMMON = f"""너는 제형 개발 QbD(ICH Q8(R2)·Q9) 초기 위험평가 초안을 쓰는 제제학자다. 연구자가 검토·수정·승인한다.
@@ -167,32 +165,10 @@ Lubrication time; 습식과립이면 과립액 양·과립 시간·건조 온도
                 break
         items = [{**g, "text": texts[n].text if n in texts else "", "basis": texts[n].basis if n in texts else None} for n, g in enumerate(gs)]
         return {"data": {"variables": vars_, "items": items}, "provider": prov}
-    if step == "recommend":
-        cands = ctx["candidates"]
-        lines = "\n".join(f"- {c['variable']} ({c['kind']}): High → {', '.join(c['high']) or '없음'} / Medium → {', '.join(c['medium']) or '없음'}" for c in cands)
-        sys = COMMON + f"""
-## 과제: DoE로 조절해 볼 변수 추천(최대 {MAX_DOE}개)
-아래는 연구자가 승인한 제형·공정 변수 위험평가에서 하나 이상의 CQA에 High인 변수다. 이 중에서만 고른다(목록 밖 이름 금지).
-기준: 여러 핵심 CQA에 High인가, 실험에서 수준을 바꿀 수 있는가(연속 변수로 범위를 정할 수 있는가), 다른 변수와 역할이 겹치지 않는가
-(예: 두 충전제 중 하나가 나머지를 채우는 균형 성분이면 하나만). 추천하지 않은 High 변수가 있으면 note에 이유."""
-        out = _call(RecOut, sys, _ctx(ctx) + f"\n\n## 후보 변수\n{lines}", 1500)
-        # 목록에 적어 준 "이름 (종류)" 형식을 그대로 돌려주는 경우가 있다 — 꼬리 괄호·대소문자만 걷어 후보 이름과 맞춘다(목록 밖은 버림)
-        canon = {_key(c["variable"]): c["variable"] for c in cands}
-        rec, seen, dropped = [], set(), []
-        for r in out.recommended:
-            name = canon.get(_key(r.variable)) or canon.get(_key(re.sub(r"\s*\([^()]*\)\s*$", "", r.variable)))
-            if name is None:
-                dropped.append(r.variable)
-            elif name not in seen:
-                seen.add(name)
-                rec.append({"variable": name, "reason": r.reason})
-        note = out.note + (f" (후보 목록 밖이라 뺀 이름: {', '.join(dropped)})" if dropped else "")
-        return {"data": {"recommended": rec[:MAX_DOE], "note": note.strip()}, "provider": prov}
     raise KeyError(step)
 
 
-def _key(name: str) -> str:
-    return " ".join(str(name or "").lower().split())
+
 
 
 __all__ = ["draft", "groups", "LLMUnavailable"]
