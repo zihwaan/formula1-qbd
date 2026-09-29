@@ -255,12 +255,15 @@ def final_report(st: Dict[str, Any], images: Optional[Dict[str, bytes]] = None) 
     ok = lambda r: r.get("status", "SELECTED") == "SELECTED" and not r.get("aliased")   # noqa: E731
     _table(pdf, ["Responses", "모형", "Coded equations", "Actual equations"],
            [[r["response"], r["family"] + ("" if r["family"] == r["suggested"] else f" (제안 {r['suggested']})"),
-             r.get("coded_eq", "추정 불가") if ok(r) else "요인으로 설명되지 않음 — 검증 게이트 불합격",
-             r.get("actual_eq", "") if ok(r) else f"관측 {_g(round((r.get('observed') or {}).get('min', 0), 4))}–{_g(round((r.get('observed') or {}).get('max', 0), 4))}"]
+             r.get("coded_eq", "추정 불가") if ok(r) else ("요인으로 설명되지 않음 — 검증 게이트 불합격" if r["family"] == "Mean" or not r.get("coded_eq")
+                                                         else f"[게이트 불합격 · 참고] {r['coded_eq']}"),
+             r.get("actual_eq", "") if ok(r) else (f"관측 {_g(round((r.get('observed') or {}).get('min', 0), 4))}–{_g(round((r.get('observed') or {}).get('max', 0), 4))}"
+                                                  if r["family"] == "Mean" or not r.get("actual_eq") else f"[참고] {r['actual_eq']}")]
             for r in reg["responses"]], [30, 26, 105, 106], 7.6)
     _p(pdf, f"요인: {names}. coded x = (X − 중앙) / 반폭(표의 최솟값·최댓값 기준). 모형 선택: 후보(Mean · Linear · 2FI · Pure quadratic · Quadratic · "
             "Reduced quadratic)를 AICc로 줄 세우고(최소 + 2 이내면 항 수가 적은 쪽 먼저) 검증 게이트(모형 p < 0.05 · 적합결여 p ≥ 0.05 · "
-            "조정 R² − 예측 R² ≤ 0.2 · 예측 R² > 0)를 처음 통과한 모형. 평균 모형까지 내려가면 요인으로 설명되지 않는 반응으로, 곡면·영역에 쓰지 않는다.", 8)
+            "조정 R² − 예측 R² ≤ 0.2 · 예측 R² > 0)를 처음 통과한 모형. 평균 모형까지 내려가거나 연구자·논문이 고른 모형이 게이트를 못 넘으면 "
+            "그 반응은 영역·ANOVA에 쓰지 않고, 곡면에는 게이트 통과 반응이 하나라도 있을 때 참고로만 그린다.", 8)
     gate_txt = lambda row: ("통과" if (row.get("gate") or {}).get("passed") else ("—" if row["model"] == "Mean" else "불합격"))   # noqa: E731
     _table(pdf, ["Responses", "모형", "항", "모형 p", "적합결여 p", "조정 R²", "예측 R²", "AICc", "게이트", "선택"],
            [[r["response"], row["model"], str(row["n_terms"]), _n(row.get("model_p")), _n(row.get("lof_p")), _n(row.get("adj_r2")), _n(row.get("pred_r2")),
@@ -270,7 +273,8 @@ def final_report(st: Dict[str, Any], images: Optional[Dict[str, bytes]] = None) 
     if images:
         pdf.add_page(orientation="L")
         _h(pdf, "그림 1. 반응 곡면")
-        _p(pdf, "10단계에서 선택한 모형의 반응 곡면(화면에서 그린 그림). 빨간 점은 관측값이 곡면 위, 연분홍은 아래, 바닥 점선은 설계점이 받치는 영역.", 8)
+        _p(pdf, "10단계에서 선택한 모형의 반응 곡면(화면에서 그린 그림) — 게이트 통과 반응이 하나라도 있으면 모든 반응을 그리며, 불합격 반응(표 10의 "
+                "[참고])은 참고용이다. 빨간 점은 관측값이 곡면 위, 연분홍은 아래, 바닥 점선은 설계점이 받치는 영역.", 8)
         keys = sorted(images)
         w, gap = 84, 4
         x0, y0 = pdf.l_margin, pdf.get_y()

@@ -4,7 +4,8 @@
 - 10단계 = Automatic Hierarchical Model Selector → Model Validation Gate(overlay 파이프라인, 규칙 숫자는 config/stage2_design_space.yaml).
   후보 Mean · Linear · 2FI · Pure quadratic · Quadratic · Reduced quadratic(Quadratic에서 계층성을 지키며 p > 0.05 항을 하나씩 뺀 모형)을
   AICc로 줄 세우고(최소 + 2 이내면 항 수가 적은 쪽 먼저) 순서대로 게이트 4조건 — 모형 p < 0.05 · 적합결여 p ≥ 0.05 · 조정 R² − 예측 R² ≤ 0.2 ·
-  예측 R² > 0 — 을 검사해 처음 통과한 모형을 제안한다. 평균 모형까지 내려가면 "요인으로 설명되지 않음"(회귀식·곡면·영역에 쓰지 않는다).
+  예측 R² > 0 — 을 검사해 처음 통과한 모형을 제안한다. 평균 모형까지 내려가면 "요인으로 설명되지 않음"(영역·ANOVA에 쓰지 않는다 —
+  곡면은 게이트 통과 반응이 하나라도 있으면 참고로 그린다).
   연구자가 모형을 바꿀 수 있고, 고른 모형이 게이트를 못 넘으면 그 반응도 "요인으로 설명되지 않음"이다.
 - ANOVA는 각 항의 부분 제곱합(Type III: 그 항을 뺀 모형과의 잔차 제곱합 차이), 잔차 = 적합결여 + 순수오차(같은 설정의 반복 run).
 - 실제 단위 식은 coded 식을 전개해서 만든다(반올림은 표시할 때만).
@@ -459,10 +460,22 @@ def surfaces(design: Dict[str, Any], reg: Dict[str, Any], steps: int = 25, order
     idx = list(order) if order and sorted(order) == list(range(k)) else list(range(k))
     g = np.linspace(-1, 1, steps)
     fac = [{"id": f"X{i + 1}", "name": fn[i], "unit": design["factors"][i].get("unit"), "low": cod[i]["low"], "high": cod[i]["high"]} for i in range(k)]
+    # 곡면: 검증 게이트를 통과한 반응이 하나라도 있으면 모든 반응을 그린다(불합격 반응은 참고로 표시 — 사용자 2026-09-29).
+    # 영역(13단계)·ANOVA(12단계)는 여전히 통과 반응만 쓴다.
+    any_pass = any(r.get("status") == "SELECTED" and not r.get("aliased") for r in reg["responses"])
+
+    def drawn(r):
+        return not r.get("aliased") and (r.get("status") == "SELECTED" or any_pass)
+
+    def status_of(r):
+        if r.get("status") == "SELECTED":
+            return r["family"]
+        return f"{r['family']} · " + ("평균 모형(요인 효과 없음) — 참고" if r["family"] == "Mean" else "검증 게이트 불합격 — 참고")
+
     if k == 1:
         out = []
         for j, r in enumerate(reg["responses"]):
-            if r.get("aliased"):
+            if not drawn(r):
                 continue
             mean = predict(r["terms"], r["coef"], g[:, None])
             ok = ~np.isnan(Y[:, j])
@@ -470,8 +483,8 @@ def surfaces(design: Dict[str, Any], reg: Dict[str, Any], steps: int = 25, order
             pts = [{"a": float(X[i, 0]), "y": float(Y[i, j]), "pred": float(p), "above": bool(Y[i, j] >= p)} for i, p in zip(np.where(ok)[0], pred)]
             vals = list(mean) + [p["y"] for p in pts]
             lo, hi = min(vals), max(vals)
-            out.append({"id": r["response"], "name": r["response"], "unit": r["unit"], "formula": r["coded_eq"], "status": r["family"],
-                        "line": {"x": [float(to_actual(v, cod[0])) for v in g], "y": mean.tolist()}, "points": pts,
+            out.append({"id": r["response"], "name": r["response"], "unit": r["unit"], "formula": r["coded_eq"], "status": status_of(r),
+                        "gate_passed": r.get("status") == "SELECTED", "line": {"x": [float(to_actual(v, cod[0])) for v in g], "y": mean.tolist()}, "points": pts,
                         "zrange": [lo - 0.08 * (hi - lo or 1), hi + 0.08 * (hi - lo or 1)]})
         return {"kind": "LINE", "factors": fac, "responses": out}
     a, b = idx[0], idx[1]
@@ -484,7 +497,7 @@ def surfaces(design: Dict[str, Any], reg: Dict[str, Any], steps: int = 25, order
             "b": {"id": fac[b]["id"], "actual": [float(to_actual(v, cod[b])) for v in g]}}
     out = []
     for j, r in enumerate(reg["responses"]):
-        if r.get("aliased") or r.get("status") == "UNEXPLAINED":      # 게이트 불합격 반응은 곡면을 그리지 않는다
+        if not drawn(r):
             continue
         slices, lo, hi = [], np.inf, -np.inf
         for lv in levels:
@@ -506,8 +519,8 @@ def surfaces(design: Dict[str, Any], reg: Dict[str, Any], steps: int = 25, order
             slices.append({"level_coded": None if lv is None else float(lv), "level_actual": None if lv is None else float(to_actual(lv, cod[c])),
                            "mean": mean.tolist(), "domain": [[True] * steps] * steps, "points": pts, "domain_outline": outline})
         span = (hi - lo) or 1.0
-        out.append({"id": r["response"], "name": r["response"], "unit": r["unit"], "formula": r["coded_eq"], "status": r["family"],
-                    "slices": slices, "zrange": [lo - 0.05 * span, hi + 0.05 * span]})
+        out.append({"id": r["response"], "name": r["response"], "unit": r["unit"], "formula": r["coded_eq"], "status": status_of(r),
+                    "gate_passed": r.get("status") == "SELECTED", "slices": slices, "zrange": [lo - 0.05 * span, hi + 0.05 * span]})
     return {"kind": "SURFACE", "factors": fac, "axis": axis, "responses": out,
             "slice_factor": ({"id": fac[c]["id"], "name": fac[c]["name"], "unit": fac[c]["unit"]} if c is not None else None),
             "note": "곡면은 요인 범위 전체에 그린다. 바닥 점선은 그 단면의 설계점이 받치는 영역(밖은 외삽)."}

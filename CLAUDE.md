@@ -609,7 +609,10 @@ UI `web/static/stage2.{js,css}`.
   reaching Mean → `status: UNEXPLAINED` ("요인으로 설명되지 않음": no equation/surface/region, observed range + target only). A researcher-chosen model
   must pass the same gate. **All responses failing → `REG_GATE_NONE` blocks** (user, 2026-09-28); single failures are `REG_GATE_FAIL` warnings.
   The old overfit-with-reason flow (REG_OVERFIT/REG_OVERFIT_REASON) is gone — overfit is a gate condition. Partial-SS ANOVA / equations / surfaces
-  accept any term list; UNEXPLAINED responses are skipped there. The numpy port matches the pipeline's statsmodels reference to the 4th decimal
+  accept any term list; UNEXPLAINED responses are skipped in ANOVA and the region, **but step 11 draws every response's surface as soon as
+  one response passes the gate** (user, 2026-09-29 — failed ones labelled "검증 게이트 불합격 — 참고", a Mean model is a flat plane). When the design is a
+  paper table whose model orders are known (Monton 2026 Table 9 → `paper_designs.families`, or a CBD reference study), step 10 shows **논문 식으로 설정
+  (Monton 2026 Table 10)** (action use_reference, source "paper", kept on recompute); failed paper equations are still shown, dashed, as reference. The numpy port matches the pipeline's statsmodels reference to the 4th decimal
   (every candidate's model p, LOF p, adj/pred R², AICc) — pinned in `tests/test_stage2.py`.
 - **Step 13 = Overlay plot** (`space.py`, paper Figure 2 format): region = mean predictions of gate-passed responses inside all targets (yellow) ∩ design
   hull (hatched outside); k = 3 → slice factor = smallest Σ|main-effect coef| at −1/0/+1 (researcher can override, saved as `space.slice`), 41-point grid;

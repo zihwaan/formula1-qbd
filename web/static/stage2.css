@@ -126,6 +126,7 @@
 .s2-eq dt { color: var(--ink-muted); }
 .s2-eq dd { margin: 0; overflow-wrap: anywhere; }
 .s2-eq code { font-family: var(--font-mono); font-size: 12.5px; }
+.s2-eq.ref { padding-left: 10px; border-left: 2px dashed var(--status-warn); color: var(--ink-2, inherit); }   /* 게이트 불합격 식 — 참고(점선 = 보류 어휘) */
 
 .s2-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
 .s2-checks li { padding: 8px 12px; border-radius: 10px; line-height: 1.5; overflow-wrap: anywhere; }

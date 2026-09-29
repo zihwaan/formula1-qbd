@@ -92,7 +92,8 @@ class Stage2Service:
                 "steps": [{"key": s, "n": i + 1, "title": TITLE[s], "table": TABLE.get(s), "status": st["steps"][s]["status"],
                            "editable": s in EDITABLE, "derived": s in DERIVED, "llm": s in LLM_STEPS} for i, s in enumerate(STEPS)],
                 "reference": ref, "reference_citation": REF.citation() if ref else None,
-                "paper_designs": PD.options(((st["steps"]["prototype"]["data"] or {}).get("api")))}
+                "paper_designs": PD.options(((st["steps"]["prototype"]["data"] or {}).get("api"))),
+                "paper_families": self._paper_families(st)}
 
     def list(self, limit: int = 30) -> List[Dict[str, Any]]:
         return self.store.list(limit)
@@ -185,12 +186,15 @@ class Stage2Service:
                                  "rows": [{"std": 1, "run": 1, "x": [None], "y": [None]}], "note": ""},
                       source="code", actor="system")
         elif step == "regression":
-            chosen = {r["response"]: r["family"] for r in (s["data"] or {}).get("responses") or [] if s["source"] and "user" in s["source"]}
+            chosen = {r["response"]: r["family"] for r in (s["data"] or {}).get("responses") or []
+                      if s["source"] and ("user" in s["source"] or "paper" in s["source"])}
             self._set(st, step, _plain(T.regression(ctx["design"], chosen)), source=s["source"] if chosen else "code", actor="system")
         elif step == "surface":
-            # 곡면은 검증 게이트를 통과한 반응만(요인으로 설명되지 않는 반응은 회귀식이 없다)
-            self._set(st, step, {"responses": [r["response"] for r in ctx["regression"]["responses"] if not r.get("aliased") and r.get("status") == "SELECTED"],
-                                 "unexplained": [r["response"] for r in ctx["regression"]["responses"] if r.get("aliased") or r.get("status") != "SELECTED"]},
+            # 곡면은 게이트 통과 반응이 하나라도 있으면 모든 반응을 그린다 — 불합격 반응은 참고(영역·ANOVA에는 여전히 안 쓴다)
+            rs = [r for r in ctx["regression"]["responses"] if not r.get("aliased")]
+            any_pass = any(r.get("status") == "SELECTED" for r in rs)
+            self._set(st, step, {"responses": [r["response"] for r in rs if any_pass or r.get("status") == "SELECTED"],
+                                 "unexplained": [r["response"] for r in rs if r.get("status") != "SELECTED"]},
                       source="code", actor="system")
         elif step == "anova":
             self._set(st, step, _plain(self._anova(ctx)), source="code", actor="system")
@@ -266,12 +270,30 @@ class Stage2Service:
         checks = self._set(st, step, data, source="llm", actor=actor, provider=out["provider"])
         return {"provider": out["provider"], "blocking": [c["code"] for c in checks if c["level"] == "blocking"]}
 
+    def _paper_families(self, st) -> Optional[Dict[str, Any]]:
+        """10단계 '논문 식으로 설정' — 실험 표가 모형 차수를 보고한 논문 표(Monton 2026 Table 9)이거나, CBD 참고 study가 논문 표를 그대로 쓸 때."""
+        design = st["steps"]["design"]["data"] or {}
+        key = (design.get("paper") or {}).get("key")
+        fam = PD.families(key) if key else None
+        if fam is None and st.get("reference") and not key:
+            fam = {"families": dict(REF.PAPER_FAMILIES), "locator": "Table 10", "citation": REF.citation(), "short": "Monton 2026"}
+        if fam is None:
+            return None
+        names = {r.get("name") for r in design.get("responses") or []}
+        fam["families"] = {r: f for r, f in fam["families"].items() if r in names}
+        return fam if fam["families"] else None
+
     def _use_reference(self, st, step, p, actor):
+        if step == "regression":
+            fam = self._paper_families(st)
+            if fam is None:
+                raise StudyError("이 실험 표에는 논문이 보고한 회귀식(모형 차수)이 없습니다 — 논문 표(Monton 2026 Table 9)로 채운 경우에만 씁니다.", status=422)
+            data = _plain(T.regression(self._ctx(st)["design"], fam["families"]))
+            checks = self._set(st, step, data, source="paper", actor=actor)
+            return {"families": fam["families"], "blocking": [c["code"] for c in checks if c["level"] == "blocking"]}
         if not st.get("reference"):
             raise StudyError("논문 값은 CBD 논문 프로토타입으로 시작한 study에만 있습니다.", status=422)
-        if step == "regression":
-            data = _plain(T.regression(self._ctx(st)["design"], REF.PAPER_FAMILIES))
-        elif step == "space":
+        if step == "space":
             ctx = self._ctx(st)
             paper = REF.specs()
             data = self._space(ctx, [paper.get(r["response"]) or {"response": r["response"], "unit": r.get("unit") or "", "op": ""}

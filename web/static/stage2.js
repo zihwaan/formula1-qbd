@@ -28,8 +28,8 @@
     fp_matrix: "6단계 근거에서 코드가 만든 위험 행렬입니다.",
     recommend: "두 위험 행렬을 합친 종합 정리입니다(코드가 만듭니다 — 고를 것 없음). 확인하면 위험평가 보고서가 나오고, 실험 설계의 요인은 9단계에서 정합니다.",
     design: "실험을 실제로 한 표를 적습니다. 요인 1–3개, 반응 1–4개, 행은 필요한 만큼 — 엑셀에서 복사해 붙여 넣을 수도 있습니다.",
-    regression: "반응마다 평균·선형·2요인·순수 2차·2차·축소 2차 모형을 AICc로 줄 세우고, 검증 게이트(모형 p < 0.05 · 적합결여 p ≥ 0.05 · 조정−예측 R² ≤ 0.2 · 예측 R² > 0)를 처음 넘는 모형을 고릅니다. 모든 반응이 게이트를 못 넘으면 승인할 수 없습니다.",
-    surface: "선택한 회귀식으로 그린 반응 곡면입니다. 점은 실험값, 세로줄은 잔차입니다. [확인]을 누르면 그림이 보고서에 들어갑니다.",
+    regression: "반응마다 평균·선형·2요인·순수 2차·2차·축소 2차 모형을 AICc로 줄 세우고, 검증 게이트(모형 p < 0.05 · 적합결여 p ≥ 0.05 · 조정−예측 R² ≤ 0.2 · 예측 R² > 0)를 처음 넘는 모형을 고릅니다. 모든 반응이 게이트를 못 넘으면 승인할 수 없습니다. 논문 표로 채웠다면 논문이 쓴 식(모형 차수)으로도 설정할 수 있습니다.",
+    surface: "선택한 회귀식으로 그린 반응 곡면입니다. 게이트를 통과한 반응이 하나라도 있으면 모든 반응을 그리고, 불합격 반응은 '참고'로 표시합니다(영역에는 쓰지 않음). 점은 실험값, 세로줄은 잔차입니다. [확인]을 누르면 그림이 보고서에 들어갑니다.",
     anova: "선택 모형의 분산분석(부분 제곱합)입니다. 확인하면 최종 보고서(실험 설계 · 회귀식 · 곡면 · ANOVA)를 받을 수 있습니다.",
     space: "게이트를 통과한 반응마다 목표를 적으면, 평균 예측이 모든 목표를 동시에 만족하는 영역(노랑)을 Overlay plot으로 그리고 그 안에서 control space(3×3 격자 이상의 직사각형)와 최적 처방을 정합니다. 새 배치 통과확률은 보조 표시입니다 — 승인을 막는 것은 평균 기준 영역이 없거나 control space를 만들 수 없을 때뿐입니다.",
     vplan: "영역에서 확인할 점 3개(설정점 · 경계점 · 강건성)와 예측구간을 결과를 보기 전에 잠급니다. 이미 있는 배치(예: 논문 최적)는 참고점으로만 비교합니다.",
@@ -184,8 +184,9 @@
         case "rm_matrix": case "fp_matrix": return `High ${d.levels.flat().filter((x) => x === "High").length}칸 · Medium ${d.levels.flat().filter((x) => x === "Medium").length}칸 / ${d.levels.flat().length}칸`;
         case "recommend": return `High 변수 ${(d.candidates || []).length}개${(d.candidates || []).length ? ` — ${(d.candidates || []).slice(0, 4).map((c) => c.variable).join(", ")}${(d.candidates || []).length > 4 ? " …" : ""}` : ""}`;
         case "design": return `요인 ${d.factors.map((f) => f.name).join(" · ")} · 반응 ${c(d.responses)}개 · ${c(d.rows)} run`;
-        case "regression": return d.responses.map((r) => passed(r) ? `${r.response} ${FAMILY_KO[r.family] || r.family} (게이트 통과)` : `${r.response} 요인으로 설명되지 않음`).join(" · ");
-        case "surface": return `반응 ${(d.responses || []).join(", ") || "없음"}${(d.unexplained || []).length ? ` · 제외(요인으로 설명되지 않음) ${d.unexplained.join(", ")}` : ""}`;
+        case "regression": return d.responses.map((r) => passed(r) ? `${r.response} ${FAMILY_KO[r.family] || r.family} (게이트 통과)` : `${r.response} ${r.family === "Mean" ? "요인으로 설명되지 않음" : `${FAMILY_KO[r.family] || r.family} (게이트 불합격)`}`).join(" · ");
+        case "surface": { const un = new Set(d.unexplained || []); const ref = (d.responses || []).filter((n) => un.has(n)), cut = (d.unexplained || []).filter((n) => !(d.responses || []).includes(n));
+          return `반응 ${(d.responses || []).join(", ") || "없음"}${ref.length ? ` · 게이트 불합격(참고로 그림) ${ref.join(", ")}` : ""}${cut.length ? ` · 제외 ${cut.join(", ")}` : ""}`; }
         case "anova": return d.responses.map((r) => { if (r.unexplained || r.aliased) return `${r.response} —`; const m = r.rows.find((x) => x.source === "Model"); return `${r.response} 모형 p ${pfmt(m && m.p)}`; }).join(" · ");
         case "space": {
           const r = d.region || {};
@@ -226,8 +227,11 @@
     const dis = busy ? "disabled" : "";
     if (k === "prototype") b.push(`<button type="button" class="primary" data-act="run" ${dis}>실행</button>`);
     if (meta.llm) b.push(`<button type="button" data-act="draft" ${dis}>${s.data ? "LLM 초안 다시 받기" : "LLM 초안 받기"}</button>`);
-    if (V.study.reference && ["qtpp", "cqa", "rm_just", "fp_just", "regression", "space", "vplan"].includes(k))   // 9단계는 표 위 '논문 실측값으로 채우기'가 맡는다
+    if (V.study.reference && ["qtpp", "cqa", "rm_just", "fp_just", "space", "vplan"].includes(k))   // 9단계는 표 위 '논문 실측값으로 채우기'가 맡는다
       b.push(`<button type="button" class="ghost" data-act="use_reference" ${dis}>논문 값으로 채우기</button>`);
+    // 10단계 — 실험 표가 모형 차수를 보고한 논문 표(Monton 2026 Table 9)면 논문 식으로 설정(참고 study가 아니어도)
+    if (k === "regression" && V.paper_families)
+      b.push(`<button type="button" class="ghost" data-act="use_reference" ${dis}>논문 식으로 설정 (${E(V.paper_families.short || "")} ${E(V.paper_families.locator || "")})</button>`);
     if (meta.editable && k !== "prototype") b.push(`<button type="button" class="ghost" data-act="save" ${dis}>저장</button>`);
     if (k !== "prototype") {
       const label = meta.derived ? (k === "anova" ? "확인 · 최종 보고서 만들기" : k === "recommend" ? "확인 · 위험평가 보고서" : "확인")
@@ -427,11 +431,11 @@
   const GATE_TIP = "검증 게이트: 모형 p < 0.05 · 적합결여 p ≥ 0.05 · 조정 R² − 예측 R² ≤ 0.2 · 예측 R² > 0";
   function vRegression(d, ro) {
     const nPass = (d.responses || []).filter(passed).length;
-    return `<p class="s2-gate-head ${nPass ? "" : "bad"}">검증 게이트 통과 ${nPass} / ${(d.responses || []).length} 반응 <small>${E(GATE_TIP)} — 넷 다 통과한 모형만 회귀식·곡면·영역에 씁니다</small></p>` +
+    return `<p class="s2-gate-head ${nPass ? "" : "bad"}">검증 게이트 통과 ${nPass} / ${(d.responses || []).length} 반응 <small>${E(GATE_TIP)} — 넷 다 통과한 모형만 영역·ANOVA에 씁니다(곡면은 하나라도 통과하면 모든 반응을 그리고 불합격은 참고로)</small></p>` +
       (d.responses || []).map((r) => {
       const fams = r.summary.rows.map((x) => x.model);
       const g = r.gate || {};
-      const badge = passed(r) ? `<span class="s2-gate ok">게이트 통과</span>` : `<span class="s2-gate bad">요인으로 설명되지 않음</span>`;
+      const badge = passed(r) ? `<span class="s2-gate ok">게이트 통과</span>` : `<span class="s2-gate bad">${r.family === "Mean" ? "요인으로 설명되지 않음" : "검증 게이트 불합격"}</span>`;
       return `<div class="s2-reg ${passed(r) ? "" : "unexpl"}" data-resp="${E(r.response)}"><div class="s2-reg-head"><b>${E(r.response)}</b>${r.unit ? `<small>${E(r.unit)}</small>` : ""}
           ${badge}<span class="s2-muted">n = ${E(r.n)}</span>
           <label>모형 ${ro ? `<b>${E(FAMILY_KO[r.family] || r.family)}</b>` : `<select data-family>${fams.map((f) => `<option value="${E(f)}" ${f === r.family ? "selected" : ""}>${E(FAMILY_KO[f] || f)}${f === r.suggested ? " (제안)" : ""}</option>`).join("")}</select>`}</label></div>
@@ -445,7 +449,10 @@
         ${r.aliased ? `<p class="s2-warn">이 모형은 이 설계로 추정할 수 없습니다 — 다른 모형을 고르세요.</p>`
           : passed(r) ? `<dl class="s2-eq"><dt>Coded</dt><dd><code>${E(r.coded_eq)}</code></dd>
           <dt>Actual</dt><dd><code>${E(r.actual_eq)}</code></dd><dt>적합</dt><dd>R² ${E(num(r.r2))} · 조정 R² ${E(num(r.adj_r2))} · 예측 R² ${E(num(r.pred_r2))}</dd></dl>`
-          : `<p class="s2-note">요인으로 설명되지 않음 — ${E((g.why || []).join("; ") || "평균 모형")}. 회귀식 없이 관측 범위 ${E(num((r.observed || {}).min))}–${E(num((r.observed || {}).max))}${r.unit ? ` ${E(r.unit)}` : ""}와 목표만 표시합니다(곡면·영역에서 제외).</p>`}
+          : r.family !== "Mean" && r.coded_eq ? `<dl class="s2-eq ref"><dt>Coded</dt><dd><code>${E(r.coded_eq)}</code></dd>
+          <dt>Actual</dt><dd><code>${E(r.actual_eq)}</code></dd><dt>적합</dt><dd>R² ${E(num(r.r2))} · 조정 R² ${E(num(r.adj_r2))} · 예측 R² ${E(num(r.pred_r2))}</dd></dl>
+          <p class="s2-note">검증 게이트 불합격 — ${E((g.why || []).join("; "))}. 이 식은 곡면에 참고로만 그리고, 영역·ANOVA에는 쓰지 않습니다(관측 범위 ${E(num((r.observed || {}).min))}–${E(num((r.observed || {}).max))}${r.unit ? ` ${E(r.unit)}` : ""}와 목표로 비교).</p>`
+          : `<p class="s2-note">요인으로 설명되지 않음 — ${E((g.why || []).join("; ") || "평균 모형")}. 회귀식 없이 관측 범위 ${E(num((r.observed || {}).min))}–${E(num((r.observed || {}).max))}${r.unit ? ` ${E(r.unit)}` : ""}와 목표만 표시합니다(영역에서 제외 · 곡면은 참고로 평면).</p>`}
         ${V.reference && V.reference.regression && V.reference.regression.families[r.response] ? `<p class="s2-cmp">참고 · 논문 모형: ${E(FAMILY_KO[V.reference.regression.families[r.response]] || V.reference.regression.families[r.response])}</p>` : ""}
       </div>`;
     }).join("") + `<p class="s2-muted">요인 기호: ${(d.factors || []).map((f, i) => `X${i + 1} = ${E(f.name)}${f.unit ? ` (${E(f.unit)})` : ""} [${E(num(f.low))} – ${E(num(f.high))}]`).join(" · ")}</p>`;
@@ -844,7 +851,9 @@
       if (r.blocked && r.blocked.length) out(`승인할 수 없습니다 — ${r.blocked.join(", ")}. 위의 '승인 불가' 항목을 고쳐 주세요.`, "warn");
       else if (action === "draft") out(`${r.provider ? `${r.provider}로 ` : ""}초안을 만들었습니다 — 확인하고 고친 뒤 승인하세요.${r.blocking && r.blocking.length ? " (승인 전에 고칠 항목이 있습니다)" : ""}`);
       else if (action === "save") out("저장했습니다.");
-      else if (action === "use_reference") out("논문 값으로 채웠습니다.");
+      else if (action === "use_reference") out(k === "regression"
+        ? `논문 식(${Object.entries((r.families || {})).map(([n, f]) => `${n} ${FAMILY_KO[f] || f}`).join(" · ")})으로 설정했습니다 — 게이트 불합격 반응은 곡면에 참고로만 그립니다.`
+        : "논문 값으로 채웠습니다.");
       else if (action === "use_paper") out(`${label.replace("논문 값 채우기 · ", "")} 실측값으로 채웠습니다 — 확인하고 승인하세요.`);
       if (V.done) done();
       document.dispatchEvent(new CustomEvent("f1:stage2", { detail: { id: V.study.study_id, step: V.current } }));

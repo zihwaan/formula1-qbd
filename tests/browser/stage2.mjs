@@ -160,14 +160,20 @@ async function walk(page, label, { edits }) {
   await act(page, 'approve');
   check(`[${label}] 모든 반응이 게이트 불합격 → 승인 불가(REG_GATE_NONE)`, await current(page) === 'regression'
     && await page.locator('#s2 .s2-step.current .s2-checks li.blocking', { hasText: 'REG_GATE_NONE' }).count() === 1);
+  const paperBtn = (await page.locator('#s2 .s2-step.current .s2-actions [data-act="use_reference"]').textContent()) || '';
+  check(`[${label}] 10단계 '논문 식으로 설정 (Monton 2026 Table 10)' 버튼`, /논문 식으로 설정/.test(paperBtn) && /Table 10/.test(paperBtn), paperBtn.trim());
   await act(page, 'use_reference');
   check(`[${label}] 논문 모형(경도 선형 · DT 2차 · 마손도 2FI) → 경도만 게이트 통과`, await page.locator('#s2 .s2-step.current .s2-reg:not(.unexpl)').count() === 1);
+  const dtEq = (await page.locator('#s2 .s2-step.current .s2-reg[data-resp="DT"] .s2-eq.ref code').first().textContent().catch(() => '')) || '';
+  check(`[${label}] 게이트 불합격 DT도 논문 식(Table 10)은 참고로 보인다`, /^Y2 = 15\.62 \+ 1\.065X1/.test(dtEq.trim()), dtEq.slice(0, 50));
   await shot('10_regression');
   await act(page, 'approve');
   check(`[${label}] → 반응 곡면`, await current(page) === 'surface');
-  await page.waitForFunction(() => document.querySelectorAll('#s2-surf-box .rsg-plot').length >= 3 && [...document.querySelectorAll('#s2-surf-box .rsg-plot')].every((d) => d.querySelector('canvas, svg')), null, { timeout: 60000 }).catch(() => {});
+  await page.waitForFunction(() => document.querySelectorAll('#s2-surf-box .rsg-plot').length >= 9 && [...document.querySelectorAll('#s2-surf-box .rsg-plot')].every((d) => d.querySelector('canvas, svg')), null, { timeout: 60000 }).catch(() => {});
   const cells = await page.locator('#s2-surf-box .rsg-plot').count();
-  check(`[${label}] 곡면 격자(게이트 통과 경도 1 × 단면 3)`, cells === 3, `${cells}칸`);
+  check(`[${label}] 곡면 격자 — 경도가 게이트를 통과하므로 세 반응 모두 × 단면 3`, cells === 9, `${cells}칸`);
+  const refBars = await page.locator('#s2-surf-box .rsg-bar', { hasText: '검증 게이트 불합격 — 참고' }).count();
+  check(`[${label}] 게이트 불합격 곡면(DT · 마손도)은 '참고'로 표시`, refBars === 2, `${refBars}개`);
   await shot('11_surface');
   await act(page, 'approve');
   await page.waitForFunction(() => document.querySelector('#s2 .s2-step.current')?.dataset.step === 'anova', null, { timeout: 60000 });

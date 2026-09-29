@@ -243,8 +243,8 @@ def check(step: str, data: Dict[str, Any], ctx: Dict[str, Any]) -> List[Dict[str
                 passed += 1
             else:
                 why = "; ".join((r.get("gate") or {}).get("why") or []) or "평균 모형"
-                out.append(_c("warning", "REG_GATE_FAIL", f"{r['response']}: 검증 게이트 불합격({why}) — 요인으로 설명되지 않음: 회귀식·곡면·영역에 쓰지 않고 "
-                              "관측 범위와 목표만 표시합니다.", response=r["response"]))
+                out.append(_c("warning", "REG_GATE_FAIL", f"{r['response']}: 검증 게이트 불합격({why}) — 영역·ANOVA에 쓰지 않고 관측 범위와 목표로 비교합니다"
+                              "(곡면에는 참고로만 그립니다).", response=r["response"]))
         if data.get("responses") and not passed:
             out.append(_c("blocking", "REG_GATE_NONE", f"모든 반응의 회귀식이 검증 게이트({g})를 통과하지 못했습니다 — 영역을 그릴 회귀식이 없어 승인할 수 없습니다."))
     elif step == "space":

@@ -80,7 +80,8 @@ def test_full_walk_with_paper_values(svc):
     rec = st["steps"]["recommend"]["data"]                            # 8단계는 코드가 만든 종합 정리 — 고르는 칸이 없다
     assert [c["variable"] for c in rec["candidates"]][:3] == ["MCC", "Compression force", "CCS"] and "selected" not in rec
     assert st["steps"]["recommend"]["source"] == "code"
-    assert st["steps"]["surface"]["data"]["responses"] == ["Hardness"] and st["steps"]["surface"]["data"]["unexplained"] == ["DT", "Friability"]
+    # 곡면: 경도가 게이트를 통과하므로 세 반응 모두 그린다(DT·마손도는 참고) — 사용자 2026-09-29
+    assert st["steps"]["surface"]["data"]["responses"] == ["Hardness", "DT", "Friability"] and st["steps"]["surface"]["data"]["unexplained"] == ["DT", "Friability"]
     an = {x["response"]: x for x in st["steps"]["anova"]["data"]["responses"]}
     assert an["DT"]["unexplained"] and "rows" in an["Hardness"]
     risk = report.risk_report(st)
@@ -373,3 +374,45 @@ def test_step9_paper_fill_buttons_use_real_cited_tables(svc):
     fams = {r["response"]: (r["suggested"], r["status"]) for r in out["study"]["steps"]["regression"]["data"]["responses"]}
     assert set(fams.values()) == {("Reduced quadratic", "SELECTED")} and len(fams) == 4                              # overlay 파이프라인과 같은 선택
     assert PD.options("Lornoxicam")[0]["key"] == "almotairi2022_t3"
+
+
+def test_step10_paper_equations_button(svc):
+    """10단계 '논문 식으로 설정'(사용자 2026-09-29) — 실험 표가 Monton 2026 Table 9면 논문 모형 차수(Table 10)로 식을 세운다.
+    CBD 참고 study가 아니어도 9단계를 논문 표로 채웠으면 쓸 수 있고, 모형 차수를 싣지 않은 표(Almotairi)에는 없다."""
+    from formula.stage2 import paper_designs as PD
+    sid = cbd(svc)
+    walk(svc, sid, upto="regression")
+    assert svc.view(sid)["paper_families"]["families"] == REF.PAPER_FAMILIES
+    out = svc.act(sid, "use_reference", {})
+    reg = out["study"]["steps"]["regression"]
+    fams = {r["response"]: (r["family"], r["status"]) for r in reg["data"]["responses"]}
+    assert reg["source"] == "paper" and fams == {"Hardness": ("Linear", "SELECTED"), "DT": ("Quadratic", "UNEXPLAINED"),
+                                                 "Friability": ("2FI", "UNEXPLAINED")}
+    dt = next(r for r in reg["data"]["responses"] if r["response"] == "DT")
+    assert dt["coded_eq"].startswith("Y2 = 15.62 + 1.065X1 + 1.666X2")                       # 논문 Table 10 식 그대로(게이트는 불합격 — 참고)
+    assert not out["action_result"]["blocking"]                                             # 경도가 통과하므로 승인 가능
+    assert svc._paper_families({"reference": False, "steps": {"design": {"data": PD.design("monton2026_t9")}}})["locator"] == "Table 10"
+    assert svc._paper_families({"reference": True, "steps": {"design": {"data": PD.design("almotairi2022_t3")}}}) is None
+    other = cbd(svc)
+    walk(svc, other, upto="design")
+    svc.act(other, "use_paper", {"paper": "almotairi2022_t3"})
+    svc.act(other, "approve", {})
+    with pytest.raises(StudyError):
+        svc.act(other, "use_reference", {})
+
+
+def test_surfaces_draw_every_response_when_any_passes_the_gate(svc):
+    """11단계(사용자 2026-09-29): 게이트 통과 반응이 하나라도 있으면 모든 반응의 곡면을 그리고 불합격은 '참고'로 표시한다.
+    전부 불합격이면(10단계가 막으므로 실제로는 오지 않는다) 그리지 않는다. 영역·ANOVA는 여전히 통과 반응만."""
+    d = REF.design()
+    auto = T.surfaces(d, T.regression(d))
+    assert [(r["name"], r["gate_passed"]) for r in auto["responses"]] == [("Hardness", True), ("DT", False), ("Friability", False)]
+    assert "평균 모형" in auto["responses"][1]["status"]
+    paper = T.surfaces(d, T.regression(d, REF.PAPER_FAMILIES))
+    assert [r["status"] for r in paper["responses"]] == ["Linear", "Quadratic · 검증 게이트 불합격 — 참고", "2FI · 검증 게이트 불합격 — 참고"]
+    assert T.surfaces(d, T.regression(d, {"Hardness": "Quadratic", "DT": "Mean", "Friability": "Mean"}))["responses"] == []
+    sid = cbd(svc)
+    out = walk(svc, sid, upto="anova")
+    surf = out["study"]["steps"]["surface"]["data"]
+    assert surf["responses"] == ["Hardness", "DT", "Friability"] and surf["unexplained"] == ["DT", "Friability"]
+    assert [r["response"] for r in out["study"]["steps"]["anova"]["data"]["responses"] if not r.get("unexplained")] == ["Hardness"]

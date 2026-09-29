@@ -49,7 +49,9 @@ def catalog() -> Dict[str, Dict[str, Any]]:
     a = _almotairi()
     return {
         "monton2026_t9": {"label": "CBD 구강붕해정 · Monton 2026 Table 9", "runs": len(REF.design()["rows"]), "api": ("cannabidiol", "cbd"),
-                          "citation": REF.citation(), "locator": "Table 9", "data": REF.design()},
+                          "citation": REF.citation(), "locator": "Table 9", "data": REF.design(),
+                          # 논문이 반응별로 쓴 모형 차수(Table 10 식 · Table 11 ANOVA) — 10단계 '논문 식으로 설정'
+                          "families": dict(REF.PAPER_FAMILIES), "families_locator": "Table 10", "short": "Monton 2026"},
         "almotairi2022_t3": {"label": "로르녹시캄 분산정 · Almotairi 2022 Table 3", "runs": len(a["data"]["rows"]), "api": ("lornoxicam", "로르녹시캄"),
                              "citation": a["citation"], "locator": a["locator"], "data": a["data"]},
     }
@@ -60,6 +62,14 @@ def options(api: Optional[str]) -> List[Dict[str, Any]]:
     a = str(api or "").lower()
     out = [{"key": k, "label": v["label"], "runs": v["runs"], "match": any(t in a for t in v["api"])} for k, v in catalog().items()]
     return sorted(out, key=lambda o: not o["match"])
+
+
+def families(key: Optional[str]) -> Optional[Dict[str, Any]]:
+    """그 논문 표에 대해 논문이 보고한 반응별 모형 차수 — 없으면 None(Almotairi 표는 싣지 않았다)."""
+    v = catalog().get(str(key or ""))
+    if not v or not v.get("families"):
+        return None
+    return {"families": dict(v["families"]), "locator": v["families_locator"], "citation": v["citation"], "short": v["short"]}
 
 
 def design(key: str) -> Optional[Dict[str, Any]]:
