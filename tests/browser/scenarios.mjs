@@ -62,6 +62,19 @@ await p.waitForFunction(() => (document.getElementById('drq-out') || {}).textCon
 const drqOutText = await p.locator('#drq-out').textContent().catch(() => '');
 ck('재계산 → 분무건조 ASD가 계획에(그래프 재실행 없음)', drqOutText.includes('ASD_SDD'), drqOutText.replace(/\s+/g, ' ').slice(0, 160));
 ck('값 제출 뒤 후보 처방 카드가 대화에 이어진다', await p.locator('#agent-log #panel-cands').count() === 1);
+// 전략이 바뀌어 후보를 다시 만들었으면 카드도 새 후보로 바뀌어야 한다 — 옛 카드로 개발 착수를 누르면 서버에 없는 후보라 넘어가지 못했다
+const regen = /다시 생성했습니다/.test(drqOutText);
+const ids = await p.$$eval('#agent-log #panel-cands .card', (cs) => cs.map((c) => c.dataset.cand));
+ck('재생성된 후보로 카드가 바뀜', !regen || ids.every((i) => i.startsWith('cand-reassess-')), ids.join(','));
+await p.waitForTimeout(1500);
+const dev = p.locator('#agent-log #panel-cands .dev-start:not([disabled])').first();
+if (await dev.count()) {
+  await dev.click();
+  const w = p.locator('#agent-log #panel-cands .ev-waive:not([hidden])').first();
+  if (await w.waitFor({ timeout: 5000 }).then(() => true).catch(() => false)) await w.locator('.ev-waive-go').click();
+  await p.waitForSelector('#s2 .s2-step.current[data-step="prototype"]', { timeout: 60000 }).catch(() => {});
+  ck('측정값 제출 뒤 후보로 2단계 진입', await p.locator('#s2 .s2-step.current[data-step="prototype"]').count() === 1);
+}
 const bodyText = await p.evaluate(() => document.body.innerText);
 ck('화면에 실제 물질명이 없다(개발코드만)', !/ivacaftor|kalydeco|이바카프토|칼리데코/i.test(bodyText));
 ck('시연 카드는 대화 시작 뒤에도 맨 위에 남는다', await p.locator('#hello .scenario').count() === 4);

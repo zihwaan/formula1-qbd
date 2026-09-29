@@ -440,10 +440,17 @@ async def submit_measurements(run_id: str, payload: MeasurementsRequest) -> Dict
     if unknown:
         raise HTTPException(422, f"존재하지 않는 첨부: {', '.join(unknown)}")
     try:
-        return await asyncio.to_thread(execution.reassess_with_measurements, payload.measurements,
-                                       payload.grade, payload.source, payload.attachments)
+        out = await asyncio.to_thread(execution.reassess_with_measurements, payload.measurements,
+                                      payload.grade, payload.source, payload.attachments)
     except KeyError as exc:
         raise HTTPException(409, f"아직 설계가 끝나지 않았습니다: {exc}")
+    if out.get("regenerated"):
+        # 전략이 바뀌어 후보를 다시 만들었다 — 화면이 옛 후보 카드를 새 후보로 바꿔 그릴 수 있게 처방·판정을 함께 돌려준다
+        # (옛 카드가 남아 있으면 서버에 없는 후보로 '개발 착수'를 누르게 된다)
+        out["results"] = [{"candidate_id": r["candidate_id"], "recipe": r["recipe"].model_dump(mode="json"), "passed": bool(r.get("passed")),
+                           "verdicts": [{"rule_id": v.rule_id, "status": getattr(v.status, "value", v.status)} for v in r.get("verdicts") or []]}
+                          for r in (execution.final or {}).get("results") or []]
+    return out
 
 
 class StudyActionRequest(BaseModel):

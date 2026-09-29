@@ -53,15 +53,18 @@ check('후보 카드에 근거 결손 게이트 판정(발표 ⑤)', /근거 (�
 await page.locator('#agent-log #panel-cands .dev-start').first().click();
 const waive = page.locator('#agent-log #panel-cands .ev-waive:not([hidden])').first();
 if (await waive.waitFor({ timeout: 5000 }).then(() => true).catch(() => false)) {
-  await page.locator('#agent-log #panel-cands .ev-waive-go').first().click();
-  check('사유 없이 착수 안 됨(알림)', /사유를 적어/.test(await page.locator('#notice').textContent()));
-  await waive.locator('textarea').fill('선행 확인시험은 DoE 1차 배치와 병행해 확인');
+  const pre = await waive.locator('textarea').inputValue();
+  check('결손 사유가 미리 채워짐(무엇이 비었는지 · 고칠 수 있음)', /선행 근거/.test(pre) && /T_[A-Z_]+/.test(pre), pre.slice(0, 80));
+  await waive.locator('textarea').fill('');
   await waive.locator('.ev-waive-go').click();
+  check('사유를 비우면 착수 안 됨(칸 안에 안내)', /사유를 적어/.test(await waive.locator('.ev-waive-msg').textContent()));
+  await waive.locator('textarea').fill(pre);
+  await waive.locator('.ev-waive-go').click();                       // 미리 채운 사유 그대로 — 한 번 누르면 2단계
 }
 await page.waitForSelector('#s2 .s2-step.current[data-step="prototype"]', { timeout: 60000 });
 check('불변 Handoff(요청 맥락 · fingerprint) 표시', await page.locator('#s2 .s2-handoff code').count() >= 1);
 const hoText = (await page.locator('#s2 .s2-handoff').textContent()).replace(/\s+/g, ' ');
-check('Handoff에 근거 결손 판정(사유 포함)이 남음', /근거/.test(hoText), (hoText.match(/근거[^|]{0,80}/) || [''])[0]);
+check('Handoff에 근거 결손 판정(사유 포함)이 남음', /연구자 사유: 선행 근거/.test(hoText), (hoText.match(/근거 결손 게이트[^|]{0,80}/) || [''])[0]);
 const loading = await page.locator('#s2 .s2-handoff').textContent();
 const pct = Number((loading.replace(/\s+/g, ' ').match(/약물 함량\s*([\d.]+)/) || [])[1]);
 check('Handoff에 약물 함량(저함량 < 5 %)', pct > 0 && pct < 5, `${pct} %`);

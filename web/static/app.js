@@ -390,26 +390,46 @@ function devButton(id) {
   if (failed) return `<button type="button" class="dev-start" disabled title="확인시험 부적합 — 재설계가 필요합니다">개발 불가(근거 부적합)</button>`;
   return `<button type="button" class="dev-start${open ? " hold" : ""}" data-cand="${esc(id)}"
     title="이 처방을 프로토타입으로 받아 2단계(QTPP → 위험평가 → DoE → 회귀·ANOVA → Design Space)를 시작합니다">${open ? "결손을 기록하고 개발 착수 →" : "이 후보로 개발 착수 →"}</button>
-    ${open ? `<div class="ev-waive" hidden><textarea rows="2" placeholder="근거 결손을 둔 채 진행하는 사유(예: DoE 배치에서 함께 확인)"></textarea>
-      <button type="button" class="ev-waive-go">사유 기록 · 개발 착수</button></div>` : ""}`;
+    ${open ? `<div class="ev-waive" hidden><p class="ev-why">선행 근거 ${open}건이 비어 있습니다 — 아래 사유를 확인하고(고칠 수 있음) <b>사유 기록 · 개발 착수</b>를 누르면
+      사유와 남은 결손이 2단계 기록·보고서에 남고 바로 2단계로 넘어갑니다. 확인시험 결과가 있으면 위 근거 상자에서 넣으면 됩니다.</p>
+      <textarea rows="3" aria-label="근거 결손을 둔 채 진행하는 사유"></textarea>
+      <button type="button" class="ev-waive-go">사유 기록 · 개발 착수 →</button><span class="ev-waive-msg" role="status"></span></div>` : ""}`;
+}
+// 결손 사유 기본 문구 — 무엇이 비었는지와 언제 확인할지만 적는다(수치를 만들지 않는다). 연구자가 고쳐 쓸 수 있다.
+function waiverDefault(cid) {
+  const ev = evidence[cid] || {};
+  const gaps = ((ev.protocol || {}).before_protocol || []).filter((g) => g.status === "missing").map((g) => `${g.label}(${g.test_id})`);
+  return `선행 근거 결과 없이 진행: ${gaps.join(", ") || "결손 항목"} — 개발 초기 배치와 병행해 확인하기로 함(연구자 판단).`;
 }
 const cardOf = (cid) => [...$("cands").querySelectorAll(".card")].find((c) => c.dataset.cand === cid) || null;
 // 결과: "started"(2단계 열림) | "waiver"(결손 — 카드에 사유 칸을 열었음) | "error". 후보 카드 버튼과 입력 에이전트가 같은 길을 쓴다.
 async function startDevelopment(cid, card, retried) {
   if (!evidence[cid] && runId && !running) await loadEvidence();     // 판정을 읽기 전에 눌렀으면 먼저 읽는다
   if (!card || !card.isConnected) card = cardOf(cid);                // loadEvidence가 카드를 다시 그린다
+  if (!card && candidates.has(cid)) { renderCandidates(); card = cardOf(cid); }
   const ev = evidence[cid] || {};
   const open = ((ev.blocking || []).length - (ev.failed || []).length) > 0;
-  if (open && card) {           // 결손이 남았으면 사유를 받는다 — 연구자 결정으로 Handoff와 보고서에 남는다
+  if (open && !card) {          // 사유 칸을 열 카드가 없다 — 사유 없이 서버로 보내 409를 반복하지 않는다
+    notice(`후보 ${cid}의 카드가 화면에 없습니다 — 후보 카드의 [결손을 기록하고 개발 착수]로 진행해 주세요.`, "warn");
+    return "error";
+  }
+  if (open) {                   // 결손이 남았으면 사유를 받는다 — 연구자 결정으로 Handoff와 보고서에 남는다
     const w = card.querySelector(".ev-waive");
-    w.hidden = false;
+    const ta = w.querySelector("textarea"), msg = w.querySelector(".ev-waive-msg"), go = w.querySelector(".ev-waive-go");
+    if (w.hidden) { w.hidden = false; if (!ta.value.trim()) ta.value = waiverDefault(cid); }
     w.scrollIntoView({ block: "center", behavior: "smooth" });   // 카드가 한 화면보다 길다 — 사유 칸 자체를 가운데로
-    w.querySelector("textarea").focus({ preventScroll: true });
-    w.querySelector(".ev-waive-go").onclick = async () => {
-      const reason = w.querySelector("textarea").value.trim();
-      if (!reason) { notice("사유를 적어 주세요 — 근거 결손을 둔 채 진행한 이유가 2단계 기록에 남습니다.", "warn"); return; }
-      try { await window.F1Stage2.startFromCandidate(runId, cid, reason); } catch (e) { /* stage2.js가 알린다 */ }
+    go.focus({ preventScroll: true });
+    const submit = async () => {
+      const reason = ta.value.trim();
+      if (!reason) { msg.textContent = "사유를 적어 주세요 — 근거 결손을 둔 채 진행한 이유가 2단계 기록에 남습니다."; ta.focus(); return; }
+      msg.textContent = "2단계를 여는 중…";
+      go.disabled = true;
+      try { await window.F1Stage2.startFromCandidate(runId, cid, reason); msg.textContent = "2단계를 열었습니다 — 아래로 이어집니다."; }
+      catch (e) { msg.textContent = e.message || "2단계를 열지 못했습니다."; }
+      finally { go.disabled = false; }
     };
+    go.onclick = submit;
+    ta.onkeydown = (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } };
     return "waiver";
   }
   try {
@@ -1130,11 +1150,25 @@ async function submitMeasurements(measurements, grade = "self_measured", source 
     }
     $("drq-out").innerHTML = `<div class="drq-refine">${resultMsg}
       근거 등급 ${esc(GRADE_KO[grade] || grade)} · plan_signature = <code>${esc(out.plan_signature)}</code></div>`;
-    const entry = candidates.get(summary.winner);
-    if (entry) {
-      entry.recipe.confidence = summary.confidence;
-      entry.recipe.pending_refinements = summary.pending_refinements;
+    if (out.regenerated && Array.isArray(out.results)) {
+      // 전략이 바뀌어 후보를 다시 만들었다 — 옛 카드를 새 후보로 바꾼다(옛 후보는 서버에 더 이상 없어 개발 착수가 안 된다)
+      candidates.clear();
+      rankOf.clear();
+      evidence = {};
+      for (const r of out.results) {
+        candidates.set(r.candidate_id, { recipe: r.recipe, verdicts: r.verdicts || [], judges: [],
+          gate: { passed: r.passed, total: (r.verdicts || []).length, failures: (r.verdicts || []).filter((v) => v.status === "hard_fail").length } });
+      }
+      (summary.ranked || []).forEach((x) => { if (x.rank) rankOf.set(x.candidate_id, x.rank); });
+      $("consensus").hidden = true;
       renderCandidates();
+    } else {
+      const entry = candidates.get(summary.winner);
+      if (entry) {
+        entry.recipe.confidence = summary.confidence;
+        entry.recipe.pending_refinements = summary.pending_refinements;
+        renderCandidates();
+      }
     }
     announceRun();
     return out;
@@ -1473,7 +1507,8 @@ async function continueScenario() {
       title: "후보를 골라 2단계로 — 9단계에서 논문 실측 15 run을 불러온다",
       body: `후보 카드의 <b>이 후보로 개발 착수</b>를 누르면 조성·공정과 요청 맥락이 불변 Handoff로 넘어가 2단계가 열립니다(1위 자동 진입 없음).
         9단계 표 위의 <b>논문 실측값으로 채우기 — 로르녹시캄 분산정 · Almotairi 2022 Table 3</b>을 누르면(또는 CSV 불러오기) 10단계 검증 게이트를 거쳐 13단계 Overlay plot(control space · 최적 처방)이 계산됩니다.
-        <span class="nr-why">왜 중요한가: 평균 반응면만 보면 영역을 약 1.6배 과대평가합니다 — 미래 배치의 예측분포로 봐야 합니다.</span>`,
+        후보마다 <b>근거 결손 게이트</b>(예: BCS 근거 자료)가 걸려 있으면 [결손을 기록하고 개발 착수] → 미리 채워진 사유를 확인하고 [사유 기록 · 개발 착수]를 누르면 넘어갑니다.
+        <span class="nr-why">왜 중요한가: 검증 게이트를 넘은 회귀식만 영역을 그리고, 운전 범위(control space)는 평균 예측이 모든 목표를 만족하는 곳 안에서 정합니다.</span>`,
     });
   }
   if (activeScenario && activeScenario.followUp && window.F1Agent) {

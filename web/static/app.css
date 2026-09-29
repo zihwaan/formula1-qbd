@@ -238,3 +238,7 @@ table.desc tfoot td { padding-top: 6px; }
 .dev-start.hold { border-style: dashed; border-color: color-mix(in srgb, var(--status-warn) 70%, var(--ink-1)); background: var(--surface-1); color: var(--ink-1); }
 .ev-waive { margin-top: 6px; display: grid; gap: 5px; }
 .ev-waive textarea { font: inherit; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); color: var(--ink-1); resize: vertical; }
+.ev-waive { border: 1px dashed color-mix(in srgb, var(--status-warn) 55%, var(--border)); border-radius: var(--radius-s); padding: 8px 10px; background: var(--surface-1); }
+.ev-waive .ev-waive-go { justify-self: start; padding: 8px 16px; font-size: 12.5px; }
+.ev-waive-msg { font-size: 11.5px; color: var(--ink-2); }
+.ev-waive-msg:empty { display: none; }
