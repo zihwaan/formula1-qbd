@@ -386,6 +386,8 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
   font-family: inherit; font-size: 12px;
 }
 .inputs-field input:focus, .inputs-check input:focus { outline: none; border-color: var(--ink-1); }
+.inputs-field.filled input { border-color: var(--ink-1); font-weight: 700; }   /* 시연 카드가 넣은 값 */
+.inputs-field.filled > span, .inputs-field.filled { color: var(--ink-1); }
 .inputs-field small, .inputs-check small {
   display: block; margin-top: 3px; font-size: 10px; color: var(--ink-muted); line-height: 1.5;
 }

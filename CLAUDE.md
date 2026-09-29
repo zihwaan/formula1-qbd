@@ -640,6 +640,9 @@ cards, grayscale tokens from `styles.css`, black pill primary buttons. No sideba
   (`f1:drqdone` arrives *after* the recompute's `f1:run`, so it places the cands itself); `f1:flowready` → agent nudge.
   A drq card already in the thread never disappears — `renderDataRequests` leaves a "남은 요청 없음" line instead of hiding it.
 - Right column is open by default above 1180 px (pref in `localStorage f1:drawer`), fixed overlay below, full screen ≤ 760 px.
+- Demo cards run on click but follow the same thread shape as an agent start: user bubble → **실험 데이터 입력 card** (moved in by
+  `flow.js f1:runstart` when `detail.scenario`, the scenario's `measuredParams` shown as `.inputs-field.filled`) → API 물리화학 → …
+  (user, 2026-09-29: "시연 데모가 실험값 입력카드가 안 뜬다").
 - Demo cards = the presentation's scenarios: ① Lornoxicam full pipeline (flow inputs 42°/22 %/1.28, then 개발 착수 → CSV → Design Space),
   ② geriatric amlodipine + pinned lactose (infeasible — `renderInfeasible` puts the conclusion **first inside the candidates card**: blocking rule
   deduped · alternatives · also-blocking rules · `planned_judges` = who *would* have reviewed, computed by `node_infeasible` from

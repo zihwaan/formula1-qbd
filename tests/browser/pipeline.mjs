@@ -37,6 +37,10 @@ async function blocked() {
 console.log('\n[1단계] 시연 카드 ① 로르녹시캄');
 await page.locator('.scenario', { hasText: '로르녹시캄' }).click();
 await page.waitForSelector('#agent-log #panel-chem', { timeout: 60000 });
+const order = await page.evaluate(() => { const ids = [...document.querySelectorAll('#agent-log .ad-msg')].map((r) => r.querySelector('#card-inputs') ? 'inputs' : r.querySelector('#panel-chem') ? 'chem' : r.classList.contains('user') ? 'user' : ''); return ids.filter(Boolean).join('>'); });
+check('시연 카드 → 요청 · 실험 데이터 입력 카드 · 물리화학 순서', /user>inputs>chem/.test(order), order);
+const filled = await page.$$eval('#agent-log #card-inputs .inputs-field.filled input', (xs) => xs.map((x) => `${x.dataset.key}=${x.value}`));
+check('실험 데이터 입력 카드에 시연 값(안식각 42 · Carr 22 · Hausner 1.28 · 용량 8)', ['angle_of_repose=42', 'dose_mg=8'].every((v) => filled.includes(v)), filled.join(' '));
 check('입력칸 아래로 · 히어로와 시연 카드는 맨 위에 남음', await page.evaluate(() => !!document.querySelector('#dock-inner #agent-box') && !!document.querySelector('#hello .scenario')));
 await page.waitForFunction(() => document.getElementById('run').textContent.trim() === '설계 실행' && (document.querySelector('#agent-log #drq:not([hidden])') || document.querySelector('#agent-log #panel-cands')), null, { timeout: 600000 });
 await shot('01_stage1');

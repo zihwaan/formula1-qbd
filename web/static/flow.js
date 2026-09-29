@@ -56,8 +56,17 @@
   document.addEventListener("f1:runstart", (e) => {
     const d = e.detail || {};
     // 시연 카드·직접 입력으로 시작한 설계는 요청을 사용자 말풍선으로 남긴다(에이전트 카드로 시작하면 이미 대화에 있다)
-    if (d.scenario && window.F1Agent) window.F1Agent.say("user", `시연 — ${d.scenario}: ${d.request}`);
-    else if (manualRun && window.F1Agent) window.F1Agent.say("user", `직접 입력 — ${d.request || "설계 실행"}`);
+    if (d.scenario && window.F1Agent) {
+      window.F1Agent.say("user", `시연 — ${d.scenario}: ${d.request}`);
+      // 시연 카드도 대화형 흐름과 같게 — 요청 밑에 실험 데이터 입력 카드(시연 쿼리 카드의 값이 채워진 채)를 놓는다
+      const card = $("card-inputs");
+      const vals = [...card.querySelectorAll("#inputs-body input")].filter((i) => (i.type === "checkbox" ? i.checked : i.value !== ""));
+      card.querySelectorAll(".filled").forEach((x) => x.classList.remove("filled"));
+      vals.forEach((i) => i.closest("label")?.classList.add("filled"));
+      $("inputs").open = true;
+      place(card, `실험 데이터값 — ${vals.length ? `시연 쿼리 카드의 값 ${vals.length}개를 넣고 설계를 실행했습니다` : "넣은 값 없이 실행(값을 몰라도 후보부터)"}
+        <small>실측은 추정보다 우선 · 비운 칸은 “모른다”로 보고 갈리는 지점에서만 데이터 요청</small>`);
+    } else if (manualRun && window.F1Agent) window.F1Agent.say("user", `직접 입력 — ${d.request || "설계 실행"}`);
     manualRun = false;
     ["drq", "panel-cands"].forEach((id) => { const n = $(id); if (n && !n.closest("#stash")) { freeze(n); $("stash").append(n); } });
     run = { id: d.runId, drqShown: false, candsShown: false, wantCands: false };

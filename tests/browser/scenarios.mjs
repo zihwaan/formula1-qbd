@@ -29,6 +29,8 @@ ck('시연 카드 4장(①②③ + 2단계 CBD)', await p.locator('#scenarios .s
 // ── 시연 ② 고령자 암로디핀 + 유당 고정 ──────────────────────────────────
 console.log('\n[시연 ② · 고령자용 암로디핀 2.5 mg — 유당을 고정하면?]');
 await p.locator('.scenario', { hasText: '암로디핀' }).click();
+await p.waitForSelector('#agent-log #card-inputs', { timeout: 20000 }).catch(() => {});
+ck('시연 카드 → 실험 데이터 입력 카드가 대화에(용량 2.5 채워짐)', await p.locator('#agent-log #card-inputs .inputs-field.filled input[data-key="dose_mg"]').inputValue().catch(() => '') === '2.5');
 await waitDone();
 await p.waitForTimeout(1000);
 let trace = await p.locator('#trace').textContent();
