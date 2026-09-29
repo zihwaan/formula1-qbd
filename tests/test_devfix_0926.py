@@ -79,6 +79,35 @@ def test_dose_mismatch_is_rejected_and_salt_is_converted(registry):
     assert all(v.status == VerdictStatus.PASS for v in _by(salt, "RC002"))
 
 
+FLUOXETINE = "CNCCC(C1=CC=CC=C1)OC2=CC=C(C=C2)C(F)(F)F"
+METFORMIN = "CN(C)C(=N)N=C(N)N"
+
+
+def test_salt_named_amount_on_free_base_structure_is_converted(registry):
+    """어블레이션(보고서 7.8)에서 찾은 오판 — 유리염기 구조로 요청했는데 후보가 염 이름으로 적은 함량을 그대로 읽어 반려했다.
+    플루옥세틴 염산염 11.18 mg = 유리염기 10 mg, 메트포르민 염산염 641.2 mg = 유리염기 500 mg(짝이온 표 + RDKit MolWt)."""
+    fx = _spec("Fluoxetine", FLUOXETINE, dose=10, population="pediatric")
+    ok = registry.run(fx, _recipe("Fluoxetine hydrochloride, anhydrous", 11.18, BASE), short_circuit=False)
+    assert [v.status for v in _by(ok, "RC002")] == [VerdictStatus.PASS]
+    assert _by(ok, "RC002")[0].evidence["conversion"] == "counterion:SALT001"
+    bad = registry.run(fx, _recipe("Fluoxetine HCl", 10, BASE), short_circuit=False)          # 염 10 mg = 유리염기 8.95 mg
+    assert [v.status for v in _by(bad, "RC002")] == [VerdictStatus.HARD_FAIL]
+    mf = _spec("Metformin", METFORMIN, dose=500)
+    ok2 = registry.run(mf, _recipe("Metformin hydrochloride (equivalent to metformin free base 500 mg)", 641.2, BASE),
+                       short_circuit=False)
+    assert [v.status for v in _by(ok2, "RC002")] == [VerdictStatus.PASS]
+
+
+def test_salt_with_unknown_stoichiometry_is_not_checked_not_rejected(registry):
+    """짝이온 수·수화물이 붙거나 표에 없는 염은 계수를 정하지 않는다 — 반려도 통과도 아닌 미검사(SOFT_FLAG)."""
+    fx = _spec("Fluoxetine", FLUOXETINE, dose=10, population="pediatric")
+    for name in ("Fluoxetine dihydrochloride", "Fluoxetine hydrochloride monohydrate", "Fluoxetine tartrate"):
+        res = registry.run(fx, _recipe(name, 11.18, BASE), short_circuit=False)
+        v = _by(res, "RC002")
+        assert [x.status for x in v] == [VerdictStatus.SOFT_FLAG], name
+        assert v[0].evidence["conversion"].startswith("unknown"), name
+
+
 def test_missing_dose_is_flagged_not_silently_passed(registry):
     res = registry.run(_spec("Amlodipine", AMLODIPINE_BESYLATE), _recipe("Amlodipine", 5, BASE), short_circuit=False)
     assert _by(res, "RC002")[0].status == VerdictStatus.SOFT_FLAG

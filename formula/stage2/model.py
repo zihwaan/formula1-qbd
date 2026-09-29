@@ -13,7 +13,7 @@
 10 regression: doe.regression(...) + chosen{response: family}                                                                               (Table 10)
 11 surface   : {images?}  곡면은 10의 선택 모형으로 그때그때 계산
 12 anova     : doe.anova(...)                                                                                                                (Table 11)
-13 space     : {specs[{response, unit, op, lower, upper, basis}], region}  ← space.region (공동확률 ≥ 0.90 · 설정점)
+13 space     : {specs[{response, unit, op, lower, upper, basis}], slice?}  ← space.region (평균 기준 Overlay 영역 · control space · 최적 처방)
 14 vplan     : {delta, reference?, plan}  ← space.plan (SETPOINT · BOUNDARY · ROBUSTNESS, Bonferroni 예측구간 — 승인 = 잠금)
 15 verify    : {independent, observations[{role, values}], judgement}  ← space.judge (규격 통과 × 예측구간 2×2)
 """
@@ -30,7 +30,7 @@ STEPS = ["prototype", "qtpp", "cqa", "rm_just", "rm_matrix", "fp_just", "fp_matr
 TITLE = {"prototype": "프로토타입", "qtpp": "QTPP", "cqa": "CQA 판별", "rm_just": "원료 물성 위험평가", "rm_matrix": "원료 위험평가 정리",
          "fp_just": "제형·공정 변수 위험평가", "fp_matrix": "제형·공정 위험평가 정리", "recommend": "종합 정리 · 위험평가 보고서",
          "design": "실험 설계 입력", "regression": "회귀식 · 모형 진단", "surface": "반응 곡면", "anova": "ANOVA",
-         "space": "Design Space (공동확률)", "vplan": "확인계획 잠금", "verify": "확인배치 · 2×2 판정"}
+         "space": "Design Space (Overlay plot)", "vplan": "확인계획 잠금", "verify": "확인배치 · 2×2 판정"}
 TABLE = {"prototype": "Table 1", "qtpp": "Table 3", "cqa": "Table 4", "rm_just": "Table 6", "rm_matrix": "Table 5", "fp_just": "Table 8",
          "fp_matrix": "Table 7", "design": "Table 9", "regression": "Table 10", "surface": "Figure 1", "anova": "Table 11",
          "space": "Peterson 2008", "vplan": "확인점 3", "verify": "2×2"}

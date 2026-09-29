@@ -125,3 +125,39 @@ def test_contest_api_quota_exhaustion_falls_back_to_free_model(monkeypatch):
     monkeypatch.setattr(C, "_groq_parse", lambda fmt, *a, **k: fmt(a=3))
     assert C.parse_structured(A, "s", "u").a == 3
     assert C._DACON_EXHAUSTED["flag"] and C.provider() == "groq"
+
+
+IVACAFTOR = "CC(C)(C)C1=CC(=C(C=C1NC(=O)C2=CNC3=CC=CC=C3C2=O)O)C(C)(C)C"
+
+
+def _pubchem_by_code(name):
+    """PubChem은 개발코드 동의어로도 구조를 찾는다(VX-770 → CID 16220172, 표제명 Ivacaftor)."""
+    return {"found": True, "cid": 16220172, "url": "https://pubchem.ncbi.nlm.nih.gov/compound/16220172",
+            "properties": {"Title": "Ivacaftor", "SMILES": IVACAFTOR}}
+
+
+def test_development_code_stays_the_name_and_real_names_are_masked():
+    """시연 쿼리 카드 수정판 실행 보고서(2026-09-29) §5-1 — 모델이 기억으로 'Ivacaftor'를 채워 카드 제목·요청문에 실명이 들어가
+    블라인드가 깨졌다. 코드가 이름이고, 모델 문장의 실명(표제명·같은 구조의 라벨 제품명)도 코드로 가린다."""
+    msg = "신규 후보물질 VX-770의 성인용 경구 정제 제형 전략을 세워 줘. 1회 150 mg이고, 구조식만 있고 실측 자료는 거의 없어."
+    out = ia.AgentOutput(reply="VX-770은 ivacaftor(Kalydeco)입니다.", intent="start_run",
+                         run=ia.RunDraft(api_name="Ivacaftor", dose_mg=150, target_population="adult", dosage_form="tablet"))
+    res = _respond(out, msg, lookup=_pubchem_by_code)
+    p = res["proposals"][0]
+    assert p["ready"] and p["smiles_source"]["kind"] == "pubchem" and p["title"] == "설계 실행: 성인용 VX-770 정제"
+    text = str(res).lower()
+    assert "ivacaftor" not in text and "kalydeco" not in text
+    assert "VX-770" in p["request"]
+
+
+def test_real_name_typed_by_user_is_not_replaced():
+    out = ia.AgentOutput(reply="", intent="start_run", run=ia.RunDraft(api_name="Ivacaftor", dose_mg=150, target_population="adult"))
+    res = _respond(out, "성인용 ivacaftor 150 mg 정제", lookup=_pubchem_by_code)
+    assert "Ivacaftor" in res["proposals"][0]["title"]
+
+
+def test_running_blind_map_masks_later_turns():
+    out = ia.AgentOutput(reply="이 물질은 ivacaftor라서 분무건조가 맞습니다.", intent="explain")
+    res = ia.build_response(out, "llm", "왜 분무건조야?", [], ia.snapshot("discovery", None, None, CATALOG), CATALOG, INPUTS,
+                            None, {"ivacaftor": "VX-770"})
+    assert "ivacaftor" not in res["reply"].lower() and "VX-770" in res["reply"]

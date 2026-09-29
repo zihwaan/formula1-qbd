@@ -78,8 +78,20 @@ class ExcipientMatch:
 # ---------------------------------------------------------------------------
 # 정규화
 # ---------------------------------------------------------------------------
+@lru_cache(maxsize=8)
+def _noise_phrases(patterns: Tuple[str, ...]):
+    return re.compile("|".join(f"(?:{p})" for p in patterns))
+
+
 def _tokenize(name: str, noise: frozenset) -> Tokens:
     text = unicodedata.normalize("NFKC", str(name or "")).lower()
+    # 여러 낱말로 된 등급 구절(“direct-compression grade”, “PH 102”)은 낱말 하나씩 버리면 위험하다 —
+    # “low”를 버리면 저치환도 HPC가 HPC가 된다. 그래서 구절째로만 지운다(noise_patterns, 're:' 접두로 noise에 실린다).
+    phrases = tuple(sorted(n[3:] for n in noise if n.startswith("re:")))
+    if phrases:
+        cut = _noise_phrases(phrases).sub(" ", text)
+        if _TOKEN_SPLIT.sub("", cut):
+            text = cut
     tokens = [t for t in _TOKEN_SPLIT.split(text) if t]
     kept = tuple(t for t in tokens if t not in noise)
     # 전부 규격 토큰이면(예: "USP") 버리지 않는다 — 빈 이름은 아무것과도 못 만난다
@@ -133,10 +145,10 @@ class ExcipientResolver:
         self.config_path = Path(config_path) if config_path else (
             self.base_dir / "config" / "excipient_aliases.yaml")
         config = self._load_config()
-        self.noise: frozenset = frozenset(
+        self.noise: frozenset = (frozenset(
             _tokenize(t, frozenset())[0] if _tokenize(t, frozenset()) else ""
             for t in config.get("noise_tokens", []) or []
-        ) - {""}
+        ) - {""}) | frozenset(f"re:{p}" for p in config.get("noise_patterns", []) or [] if p)
         self._aliases: Dict[Tokens, List[str]] = {}
         self._known: Dict[Tokens, str] = {}
         self._load_masters()

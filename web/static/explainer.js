@@ -464,7 +464,7 @@
           <div class="f1-lvl"><span class="n">10</span>회귀식 (Table 10) — 후보를 AICc로 줄 세워 검증 게이트(모형 p · 적합결여 · 과적합 · 예측 R²)를 처음 넘는 모형, 전부 못 넘으면 승인 불가</div>
           <div class="f1-lvl"><span class="n">11</span>반응 곡면 (Figure 1) — 실험점 · 잔차 · 설계 지지 영역</div>
           <div class="f1-lvl"><span class="n">12</span>ANOVA (Table 11) — 부분 제곱합 · 적합결여 · 순수오차 → 최종 보고서 PDF</div>
-          <div class="f1-lvl"><span class="n">13</span>Design Space — 규격 입력 → 미래 배치 공동 통과확률 ≥ 0.90 영역 · 권장 설정점(영역이 없으면 멈춘다)</div>
+          <div class="f1-lvl"><span class="n">13</span>Design Space — 목표 입력 → 평균 예측 Overlay plot · control space · 최적 처방(평균 영역이나 control space가 없으면 멈춘다, 통과확률은 보조)</div>
           <div class="f1-lvl"><span class="n">14</span>확인계획 잠금 — 설정점 · 경계점 · 강건성 + 동시 예측구간, 결과 전에 잠금</div>
           <div class="f1-lvl"><span class="n">15</span>확인배치 — 새 독립 배치 실측 → 규격 통과 × 예측구간 안(2×2) → VERIFIED 또는 영역 무효화</div>
         </div>`,

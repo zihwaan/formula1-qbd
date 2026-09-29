@@ -97,15 +97,23 @@ def set_blind(names: Dict[str, str]) -> None:
 
 def mask(value: Any) -> Any:
     """가림표가 있으면 문자열(중첩 dict/list 포함)의 실명을 개발코드로 바꾼다. 없으면 그대로."""
-    import re
     bus = _current.get()
     if bus is None or not bus.blind:
         return value
-    pat = re.compile("|".join(re.escape(k) for k in sorted(bus.blind, key=len, reverse=True)), re.I)
+    return mask_names(value, bus.blind)
+
+
+def mask_names(value: Any, names: Dict[str, str]) -> Any:
+    """`mask`의 순수 함수판 — 실행 버스 밖(입력 에이전트 응답)에서도 같은 가림표로 가린다."""
+    import re
+    table = {k.lower(): v for k, v in (names or {}).items() if k and v and k.lower() != v.lower()}
+    if not table:
+        return value
+    pat = re.compile("|".join(re.escape(k) for k in sorted(table, key=len, reverse=True)), re.I)
 
     def walk(v: Any) -> Any:
         if isinstance(v, str):
-            return pat.sub(lambda m: bus.blind[m.group(0).lower()], v)
+            return pat.sub(lambda m: table[m.group(0).lower()], v)
         if isinstance(v, dict):
             return {k: walk(x) for k, x in v.items()}
         if isinstance(v, (list, tuple)):

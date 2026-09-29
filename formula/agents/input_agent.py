@@ -27,6 +27,8 @@ from pydantic import BaseModel, Field
 
 from formula.agents.client import LLMUnavailable, parse_structured
 
+ROOT_DIR = Path(__file__).resolve().parents[2]
+
 WAIT = 20.0
 NUM = r"-?\d+(?:\.\d+)?"
 
@@ -59,6 +61,7 @@ SYSTEM = """당신은 Formula 1 제형 설계 시스템의 입력 에이전트�
 - 숫자(용량·측정값·범위·규격)와 SMILES는 **사용자가 쓴 글에 있는 것만** 옮긴다. 추측·기억으로 채우지 않는다.
   모르면 비워 둔다.
 - 약 이름(또는 SMILES)이 있으면 **start_run**을 고르고 run을 채운다. api_name은 표준 영문명.
+  단 개발코드(예: ABC-123)로 부른 물질은 그 코드를 그대로 api_name으로 둔다 — 일반명·제품명으로 바꾸거나 언급하지 않는다(블라인드).
   SMILES를 사용자가 안 줬으면 비워 둔다 — 시스템이 내장 사전·PubChem에서 출처와 함께 찾는다(묻지 않는다).
   용량이 없으면 dose_mg를 비워 둔다 — 시스템이 따로 묻는다. 대화 앞부분에서 말한 조건도 run에 모은다.
 - intent 고르기:
@@ -344,9 +347,43 @@ def _find_smiles(draft: RunDraft, user_text: str, lookup) -> Tuple[str, Dict[str
     return "", {}
 
 
+def code_blind_names(code: str, lookup, base_dir: Path = ROOT_DIR) -> Dict[str, str]:
+    """개발코드로 부른 물질의 실명 → 코드 — PubChem이 그 코드로 찾은 표제명과, 같은 구조(InChIKey 골격)의 라벨 일반명·제품명.
+    설계 그래프의 가림표(intake._real_names)와 같은 규칙이다. 조회가 안 되면 빈 표(가릴 이름을 모른다)."""
+    from types import SimpleNamespace
+    from formula.agents.intake import _real_names
+    try:
+        found = lookup(code) if lookup else {}
+    except Exception:   # noqa: BLE001 — 조회 실패는 '모름'이다
+        found = {}
+    if not (found or {}).get("found"):
+        return {}
+    props = found.get("properties") or {}
+    smi = props.get("CanonicalSMILES") or props.get("SMILES") or props.get("ConnectivitySMILES") or ""
+    inchikey = ""
+    try:
+        from rdkit import Chem
+        mol = Chem.MolFromSmiles(smi) if smi else None
+        inchikey = Chem.MolToInchiKey(mol) if mol is not None else ""
+    except Exception:   # noqa: BLE001
+        inchikey = ""
+    return _real_names({"compound": found}, SimpleNamespace(inchikey=inchikey), base_dir, code)
+
+
 def build_response(out: AgentOutput, source: str, message: str, history: List[Dict[str, str]],
-                   ctx: Dict[str, Any], catalog: Dict[str, Dict[str, Any]], inputs, lookup=None) -> Dict[str, Any]:
+                   ctx: Dict[str, Any], catalog: Dict[str, Dict[str, Any]], inputs, lookup=None,
+                   blind: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """제안 카드를 만든다. `blind` = 이미 도는 실행의 가림표(실명 → 개발코드) — 응답 전체에 적용한다."""
+    from formula.agents.intake import _development_code
+    from formula.literature import is_spelling_variant
+    from formula.orchestrator.events import mask_names
     user_text = "\n".join([h.get("text", "") for h in history if h.get("role") == "user"][-6:] + [message])
+    # 개발코드(예: VX-770)로 부른 물질 — 모델이 기억으로 일반명을 채우면 카드 제목·요청문에 실명이 들어가 블라인드가 깨진다
+    # (시연 쿼리 카드 수정판 실행 보고서 2026-09-29 §5-1: “성인용 Ivacaftor”, 화면 21곳 노출). 코드가 이름이고, 실명은 가린다.
+    code = _development_code(user_text)
+    names = dict(blind or {})
+    if code:
+        names.update(code_blind_names(code, lookup))
     pool = numbers_in(user_text)
     dropped: List[str] = []
     proposals: List[Dict[str, Any]] = []
@@ -358,6 +395,10 @@ def build_response(out: AgentOutput, source: str, message: str, history: List[Di
         out.intent = "start_run"
     if out.intent == "start_run" and out.run:
         d = out.run
+        if code and (not d.api_name or (not is_spelling_variant(d.api_name, code)
+                                        and d.api_name.lower() not in user_text.lower())):
+            d.api_name = code
+            notes.append(f"개발코드로 부른 물질이라 코드({code})를 이름으로 씁니다 — 정체를 가린 채 설계합니다.")
         dose = strip_ungrounded(d.dose_mg, pool, dropped, "dose_mg") if d.dose_mg is not None else None
         measured = {}
         for k, v in strip_ungrounded(dict(d.measured), pool, dropped, "measured").items():
@@ -447,8 +488,8 @@ def build_response(out: AgentOutput, source: str, message: str, history: List[Di
         reply = "말씀하신 내용을 실행할 수 있는 입력으로 정리했습니다."
     if any(p.get("ready") for p in proposals) and "확인" not in reply:
         reply += " 아래 카드를 확인하고 실행을 눌러야 반영됩니다."
-    return {"reply": reply.strip(), "intent": out.intent, "proposals": proposals,
-            "asks": list(dict.fromkeys(asks)), "notes": notes, "source": source}
+    return mask_names({"reply": reply.strip(), "intent": out.intent, "proposals": proposals,
+                       "asks": list(dict.fromkeys(asks)), "notes": notes, "source": source}, names)
 
 
 def explain(ctx: Dict[str, Any]) -> str:

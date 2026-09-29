@@ -667,8 +667,11 @@ async def agent_turn(payload: AgentRequest, request: Request) -> Dict[str, Any]:
     history = [h.model_dump() for h in payload.history]
     out, source = await asyncio.to_thread(_with_llm, choice, input_agent.run_turn, payload.message, history, ctx,
                                           agent_catalog())
+    # 개발코드로 도는 실행의 가림표 — 실행 뒤 대화에서도 모델이 기억으로 실명을 꺼내지 못하게 응답 전체를 가린다
+    run = RUNS.get(payload.run_id or "")
+    blind = dict(run.bus.blind) if run is not None else {}
     return await asyncio.to_thread(input_agent.build_response, out, source, payload.message, history, ctx,
-                                   agent_catalog(), experimental_inputs(), _pubchem_lookup)
+                                   agent_catalog(), experimental_inputs(), _pubchem_lookup, blind)
 
 
 @app.post("/api/agent/nudge")

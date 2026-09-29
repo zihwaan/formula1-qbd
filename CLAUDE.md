@@ -26,7 +26,7 @@ The UI is one ChatGPT-style conversation — read "Chat UI" below before touchin
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 214 tests — run this first when changing the core
+.venv/bin/pytest                                  # 234 tests — run this first when changing the core
 python scripts/audit_conditions.py                # every CSV/manifest condition names a variable something actually sets (exit 1 on a dead name)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
@@ -37,6 +37,8 @@ python scripts/audit_conditions.py                # every CSV/manifest condition
 docker run --rm -e FORMULA1_LLM_PROVIDER=none -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1:latest python scripts/report/figdata.py
 python3 scripts/report/demo_cards.py <url> dacon 2 [card1,card3…]   # 시연 쿼리 카드 3장 → docs/report/demo_cards.json(보고서 7.6)
 python3 scripts/report/stage2_llm.py http://localhost:<port> dacon   # 2단계 LLM 초안 vs 논문 → docs/report/stage2_llm.json(보고서 7.7)
+# 어블레이션(보고서 7.8): 순수 LLM · 검증 계층 제거 · 전체 시스템 — 컨테이너 안에서 in-process, 대회 키만(Groq 폴백 없음 = 같은 모델끼리)
+docker run --rm --env-file <DACON_API_KEY만 든 파일> -e FORMULA1_LLM_PROVIDER=dacon -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1:test python scripts/report/ablation.py 2 all s1,s2
 CHROME=<chrome> node scripts/report/surfaces_png.mjs http://localhost:<port>/ docs/report/cbd_surfaces.png   # 그림 8 — 2단계 11단계 화면 그대로
 python3 scripts/report/build_report.py --tests <pytest 통과 수> --browser "<브라우저 스위트 요약>"
 "<Chrome>" --headless=new --no-pdf-header-footer --virtual-time-budget=15000 --print-to-pdf=docs/report/Formula1_report.pdf "file://$PWD/docs/report/report.html"
@@ -509,6 +511,12 @@ three — any new join between free text and rulebook data needs the same "미�
   and the HARD_FAIL action were all correct and had been all along — the two sides simply never
   met. Fixed by `formula/checkers/excipients.py`; negative controls (Mannitol — INC002's own
   suggested alternative — MCC, `Sodium starch glycolate`) are pinned as hard as the positives.
+  **Same class again, found by the ablation (2026-09-29):** LLMs write grade phrases — `Lactose monohydrate, direct-compression
+  grade`, `Microcrystalline cellulose PH 102`, `…low-moisture directly compressible grade` — and the token-level noise list left
+  `direct`/`compression`/`102` in, so lactose was not recognised: **INC001 silently passed** and pinned MCC/mannitol read as missing
+  (false RC003). Fix = `noise_patterns` in `config/excipient_aliases.yaml` (regexes stripped as whole phrases, carried in the noise
+  set with a `re:` prefix). Never add the words one by one: `low` would merge L-HPC into HPC, `compressible` would mangle
+  Compressible sugar — both negatives are pinned in `tests/test_excipient_matching.py`.
 - **An unparseable SMILES produced zero structural flags, and zero flags passed.** The user had
   typed `0` for `O`; `build_profile` returned an empty profile with a warning buried in the chem
   event, `api_functional_groups` was `[]`, so no structure-joined rule could fire and the gate
@@ -694,7 +702,13 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
 - **Report** — `scripts/report/{figdata,build_report}.py` → `docs/report/`. §6 + §7.1 + §7.6 are Stage 2: `figdata.stage2_block()`
   re-derives the paper's matrices/regression/ANOVA and walks a real study with paper values (approvals/events counted, not typed); §7.6
   reads `stage2_llm.json`; figure 8 is `cbd_surfaces.png` from `surfaces_png.mjs` (it hides the dock/sidebar and un-scrolls the thread,
-  otherwise the composer is baked into the figure). The browser-test sentence in §7.7 must list only suites actually run on that build.
+  otherwise the composer is baked into the figure). The browser-test sentence in §7.9 must list only suites actually run on that build.
+  §7.8 is the **ablation** (`scripts/report/ablation.py` → `docs/report/ablation.json`, run in-process in a container with only the
+  contest key so all three conditions use the same model): P pure LLM (one structured call) / G system minus verification layer
+  (planner + generator, no gate/contract/reflect/infeasible) / F full graph, graded by the same `registry.run`; stage 2 = pure LLM
+  asked to compute CBD regression, a Lornoxicam Design Space and a CBD risk table. Only mechanically-scored metrics (user,
+  2026-09-29: drop forced ones — LLM quality scores, paper-agreement, token usage are listed as excluded). Outputs store full recipes
+  + grading inputs, so after a rule change `ablation.py regrade <json>` re-grades with no LLM call; `merge` joins s1/s2 parts.
   Every number in the PDF comes from `figdata.json`/the json files or the CLI args. Served by the hub at `zihwan.com/pdf` from
   `hub/reports/formula1_report.pdf`.
 
@@ -728,7 +742,11 @@ container; writes `docs/report/devfix_results.json`). T5/T6 are unit tests.
 
 - **Request contract (P0-1/P1-1)** — `formula/checkers/contract.py`, run by `registry.run` *before* all stages (skipped for
   `__`-prefixed probe recipes): RC001 API exactly one `role=api` row, RC002 API amount → free base (salt tokens in the CSV row ×
-  `profile.salt_factor`) within ±0.5% of `measured_params.dose_mg` (missing dose = SOFT_FLAG "미검사", never a silent pass),
+  `profile.salt_factor`) within ±0.5% of `measured_params.dose_mg` (missing dose = SOFT_FLAG "미검사", never a silent pass).
+  When the input structure is the free base but the recipe names a salt (`Fluoxetine hydrochloride 11.18 mg` = 10 mg base), the
+  factor comes from `database/06_config/salt_counterions.csv` (1:1 acid addition / cation replacement, PubChem CIDs, RDKit MolWt);
+  di-/hemi-/hydrate or an unlisted salt → SOFT_FLAG "미검사", not a rejection (found by the ablation — it used to reject correct
+  salt amounts),
   RC003 pinned excipients present (resolved through the excipient dictionary), RC004 LLM-added excipients labelled,
   MAX_DAILY_DOSE from `database/05_regulatory/max_daily_dose.csv` (FDA label sentence + DailyMed set_id; matched by **parent
   InChIKey skeleton**, not name; salt-labelled maxima converted with RDKit MolWt). Not a ninth strategy on purpose — it is an
@@ -781,7 +799,12 @@ Source: `Formula1_시연쿼리카드.pdf` (3 cards: lornoxicam 8 mg dispersible 
 - **`ionizable_gi`** (not `ionizable`) feeds G3A010–015: phenol/imide-only acids aren't ionised at GI pH, so ivacaftor no
   longer gets "pH-dependent → BCS undetermined". `ionizable` stays for salt-forming questions (G3B001, DRQ_PKA).
 - **Code names are kept** (`literature.is_spelling_variant`): the PubChem title replaces the parsed name only when it is
-  a spelling variant. The judge prompt tells reviewers to use the requested name. Europe PMC abstracts in the citation
+  a spelling variant. **The input agent enforces the same rule (2026-09-29, team run report §5-1: the agent's LLM wrote
+  "Ivacaftor" for VX-770, the request text then carried the real name and intake saw no code → 21 leaks).** `build_response` pins
+  `api_name` to the code found in the user text unless the user wrote the other name, and masks the whole response with
+  `code_blind_names` (PubChem title of the code lookup + label names by InChIKey — same table as `intake._real_names`) plus the
+  running run's `bus.blind` (`/api/agent/turn` passes it), via `events.mask_names`. Stage-2 drafts are not masked (their prompt
+  carries only the code name, no structure). The judge prompt tells reviewers to use the requested name. Europe PMC abstracts in the citation
   pool can still contain the real name — `demo_cards.json` records `name_leaks` per run.
 - **`dispersible_tablet`** is a dosage form end to end (intake prompt + `_fallback` "분산정") and reaches the stage-2 prototype.
 - **`ctx["drug_loading_pct"]`** feeds RTE008 (<5% → content-uniformity flag).

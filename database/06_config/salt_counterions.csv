@@ -1,0 +1,7 @@
+counterion_id,tokens,form,counterion_smiles,stoichiometry,pubchem_cid,pubchem_title,notes
+SALT001,hydrochloride;hcl;염산염,acid_addition,Cl,1:1,313,Hydrochloric Acid,염 MW = parent + HCl. 이름에 di-·hemi- 같은 배수나 수화물(hydrate)이 붙으면 환산하지 않는다(미검사)
+SALT002,mesylate;mesilate;메실산염,acid_addition,CS(=O)(=O)O,1:1,6395,Methanesulfonic Acid,염 MW = parent + 메탄설폰산
+SALT003,besylate;besilate;베실산염,acid_addition,OS(=O)(=O)c1ccccc1,1:1,7371,Benzenesulfonic Acid,염 MW = parent + 벤젠설폰산(베실산 암로디핀 환산계수 1.387과 같다)
+SALT004,maleate;말레산염,acid_addition,OC(=O)/C=C\C(=O)O,1:1,444266,Maleic Acid,염 MW = parent + 말레산
+SALT005,sodium;나트륨,cation_replace,[Na],1:1,5360545,Sodium,염 MW = parent − H + Na(산성 API의 나트륨염)
+SALT006,potassium;칼륨,cation_replace,[K],1:1,5462222,Potassium,염 MW = parent − H + K(산성 API의 칼륨염)

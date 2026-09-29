@@ -70,6 +70,9 @@ def _rule_ids(result, status=VerdictStatus.HARD_FAIL) -> set:
     "유당수화물",                   # 마스터의 국문명
     "Lactose",                    # 계열명(등급 미지정)
     "유당",                        # 국문 계열명 — 사용자가 실제로 쓴 표기
+    # 어블레이션(보고서 7.8)에서 LLM이 실제로 쓴 등급 표기 — 전에는 유당으로 인식되지 않아 금기가 조용히 통과했다
+    "Lactose monohydrate, direct-compression grade",
+    "Lactose monohydrate, low-moisture directly compressible grade",
 ])
 def test_lactose_synonyms_fire_maillard_rule(registry, written_as):
     result = registry.run(_spec(), _recipe(written_as))
@@ -104,6 +107,25 @@ def test_unrelated_excipients_do_not_fire(registry, excipient):
     result = registry.run(_spec(), _recipe(excipient))
     assert not _rule_ids(result), f"{excipient!r}에서 잘못된 반려가 났다"
     assert result.passed
+
+
+@pytest.mark.parametrize("written_as, canonical", [
+    ("Microcrystalline cellulose PH 102", "Microcrystalline cellulose"),
+    ("Microcrystalline cellulose PH102", "Microcrystalline cellulose"),
+    ("Mannitol, direct-compression grade", "Mannitol"),
+])
+def test_grade_phrases_resolve_to_the_same_excipient(written_as, canonical):
+    """등급 구절(직타용 · 저수분 · MCC PH 코드)은 구절째로만 지운다 — 고정 성분(RC003)이 '빠짐'으로 잘못 반려되지 않게."""
+    assert canonical in excipient_resolver(ROOT).canonical_forms(written_as)
+
+
+@pytest.mark.parametrize("written_as, other", [
+    ("Low-substituted hydroxypropyl cellulose", "Hydroxypropyl cellulose"),   # 'low'를 낱말로 버리면 L-HPC가 HPC가 된다
+    ("Anhydrous lactose", "Lactose monohydrate"),                              # 등급이 아니라 다른 부형제
+    ("Spray-dried lactose", "Lactose monohydrate"),
+])
+def test_grade_phrases_do_not_merge_different_excipients(written_as, other):
+    assert other not in excipient_resolver(ROOT).canonical_forms(written_as)
 
 
 def test_family_match_requires_head_or_tail(registry):

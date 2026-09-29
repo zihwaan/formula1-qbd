@@ -651,6 +651,257 @@ def exp_section(x) -> str:
 
 
 
+def _ab_agg(ab):
+    """ablation.json → 조건별 집계(F 전체 시스템 · G 검증 계층 제거 · P 순수 LLM). 모든 수는 파일에서 센다."""
+    cases = ab["stage1"]["cases"]
+    out = {}
+    for k in ("F", "G", "P"):
+        runs = [(c, r) for c in cases for r in c[k]]
+        outs = [o for _, r in runs for o in r["outputs"]]
+        bad = lambda o: o["unsafe"] or o["contract"]                                   # noqa: E731
+        inf = [(c, r) for c, r in runs if c["expect_infeasible"]]
+        fea = [(c, r) for c, r in runs if not c["expect_infeasible"]]
+        a = {"runs": len(runs), "outputs": len(outs), "unsafe": sum(o["unsafe"] for o in outs), "contract": sum(o["contract"] for o in outs),
+             "bad": sum(bad(o) for o in outs),
+             "runs_bad": sum(any(bad(o) for o in r["outputs"]) for _, r in runs),
+             "feasible_runs_bad": sum(any(bad(o) for o in r["outputs"]) for _, r in fea), "feasible_runs": len(fea),
+             "inf_runs": len(inf), "inf_ok": sum(not any(bad(o) for o in r["outputs"]) for _, r in inf),
+             "refused": sum(not r["outputs"] for _, r in fea),
+             "repro": sum(c["reproducible"][k] for c in cases), "cases": len(cases),
+             "sec": sum(r.get("seconds") or 0 for _, r in runs) / max(len(runs), 1),
+             "calls": sum(r.get("llm_calls") or 0 for _, r in runs) / max(len(runs), 1),
+             "providers": sorted({p for _, r in runs for p in (r.get("providers") or {})})}
+        if k == "P":
+            cg = [r["citations"] for _, r in runs if r.get("citations")]
+            a["cite_given"], a["cite_ok"] = sum(x["given"] for x in cg), sum(x["verified"] for x in cg)
+            a["said_infeasible"] = sum(r.get("feasible") is False for _, r in inf)
+            a["said_infeasible_fea"] = sum(r.get("feasible") is False for _, r in fea)
+        if k == "F":
+            j = [r["judge"] for _, r in runs]
+            a["judge_scored"], a["judge_uncited"] = sum(x["scored"] for x in j), sum(x["uncited_invalidated"] for x in j)
+            a["concluded_infeasible"] = sum(r["status"] == "infeasible" for _, r in inf)
+        out[k] = a
+    return out
+
+
+def _pct(a, b):
+    return f"{a}/{b}" + (f" ({100 * a / b:.0f}%)" if b else "")
+
+
+def ablation_abstract(ab) -> str:
+    if not ab or "stage1" not in ab:
+        return ""
+    g = _ab_agg(ab)
+    return (f" 같은 대회 모델로 순수 LLM·검증 계층 제거·전체 시스템을 비교한 어블레이션에서, 제시된 처방 중 금기·요청 계약 위반은 순수 LLM {g['P']['bad']}/{g['P']['outputs']}, "
+            f"검증 계층 제거 {g['G']['bad']}/{g['G']['outputs']}, 전체 시스템 {g['F']['bad']}/{g['F']['outputs']}건이었다.")
+
+
+def ablation_section(ab) -> str:
+    """7.8 — scripts/report/ablation.py → docs/report/ablation.json."""
+    if not ab or "stage1" not in ab or "stage2" not in ab:
+        return ""
+    g = _ab_agg(ab)
+    F, G, P = g["F"], g["G"], g["P"]
+    cases = ab["stage1"]["cases"]
+    n_inf = sum(c["expect_infeasible"] for c in cases)
+
+    def cell(runs, k):
+        n = sum(len(r["outputs"]) for r in runs)
+        b = sum(o["unsafe"] or o["contract"] for r in runs for o in r["outputs"])
+        rules = sorted({x for r in runs for o in r["outputs"] for x in o["hard_fail"] + o["contract_fail"]})
+        extra = ""
+        if k == "F":
+            st = sorted({r["status"] for r in runs})
+            extra = " · " + "/".join(E(s) for s in st)
+        if k == "P":
+            no = sum(r.get("feasible") is False for r in runs)
+            extra = f" · 불가 답 {no}회" if no else ""
+        return f"{b}/{n}{extra}" + (f"<br><span class='mono'>{E(', '.join(rules))}</span>" if rules else "")
+    crow = "".join(f"<tr><td>{E(c['label'])}</td><td>{'불가능' if c['expect_infeasible'] else '가능'}</td>"
+                   f"<td>{cell(c['P'], 'P')}</td><td>{cell(c['G'], 'G')}</td><td>{cell(c['F'], 'F')}</td></tr>" for c in cases)
+
+    s2 = ab["stage2"]
+    sa, sb, sc = s2["S_A"], s2["S_B"], s2["S_C"]
+    sa_ok = [r for r in sa["reps"] if "error" not in r]
+    sb_ok = [r for r in sb["reps"] if "error" not in r]
+    sc_ok = [r for r in sc["reps"] if "error" not in r]
+    ntot = sa["system"]["coef_within_1pct"]
+    sa_rows = "".join(f"<tr><td>순수 LLM {i + 1}회</td><td>{r['coef_within_1pct']}/{r['coef_total']}</td><td>{100 * r['median_rel_err']:.1f}%</td>"
+                      f"<td>{r['p_decision_ok']}/{r['p_total']}</td></tr>" for i, r in enumerate(sa_ok))
+    sa_rows += f"<tr><td>시스템(결정론 계산)</td><td>{ntot}/{ntot}</td><td>0%</td><td>3/3</td></tr>"
+    sys_b = sb["system"]
+    def rng(d):
+        return " × ".join(f"{v[0]:g}–{v[1]:g}" if isinstance(v, list) and v[0] != v[1] else f"{(v[0] if isinstance(v, list) else v):g}" for v in d.values())
+
+    def pt(d):
+        return " · ".join(f"{v:g}" for v in d.values())
+    fnames = list(sys_b["optimum"])
+    sb_rows = "".join(f"<tr><td>순수 LLM {i + 1}회</td><td class='mono'>{E(rng({n: r['ranges'][n] for n in fnames}))}</td><td class='mono'>{E(pt({n: r['setpoint'][n] for n in fnames}))}</td>"
+                      f"<td>{100 * r['box_in_domain']:.0f}%</td><td>{100 * r['box_mean_ok']:.0f}%</td>"
+                      f"<td>{'예' if r['setpoint_mean_ok'] and r['setpoint_in_domain'] else '아니오'}</td><td>{r['setpoint_joint']:.3f}</td></tr>"
+                      for i, r in enumerate(sb_ok))
+    sb_rows += (f"<tr><td>시스템(control space · 최적 처방)</td><td class='mono'>{E(rng({n: sys_b['control_space'][n] for n in fnames}))}</td>"
+                f"<td class='mono'>{E(pt(sys_b['optimum']))}</td><td>{100 * sys_b['box_in_domain']:.0f}%</td><td>{100 * sys_b['box_mean_ok']:.0f}%</td>"
+                f"<td>{'예' if sys_b['setpoint_mean_ok'] and sys_b['setpoint_in_domain'] else '아니오'}</td><td>{sys_b['setpoint_joint']:.3f}</td></tr>")
+    sc_rows = "".join(f"<tr><td>순수 LLM {i + 1}회</td><td>{r['matrix_vs_justification_mismatch']}</td><td>{r['justification_uncovered']}</td>"
+                      f"<td>{r['justification_conflict']}</td><td>{r['matrix_missing']}</td></tr>" for i, r in enumerate(sc_ok))
+    sc_rows += "<tr><td>시스템(행렬 = 근거 표에서 계산)</td><td>0</td><td>0 (빈 칸은 승인 차단)</td><td>0</td><td>0</td></tr>"
+    return f"""<h3>7.8 어블레이션 — 순수 LLM과 검증 계층 제거</h3>
+<p><b>질문.</b> 같은 일을 LLM 하나에 시키면 무엇이 달라지는가, 그리고 그 차이는 어느 모듈에서 오는가. 대회 API의 같은 모델(<code>{E(ab['model'])}</code>)로 세 조건을 비교했다.
+<b>P 순수 LLM</b>은 요청·구조식·실측값·고정 성분·용량 기준만 받고 처방 한 건(성분·mg·공정·근거 DOI/PMID)을 JSON으로 낸다 — 규칙표·근거 검색·검증이 없다.
+<b>G 검증 계층 제거</b>는 시스템의 계획(페이즈 게이트·전략 선택)과 설계 에이전트(규칙표 근거 검색 포함)를 그대로 쓰되 규칙 게이트·요청 계약·반성·불가능 판정을 빼고 생성된 후보를 모두 낸다.
+<b>F 전체 시스템</b>은 실제 그래프 전체이고, 연구자에게 통과로 제시되는 후보만 센다. 입력은 시연 쿼리 카드 3장과 7.4절 시나리오 4종 등 요청 {len(cases)}건이며(그중 고정 성분이 규칙표에서 금기인 “불가능” 요청 {n_inf}건),
+F·G는 {ab['repeat']}회, P는 {ab['p_repeat']}회 반복했다.</p>
+<p><b>지표를 고른 기준.</b> 에이전트 시스템의 “성능”은 정의하기 모호하므로, <b>정답이 하나로 정해져 기계적으로 채점되는 것만</b> 지표로 삼았다(표 9).
+처방은 세 조건 모두 같은 채점기 — 출처가 붙은 규칙표 전체를 단락 없이 돌리는 사후 채점(<code>registry.run</code>) — 로 매겼다. 이 채점기는 F 내부에서 쓰는 것과 같은 규칙이므로
+“F의 위반 0”은 설계상 당연하다. 이 실험이 보이는 것은 F가 규칙을 지킨다는 사실이 아니라, <b>규칙을 빼면(G) 또는 LLM만 쓰면(P) 규칙이 금지하는 처방이 얼마나 연구자 앞에 나오는가</b>이다.
+반대로 억지스럽거나 정답이 없는 지표는 뺐다: LLM이 매긴 처방 “품질” 점수(채점자도 LLM이라 순환), 논문 조성·위험 등급과의 일치율(논문은 참고 자료이지 정답지가 아니다, 7.7절),
+시스템 심사관 점수 자체(비교 대상에 없는 값), 속도를 품질로 보는 해석(비용으로만 보고), 토큰 사용량(대회 API의 잔여 한도 헤더가 요청마다 크게 흔들려 실행 단위로 잴 수 없었다 — 호출 수와 시간만 보고).
+세 조건 모두 같은 대회 모델만 쓰도록 무료 모델 키를 빼고 돌렸다.</p>
+<p><b>어블레이션이 찾은 채점기(곧 시스템 게이트)의 결함 두 가지.</b> 채점기는 시스템의 규칙 게이트 그 자체이므로, 순수 LLM 처방이 걸린 사유를 하나씩 읽어 오판을 가려냈다.
+(1) <b>염 이름 함량 오판</b> — 입력 구조가 유리염기인데 처방이 “Fluoxetine hydrochloride 11.18 mg”(= 유리염기 10 mg), “Metformin hydrochloride 641.2 mg”(= 유리염기 500 mg)처럼 염 이름으로 적으면
+환산 계수가 없어 염 함량을 그대로 유리염기로 읽고 요청 계약 RC002로 반려했다. 짝이온 표(<code>salt_counterions.csv</code> — PubChem CID, 1:1 산부가·양이온 치환, RDKit MolWt)로 환산하고,
+짝이온 수·수화물이 붙었거나 표에 없는 염은 반려하지 않고 “미검사”로 두게 고쳤다. (2) <b>등급 표기의 조용한 통과</b> — “Lactose monohydrate, direct-compression grade”를 유당으로 알아보지 못해
+<b>1차 아민 × 유당 금기(INC001)가 발동하지 않았고</b>, “Microcrystalline cellulose PH 102”·“Mannitol, direct-compression grade”는 고정 성분 누락(RC003)으로 잘못 반려됐다. 성분명 사전에 등급 구절
+(직타용 · 저수분 · MCC PH 코드)을 구절째로 지우는 패턴을 더했다 — 낱말 단위로 지우면 저치환도 HPC가 HPC가 되는 식의 반대 방향 오판이 생긴다. 둘 다 시스템의 설계 에이전트가 같은 표기를 쓰면 라이브에서도
+일어날 결함이었고, 회귀 테스트(염 2건 · 등급 표기 8건)로 고정했다. 아래 1단계 수치는 (1)을 고친 뒤 다시 실행하고, 그 처방 원문을 (2)를 고친 채점기로 LLM 호출 없이 다시 매긴 결과다
+(전체 시스템의 후보도 고친 채점기로 다시 매겨 위반 0).</p>
+<table><thead><tr><th>지표</th><th>정의</th><th>판정 기준(누가 · 무엇으로)</th></tr></thead><tbody>
+<tr><td>금기 위반 처방</td><td>제시된 처방 중 출처 규칙의 HARD_FAIL(요청 계약 제외)이 하나라도 있는 것</td><td>규칙표(배합 금기·공정·소아·규제 상한) — 결정론</td></tr>
+<tr><td>요청 계약 위반</td><td>API 1개 · 유리염기 용량 ±0.5 % · 고정 성분 포함 · FDA 라벨 1일 최대 용량 중 하나라도 어긴 처방</td><td>요청 문장·입력값 · DailyMed 라벨 — 결정론</td></tr>
+<tr><td>불가능 요청 처리</td><td>고정 성분이 규칙표에서 금기(HARD_FAIL)인 요청에서 위반 처방을 하나도 내지 않은 실행</td><td>플루옥세틴 INC002(Wirth 1998 — 그 분자의 1차 연구) · 암로디핀 INC001(Narang 2012 종설의 계열 규칙) · MC001/MC002(Abdoh 2004)</td></tr>
+<tr><td>과잉 거부</td><td>가능한 요청에서 처방을 하나도 내지 않은 실행</td><td>출력 유무</td></tr>
+<tr><td>인용 실재</td><td>제시한 DOI·PMID가 실제로 존재하는가</td><td>Crossref · NCBI 조회</td></tr>
+<tr><td>재현성</td><td>같은 입력을 반복했을 때 결정(제시 여부 · 걸리는 규칙 · 계획)이 같은 요청 수</td><td>반복 간 비교</td></tr>
+<tr><td>2단계 계산 정확도</td><td>회귀 계수 · p값 판정 · Design Space 목표 충족 · 위험표 내부 일관성</td><td>논문 Table 10·11(재현됨) · 게이트 통과 모형 · 표 대조</td></tr>
+</tbody></table>
+<div class="tcap"><b>표 9.</b> 어블레이션 지표와 판정 기준 — 모두 결정론 채점. 뺀 지표와 이유는 본문.</div>
+<table><thead><tr><th>지표</th><th>P 순수 LLM</th><th>G 검증 계층 제거</th><th>F 전체 시스템</th></tr></thead><tbody>
+<tr><td>제시된 처방</td><td>{P['outputs']} (실행 {P['runs']})</td><td>{G['outputs']} (실행 {G['runs']})</td><td>{F['outputs']} (실행 {F['runs']})</td></tr>
+<tr><td>금기 위반 처방</td><td>{_pct(P['unsafe'], P['outputs'])}</td><td>{_pct(G['unsafe'], G['outputs'])}</td><td>{_pct(F['unsafe'], F['outputs'])}</td></tr>
+<tr><td>요청 계약 위반 처방</td><td>{_pct(P['contract'], P['outputs'])}</td><td>{_pct(G['contract'], G['outputs'])}</td><td>{_pct(F['contract'], F['outputs'])}</td></tr>
+<tr><td>가능 요청에서 위반 처방이 나온 실행</td><td>{_pct(P['feasible_runs_bad'], P['feasible_runs'])}</td><td>{_pct(G['feasible_runs_bad'], G['feasible_runs'])}</td><td>{_pct(F['feasible_runs_bad'], F['feasible_runs'])}</td></tr>
+<tr><td>불가능 요청을 위반 없이 처리</td><td>{_pct(P['inf_ok'], P['inf_runs'])} · “불가” 답 {P['said_infeasible']}</td><td>{_pct(G['inf_ok'], G['inf_runs'])}</td><td>{_pct(F['inf_ok'], F['inf_runs'])} · 불가능 결론 {F['concluded_infeasible']}</td></tr>
+<tr><td>과잉 거부(가능 요청에서 처방 없음)</td><td>{_pct(P['refused'], P['feasible_runs'])}</td><td>{_pct(G['refused'], G['feasible_runs'])}</td><td>{_pct(F['refused'], F['feasible_runs'])}</td></tr>
+<tr><td>인용 실재</td><td>{_pct(P['cite_ok'], P['cite_given'])}</td><td>— (인용 없음)</td><td>심사 점수 {F['judge_scored']}건 모두 확인된 인용 · 인용 없어 무효 {F['judge_uncited']}건</td></tr>
+<tr><td>결정 재현(요청 {F['cases']}건 중)</td><td>{P['repro']}</td><td>{G['repro']}</td><td>{F['repro']}</td></tr>
+<tr><td>실행당 시간 · LLM 호출</td><td>{P['sec']:.0f}초 · {P['calls']:.1f}회</td><td>{G['sec']:.0f}초 · {G['calls']:.1f}회</td><td>{F['sec']:.0f}초 · {F['calls']:.1f}회</td></tr>
+</tbody></table>
+<div class="tcap"><b>표 10.</b> 1단계 어블레이션 집계. 응답한 모델은 세 조건 모두 {E(', '.join(sorted(set(F['providers']) | set(G['providers']) | set(P['providers']))) or '—')}(무료 모델 폴백 없음 — 실패는 실패로 기록). F의 시간은 전략별 설계·심사를 병렬로 돌린 벽시계 시간이다.</div>
+<table><thead><tr><th>요청</th><th>조건</th><th>P 위반/제시</th><th>G 위반/제시</th><th>F 위반/제시 · 종결</th></tr></thead><tbody>{crow}</tbody></table>
+<div class="tcap"><b>표 11.</b> 요청별 결과(반복 합산). 아래 줄은 걸린 규칙 — INC = 배합 금기, MC = 다성분 금기, RC = 요청 계약, MAX_DAILY = 라벨 최대 용량.</div>
+{ablation_narrative(ab, g)}
+<p><b>2단계 — 계산을 LLM에 맡기면.</b> 같은 모델에 원자료 표를 주고 결정론 모듈이 하는 일을 직접 시켰다(각 3회, 위험표는 2회).
+(가) CBD 17 run에서 경도 선형·붕해시간 2차 모형의 coded 계수와 모형 p·적합결여 p를 계산하게 해 논문 Table 10·11(시스템이 재현, 7.1절)과 비교했다(표 13).
+(나) 로르녹시캄 15 run과 목표를 주고 Design Space 범위와 설정점을 정하게 한 뒤, 그 범위를 시스템의 게이트 통과 모형으로 채점했다(표 14).
+(다) CBD 프로토타입의 위험 행렬과 근거 표를 한 번에 쓰게 해 두 표가 서로 맞는지 대조했다(표 15).</p>
+<table><thead><tr><th>조건</th><th>계수 ±1 % 이내</th><th>계수 상대오차 중앙값</th><th>유의성 판정 일치(p &lt; 0.05)</th></tr></thead><tbody>{sa_rows}</tbody></table>
+<div class="tcap"><b>표 13.</b> 회귀 계산(CBD Table 9 → Table 10·11). 계수 {ntot}개 = 경도 선형 4 + 붕해시간 2차 10. 정답 모형 p: 경도 {sa['truth']['hardness_model_p']:.4f} · 적합결여 {sa['truth']['hardness_lack_of_fit_p']:.4f} · 붕해시간 {sa['truth']['dt_model_p']:.4f}.</div>
+<table><thead><tr><th>조건</th><th>범위({E(' × '.join(fnames))})</th><th>설정점</th><th>범위 중 실험 영역 안</th><th>그중 평균 예측이 목표 충족</th><th>설정점 목표 충족</th><th>설정점 통과확률</th></tr></thead><tbody>{sb_rows}</tbody></table>
+<div class="tcap"><b>표 14.</b> Design Space 제안(로르녹시캄 Table 3, 목표 분산 ≤ 180 s · 마손도 ≤ 1 % · DE30 ≥ 75 % · AV ≤ 15). 제안 범위를 요인당 11점 격자로 나눠 시스템의 게이트 통과 모형(네 반응 축소 2차)으로 채점.</div>
+<table><thead><tr><th>조건</th><th>행렬 ≠ 근거 표</th><th>근거 없는 칸</th><th>근거끼리 등급 충돌</th><th>행렬 빈 칸</th></tr></thead><tbody>{sc_rows}</tbody></table>
+<div class="tcap"><b>표 15.</b> 위험평가 표의 내부 일관성(CBD 제형·공정 변수 {sc['variables']} × CQA {sc['cqas']} = {sc['variables'] * sc['cqas']}칸). 등급이 논문과 같은지는 보지 않는다(7.7절 — 논문은 정답지가 아니다).</div>
+{ablation_s2_narrative(ab)}
+"""
+
+
+def _ab_rules(cases, k):
+    """조건 k에서 제시된 처방이 걸린 규칙 — (규칙, 처방 수, 사유 한 줄)."""
+    from collections import Counter
+    cnt, why = Counter(), {}
+    for c in cases:
+        for r in c[k]:
+            for o in r["outputs"]:
+                for rid in set(o["hard_fail"] + o["contract_fail"]):
+                    cnt[rid] += 1
+                    why.setdefault(rid, (o.get("why") or {}).get(rid, {}).get("reason", ""))
+    return [(rid, n, why.get(rid, "")) for rid, n in cnt.most_common()]
+
+
+def ablation_narrative(ab, g) -> str:
+    """1단계 결과 서술 — 수는 모두 ablation.json에서."""
+    cases = ab["stage1"]["cases"]
+    F, G, P = g["F"], g["G"], g["P"]
+    inf = [c for c in cases if c["expect_infeasible"]]
+    p_inf = [r for c in inf for r in c["P"]]
+    said_no = sum(r.get("feasible") is False for r in p_inf)
+    dropped = sum(any("RC003" in o["contract_fail"] for o in r["outputs"]) for r in p_inf)
+    kept_bad = sum(any(o["unsafe"] for o in r["outputs"]) for r in p_inf)
+
+    def top(k, n=4):
+        rows = _ab_rules(cases, k)[:n]
+        return ", ".join(f"<span class='mono'>{E(rid)}</span> {cnt}건" for rid, cnt, _ in rows) or "없음"
+    why_rows = {}
+    for k in ("P", "G"):
+        for rid, _, w in _ab_rules(cases, k):
+            if w and rid not in why_rows:
+                why_rows[rid] = w
+    wr = "".join(f"<tr><td class='mono'>{E(rid)}</td><td>{E(w)}</td></tr>" for rid, w in list(why_rows.items())[:8])
+    p1 = (f"<p><b>1단계 결과.</b> 순수 LLM은 제시한 처방 {P['outputs']}건 중 {P['bad']}건이 출처 규칙이나 요청 계약에 걸렸다(금기 {P['unsafe']} · 계약 {P['contract']}; 걸린 규칙 {top('P')}). "
+          f"검증 계층을 뺀 시스템(계획·근거 검색은 그대로)은 {G['outputs']}건 중 {G['bad']}건(금기 {G['unsafe']} · 계약 {G['contract']}; {top('G')})이었고, "
+          f"전체 시스템은 같은 채점기로 {F['bad']}/{F['outputs']}건이다. ")
+    p2 = (f"고정 성분 자체가 금기인 요청({len(inf)}건 × {ab['p_repeat']}회)에서 순수 LLM은 “불가”라고 답한 것이 {said_no}회, 고정 성분을 뺀 처방(RC003)이 {dropped}회, "
+          f"금기를 그대로 둔 처방이 {kept_bad}회였다. 검증 계층을 뺀 시스템에서 위반 처방 없이 끝난 실행은 {_pct(G['inf_ok'], G['inf_runs'])}였고, "
+          f"전체 시스템은 {_pct(F['concluded_infeasible'], F['inf_runs'])} 실행에서 차단 규칙과 대체 성분을 붙여 “제약 불가능”으로 끝냈다. ")
+    cite_hi = P["cite_given"] and P["cite_ok"] / P["cite_given"] >= 0.9
+    all_repro = P["repro"] == G["repro"] == F["repro"] == F["cases"]
+    bad_inf = {k: sum(o["unsafe"] or o["contract"] for c in inf for r in c[k] for o in r["outputs"]) for k in ("P", "G")}
+    p3 = (f"가능한 요청에서 처방을 하나도 내지 않은 과잉 거부는 P {P['refused']} · G {G['refused']} · F {F['refused']}회였다 — 검증 계층이 가능한 요청까지 막지는 않았다. "
+          f"순수 LLM이 적은 DOI·PMID는 {_pct(P['cite_ok'], P['cite_given'])}가 실제로 조회되었다"
+          + (" — 이 모델에서는 인용 실재율로 큰 차이를 주장할 수 없다" if cite_hi else "")
+          + f"(전체 시스템의 심사 점수는 확인된 인용이 있어야만 남고, 인용이 없어 무효가 된 심사는 {F['judge_uncited']}건). "
+          f"같은 입력을 반복했을 때 결정이 같았던 요청은 P {P['repro']} · G {G['repro']} · F {F['repro']}/{F['cases']}건이다"
+          + (" — 순수 LLM의 위반도 매번 같은 판단이었으므로, 여러 번 물어 다수결로 고르는 방식으로는 없어지지 않는다. " if all_repro and P["bad"] else ". ")
+          + f"대가는 비용이다 — 전체 시스템은 실행당 LLM 호출 {F['calls']:.1f}회·{F['sec']:.0f}초로 순수 LLM({P['calls']:.1f}회·{P['sec']:.0f}초)보다 무겁다.</p>")
+    gave = [r for r in p_inf if r.get("feasible") and r["outputs"]]
+    knew = sum(1 for r in gave if any(w in str(r.get("reason") or "").lower() for w in ("maillard", "환원당", "reducing sugar")))
+    p4 = (f"<p><b>해석.</b> 위반 처방은 순수 LLM {P['bad']}건 중 {bad_inf['P']}건, 검증 계층 제거 {G['bad']}건 중 {bad_inf['G']}건이 고정 성분 자체가 금기인 요청에서 나왔다. "
+          + (f"순수 LLM이 불가능 요청에 처방을 낸 {len(gave)}회 중 {knew}회는 사유에 아민–환원당(Maillard) 반응 가능성을 스스로 적고도 “조건부로 가능”이라고 판단했다 — 몰라서라기보다 요청을 만족시키는 쪽으로 기울었다. "
+             if knew else "")
+          + "설계 에이전트는 규칙표 근거를 읽지만 고정 성분을 뺄 수 없어 금기 처방을 냈다. 전체 시스템은 같은 모델을 쓰면서 판단을 출처 규칙에 넘겨 “이 제약으로는 통과가 없다”로 끝냈다 — "
+          "이 차이가 검증 계층에서 온다는 것은 G와 F가 계획·설계 에이전트를 공유하고 검증 계층 유무만 다르다는 점으로 확인된다. "
+          "단, “불가능”은 규칙표 기준이다 — 플루옥세틴은 그 분자를 다룬 1차 연구(Wirth 1998)가 근거지만, 암로디핀의 INC001은 아민 계열 종설(Narang 2012)의 일반 규칙이고 "
+          "암로디핀 자체를 다룬 Abdoh 2004는 유당과의 1:1 이원 혼합이 안정하며 Mg stearate·수분이 겹칠 때 불안정하다고 보고했다. 약학 담당이 이 차이를 검토 중이므로 "
+          "암로디핀 결과는 ‘규칙표가 금지하는 처방이 제시되었는가’로 읽어야 하고, 제품이 실제로 실패한다는 뜻으로 읽으면 안 된다.</p>")
+    table = (f"<table><thead><tr><th>규칙</th><th>엔진이 적은 반려 사유(첫 사례)</th></tr></thead><tbody>{wr}</tbody></table>"
+             "<div class='tcap'><b>표 12.</b> 순수 LLM·검증 계층 제거 조건의 처방이 걸린 규칙과 사유(규칙 게이트가 쓴 문장 그대로).</div>") if wr else ""
+    return p1 + p2 + p3 + p4 + table
+
+
+def ablation_s2_narrative(ab) -> str:
+    """2단계 결과 서술 — 차이가 없으면 없다고 쓴다(우월성 근거로 쓰지 않는다)."""
+    s2 = ab["stage2"]
+    sa = [r for r in s2["S_A"]["reps"] if "error" not in r]
+    sb = [r for r in s2["S_B"]["reps"] if "error" not in r]
+    sc = [r for r in s2["S_C"]["reps"] if "error" not in r]
+    fails = {k: len(s2[k]["reps"]) - len(v) for k, v in (("S_A", sa), ("S_B", sb), ("S_C", sc))}
+    exact = sa and all(r["coef_within_1pct"] == r["coef_total"] and r["p_decision_ok"] == r["p_total"] for r in sa)
+    t1 = (f"순수 LLM은 회귀 계수 {sa[0]['coef_total']}개와 유의성 판정을 {len(sa)}회 모두 정확히 계산했다(최대 상대오차 {max(r['max_rel_err'] for r in sa):.0e}). "
+          "<b>이 모델에서는 계산 정확도로 결정론 모듈의 이점을 주장할 수 없으므로</b> 이 항목을 우월성 근거로 쓰지 않는다."
+          if exact else
+          f"순수 LLM의 회귀 계산은 {len(sa)}회 중 계수 ±1 % 이내가 {', '.join(str(r['coef_within_1pct']) for r in sa)}개(총 {sa[0]['coef_total'] if sa else 0}개)였다.")
+    t2 = ""
+    if sb:
+        allok = all(r["box_mean_ok"] == 1.0 and r["setpoint_mean_ok"] for r in sb)
+        outside = sum(1 - r["box_in_domain"] for r in sb) / len(sb)
+        pts = {tuple(sorted(r["setpoint"].items())) for r in sb}
+        rngs = {tuple(sorted((k, tuple(v)) for k, v in r["ranges"].items())) for r in sb}
+        t2 = ((f" Design Space 제안은 실험 영역 안에서 평균 예측이 모든 목표를 충족했고 설정점도 충족했다 — 판단 자체는 맞았다. " if allok else
+               " Design Space 제안 중 일부는 게이트 통과 모형으로 보면 목표를 충족하지 못했다. ")
+              + f"차이는 두 가지다. 제안 범위의 평균 {100 * outside:.0f}%가 실험 영역(설계점 볼록 껍질) 밖, 곧 데이터가 없는 외삽 영역이었고"
+              + f"(시스템은 control space를 실험 영역 안에서만 만든다), {len(sb)}회 반복에서 범위가 {len(rngs)}가지·설정점이 {len(pts)}가지로 나왔다"
+              + "(시스템은 같은 표에서 늘 같은 답).")
+    t3 = ""
+    if sc:
+        bad = sum(r["matrix_vs_justification_mismatch"] + r["justification_uncovered"] + r["justification_conflict"] + r["matrix_missing"] for r in sc)
+        t3 = (f" 위험표는 {len(sc)}회 모두 행렬과 근거 표가 서로 맞았다(모순 0) — 이 항목도 차이가 없다." if bad == 0 else
+              f" 위험표는 {len(sc)}회에서 행렬과 근거 표 사이 모순이 모두 {bad}칸 나왔다(시스템은 행렬을 근거 표에서 계산하므로 0).")
+    names = {"S_A": "회귀 계산", "S_B": "Design Space 제안", "S_C": "위험표"}
+    tf = f" (대회 API 응답 실패로 빠진 반복: {', '.join(f'{names[k]} {v}회' for k, v in fails.items() if v)})" if any(fails.values()) else ""
+    return (f"<p><b>2단계 결과.</b> {t1}{t2}{t3}{tf} 정리하면, 이 수준의 모델에게 2단계의 <b>계산</b>은 어렵지 않다. 시스템의 2단계가 더하는 것은 계산이 아니라 "
+            "실험 영역 안으로 범위를 묶는 규칙, 같은 입력에 같은 답, 그리고 단계별 연구자 승인과 검증 게이트라는 절차이며 — 절차의 가치는 이 실험의 지표로 측정되지 않으므로 수치로 주장하지 않는다.</p>")
+
+
 STAGES = [  # (우선순위 범위, 제목) — manifest의 trigger_priority 십의 자리 = 파이프라인 단계
     ((0, 4), "참조 마스터"), ((5, 9), "API 물성"), ((10, 19), "흐름 → 경로"), ((20, 29), "배합금기 · 소아"),
     ((30, 39), "다성분"), ((40, 49), "공정 세부"), ((50, 59), "코팅 · 용매"), ((60, 69), "BCS · 용출"),
@@ -771,7 +1022,7 @@ def fig_jury(data, x):
 
 
 # ── 본문 ──────────────────────────────────────────────────────────────────
-def build(data, tests: int, browser: str, x=None, fx=None, dm=None, lm=None) -> str:
+def build(data, tests: int, browser: str, x=None, fx=None, dm=None, lm=None, ab=None) -> str:
     c = data["counts"]
     bt_rows = "".join(
         f"<tr><td>{E(x['transition_id'])}</td><td>{'판정' if x['trigger_type'] == 'rule_verdict' else '측정'}</td>"
@@ -837,7 +1088,7 @@ LLM 초안·결정론 계산과 검사·연구자 승인으로 진행한다.
 제안의 수치는 사용자 발화에, 구조식은 사용자 입력·내장 사전·PubChem에만 근거하도록 코드로 강제한다. 모든 규칙보다 먼저
 후보가 요청한 약·용량·고정 부형제와 FDA 라벨 1일 최대 용량에 맞는지 대조하는 입력 계약 검사를 두고, 심사 점수에는 Crossref·NCBI로 확인되는
 DOI·PMID 인용을 요구한다.
-{stage2_abstract(data.get('stage2'), lm)}{demo_abstract(dm)}
+{stage2_abstract(data.get('stage2'), lm)}{demo_abstract(dm)}{ablation_abstract(ab)}
 <div class="kw"><b>주제어</b> 제형 설계 · Quality by Design · 다중 에이전트 · 결정론적 검증 · 환각 억제 · 실험계획법 · 설계공간 · lab-in-the-loop</div>
 </div>
 
@@ -1019,7 +1270,8 @@ VERIFIED로 기록한다(요인으로 설명되지 않는 반응은 규격 통�
 {devfix_section(fx)}
 {demo_section(dm)}
 {llm_section(lm)}
-<h3>7.8 소프트웨어 검증</h3>
+{ablation_section(ab)}
+<h3>7.9 소프트웨어 검증</h3>
 <p>단위·통합 테스트 {tests}개(pytest)가 구조 패턴 진리표, 검사 방향, 근거 정책, 페이즈 게이트, 되돌림·계획 불변식, 입력 에이전트 가드레일, 조건식 이름 전수검사, 측정 필드 타입·첨부, 근거 결손 게이트의 2단계 진입 차단(결손 · 사유 · 부적합),
 2단계의 논문 표 재현(행렬 · Table 10·11), 모형 선택·검증 게이트와 Overlay Design Space 골든 값(overlay 참조 구현과 같은 control space · 최적 처방), 단계 권한·승인 차단·다시 열기·확인계획 잠금, LLM 초안의 칸 덮기를 고정한다. 이 빌드에서 돌린 실제 브라우저 테스트({E(browser)})는 가운데 입력칸에서 시작하는 대화 흐름
 (설계 실행 카드 → 실험 데이터 입력 → 물리화학 → 데이터 요청 → 후보 → 개발 착수), 오른쪽 관측 칼럼, 2단계를 클릭만으로(CBD 1–13단계: 편집·차단·다시 열기·PDF 두 종, 데스크톱과 휴대폰 폭), 발표 시연 ①의 전체 파이프라인(실제 LLM로 1단계 → 개발 착수 →
@@ -1085,7 +1337,9 @@ def main():
     dm = json.loads(dp.read_text(encoding="utf-8")) if dp.exists() else None
     lp = OUT / "stage2_llm.json"
     lm = json.loads(lp.read_text(encoding="utf-8")) if lp.exists() else None
-    (OUT / "report.html").write_text(build(data, a.tests, a.browser, x, fx, dm, lm), encoding="utf-8")
+    ap_ = OUT / "ablation.json"
+    ab = json.loads(ap_.read_text(encoding="utf-8")) if ap_.exists() else None
+    (OUT / "report.html").write_text(build(data, a.tests, a.browser, x, fx, dm, lm, ab), encoding="utf-8")
     print(OUT / "report.html")
 
 

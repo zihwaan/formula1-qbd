@@ -13,9 +13,10 @@
 from __future__ import annotations
 
 import csv as csv_mod
+import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from formula.checkers.excipients import IngredientMatcher
 from formula.contracts import (
@@ -25,6 +26,10 @@ from formula.contracts import (
 
 CONTRACT_CSV = "database/06_config/request_contract_rules.csv"
 MAX_DOSE_CSV = "database/05_regulatory/max_daily_dose.csv"
+SALT_CSV = "database/06_config/salt_counterions.csv"
+H_MW = 1.008
+# 짝이온 수(di-·bis-·hemi-…)나 수화물이 붙은 염은 1:1 환산이 틀린다 — 계수를 정하지 않고 미검사로 둔다
+_MULTIPLE = re.compile(r"(?:^|[^a-z])(?:di|bis|tri|hemi|sesqui)[\s-]?(?:hydrochloride|hcl|mesylate|mesilate|besylate|besilate|maleate|sodium|potassium)")
 API_ROLES = {"api", "active", "drug", "active_ingredient"}
 
 
@@ -69,15 +74,54 @@ def api_rows(recipe: Recipe) -> list:
     return [i for i in recipe.ingredients if str(i.role or "").strip().lower() in API_ROLES]
 
 
-def free_base_mg(amount: Optional[float], name: str, salt_factor: Optional[float],
-                 salt_tokens: Sequence[str]) -> Optional[float]:
-    """처방에 적힌 API 함량을 유리염기로 환산한다. 이름에 염 표기가 있으면 염 기준으로 읽는다."""
-    if amount is None:
+def _molwt(smiles: str) -> Optional[float]:
+    try:
+        from rdkit import Chem
+        from rdkit.Chem import Descriptors
+        mol = Chem.MolFromSmiles(smiles)
+        return float(Descriptors.MolWt(mol)) if mol is not None else None
+    except Exception:   # noqa: BLE001 — RDKit이 없으면 환산하지 않는다(미검사)
         return None
+
+
+def salt_factor_for(name: str, profile_factor: Optional[float], salt_tokens: Sequence[str],
+                    parent_smiles: str = "", base_dir: Optional[Path] = None) -> Tuple[Optional[float], str]:
+    """처방 API 이름의 염 표기 → (염/유리염기 질량비, 근거).
+
+    근거: "free_base"(염 표기 없음, 1.0) · "profile"(입력 구조가 염 — 그 구조의 비) · "counterion:SALT00x"(입력 구조는
+    유리염기인데 처방이 염 이름으로 적음 — 짝이온 표 `salt_counterions.csv`로 RDKit 계산) · "unknown:…"(정할 수 없음 → None).
+    어블레이션(보고서 7.8)에서 찾은 결함: 유리염기 구조로 요청했는데 후보가 "Fluoxetine hydrochloride 11.18 mg"(= 유리염기 10 mg)처럼
+    염 이름으로 적으면 계수가 없어 11.18 mg을 그대로 유리염기로 읽고 반려했다.
+    """
     low = name.lower()
-    if salt_factor and any(t and t in low for t in salt_tokens):
-        return amount / salt_factor
-    return amount
+    if not any(t and t in low for t in salt_tokens):
+        return 1.0, "free_base"
+    if profile_factor:
+        return profile_factor, "profile"
+    if _MULTIPLE.search(low) or ("hydrate" in low and "anhydrous" not in low):
+        return None, "unknown:짝이온 수 또는 수화물 표기"
+    rows = [r for r in _rows(Path(base_dir or ".") / SALT_CSV)
+            if any(t.strip().lower() and t.strip().lower() in low for t in str(r.get("tokens") or "").split(";"))]
+    if len({r["counterion_id"] for r in rows}) != 1:
+        return None, "unknown:짝이온 표에 없는 염" if not rows else "unknown:염 표기가 둘 이상"
+    row = rows[0]
+    mw, cmw = (_molwt(parent_smiles) if parent_smiles else None), _molwt(row["counterion_smiles"])
+    if not mw or not cmw:
+        return None, "unknown:유리염기 구조 없음"
+    full = mw + cmw if row["form"] == "acid_addition" else mw - H_MW + cmw
+    return round(full / mw, 4), f"counterion:{row['counterion_id']}"
+
+
+def free_base_mg(amount: Optional[float], name: str, salt_factor: Optional[float],
+                 salt_tokens: Sequence[str], parent_smiles: str = "", base_dir: Optional[Path] = None) -> Tuple[Optional[float], str]:
+    """처방에 적힌 API 함량을 유리염기로 환산한다 → (mg, 근거). 이름에 염 표기가 있으면 염 기준으로 읽는다.
+    계수를 정할 수 없으면 (None, "unknown:…") — 호출하는 쪽이 '미검사'로 다룬다."""
+    if amount is None:
+        return None, "no_amount"
+    factor, basis = salt_factor_for(name, salt_factor, salt_tokens, parent_smiles, base_dir)
+    if factor is None:
+        return None, basis
+    return amount / factor, basis
 
 
 def requested_dose(spec: FormulationSpec) -> tuple:
@@ -97,6 +141,7 @@ def check(spec: FormulationSpec, recipe: Recipe, base_dir: Path, matcher: Ingred
     out: List[Verdict] = []
     profile = spec.api_profile
     salt_factor = getattr(profile, "salt_factor", None) if profile else None
+    parent_smiles = ((getattr(profile, "parent_smiles", "") or getattr(profile, "smiles", "")) if profile else "") or ""
     apis = api_rows(recipe)
 
     # RC001 — API가 정확히 1행
@@ -115,15 +160,20 @@ def check(spec: FormulationSpec, recipe: Recipe, base_dir: Path, matcher: Ingred
     if row and len(apis) == 1:
         api = apis[0]
         tokens = [t.strip().lower() for t in str(row.get("salt_name_tokens") or "").split(";") if t.strip()]
-        cand_fb = free_base_mg(api.amount_mg, api.name, salt_factor, tokens)
+        cand_fb, conv = free_base_mg(api.amount_mg, api.name, salt_factor, tokens, parent_smiles, base_dir)
         ev = {"requested_mg": req_raw, "requested_basis": basis, "requested_free_base_mg": req_fb,
               "candidate_name": api.name, "candidate_amount_mg": api.amount_mg,
               "candidate_free_base_mg": None if cand_fb is None else round(cand_fb, 4),
-              "salt_factor": salt_factor}
+              "salt_factor": salt_factor, "conversion": conv}
         if req_fb is None:
             out.append(_verdict("request_contract", row, VerdictStatus.SOFT_FLAG,
                                 "요청 1회 용량이 없어 함량을 검사하지 못했다 — 용량을 입력하면 결정론으로 대조한다", ev,
                                 suggestion="1회 투여 용량(mg)을 입력"))
+        elif conv.startswith("unknown"):
+            out.append(_verdict("request_contract", row, VerdictStatus.SOFT_FLAG,
+                                f"후보가 API를 염 이름({api.name} {api.amount_mg:g} mg)으로 적었는데 유리염기 환산 계수를 정할 수 없어 "
+                                f"함량을 검사하지 못했다({conv.split(':', 1)[1]}) — 미검사, 반려 아님", ev,
+                                suggestion="API 함량을 유리염기로 적거나 입력 구조를 염으로"))
         elif cand_fb is None:
             out.append(_verdict("request_contract", row, None, f"{row['reason']} (후보에 API 함량이 없다)", ev))
         else:
@@ -146,7 +196,9 @@ def check(spec: FormulationSpec, recipe: Recipe, base_dir: Path, matcher: Ingred
         api = apis[0]
         crow = _row(base_dir, "API_DOSE_MATCH") or {}
         tokens = [t.strip().lower() for t in str(crow.get("salt_name_tokens") or "").split(";") if t.strip()]
-        cand_fb = free_base_mg(api.amount_mg, api.name, salt_factor, tokens)
+        cand_fb, _conv = free_base_mg(api.amount_mg, api.name, salt_factor, tokens, parent_smiles, base_dir)
+        if cand_fb is None and api.amount_mg is not None:
+            cand_fb = api.amount_mg           # 계수를 모르면 적힌 염 함량 그대로(유리염기보다 크다 — 최대 용량 쪽으로 보수적)
         if mdd is not None and cand_fb is not None:
             limit = float(mdd["max_daily_dose_free_base_mg"])
             ev = {"candidate_free_base_mg": round(cand_fb, 4), "max_daily_free_base_mg": limit,
