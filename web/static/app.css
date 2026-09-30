@@ -219,7 +219,16 @@ table.desc tfoot td { padding-top: 6px; }
 .ev-box.hold { border-style: dashed; border-color: color-mix(in srgb, var(--status-warn) 55%, var(--border)); }
 .ev-box.bad { border-color: color-mix(in srgb, var(--status-critical) 55%, var(--border)); }
 .ev-box.ok { border-color: color-mix(in srgb, var(--status-good) 45%, var(--border)); }
-.ev-box > summary { cursor: pointer; line-height: 1.5; }
+.ev-box .ev-head { line-height: 1.5; }
+.ev-box .ev-jump { margin-left: 6px; font-size: 11px; }
+/* 근거 결손 게이트 카드 — 데이터 요청 카드와 같은 모양(.drq) */
+.evg .evg-sum { margin: 0 0 4px; font-size: 12px; color: var(--ink-2); }
+.evg .ev-item b code { font-size: 10px; font-weight: 500; }
+.evg .ev-test { font-weight: 500; color: var(--ink-2); font-size: 11px; }
+.evg .ev-cands { font-size: 11px; color: var(--ink-muted); margin: 2px 0 0; }
+.evg .ev-cands code { font-size: 10px; margin-right: 4px; }
+.evg .evg-done { margin: 8px 0 4px; font-size: 12px; }
+.evg .drq-grade select { font: inherit; font-size: 12px; }
 .ev-hold { color: var(--status-warn); } .ev-bad { color: var(--status-critical); } .ev-ok { color: var(--status-good); }
 .ev-list { margin: 8px 0 0; padding: 0 0 0 16px; display: grid; gap: 8px; }
 .ev-list code { font-size: 10px; }

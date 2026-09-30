@@ -186,6 +186,16 @@
     <div id="consensus" class="consensus" hidden></div>
   </section>
 
+  <!-- 근거 결손 게이트 카드 — 통과 후보들의 선행 근거를 한 곳에서 입력(측정값은 스펙에 들어가 모든 후보를 함께 다시 판정한다) -->
+  <section class="panel drq evg" id="panel-evidence" hidden aria-live="polite">
+    <header>
+      <h3>근거 결손 게이트 <small>개발 착수 전 · 판정은 결정론(LLM 0회)</small></h3>
+      <p>룰북 통과는 “알려진 금기가 없다”일 뿐입니다. 통과 후보들에 필요한 선행 근거를 항목별로 모았습니다 — 값을 한 번 넣으면 페이즈 게이트부터
+        다시 계산해 모든 후보의 판정을 함께 고칩니다. 적합/부적합을 고르는 칸은 없습니다.</p>
+    </header>
+    <div id="evg-body"></div>
+  </section>
+
   <!-- 직접 입력(보조 경로) — 입력 에이전트 없이 폼으로 실행 -->
   <details class="manual" id="manual">
     <summary>직접 입력</summary>

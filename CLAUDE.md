@@ -11,7 +11,10 @@ Formula 1 is a QbD (Quality-by-Design) validation engine for pharmaceutical **fo
 **As of 2026-09-18 the evidence gate's graph node and everything downstream of it (approval, batch, lifecycle) is commented out, not deleted** — see "v3 phase-gate pivot" below.
 **Since 2026-09-28 the evidence gate itself is live again in a different place: the entry to Stage 2** (presentation step ⑤). It is not a graph node — `web/server.py`
 assesses each passed candidate after the run (`GET /api/runs/{id}/evidence`, re-implemented next to the commented-out originals). **Results are entered as
-measured values, not 적합/부적합** (user, 2026-09-30): the card posts them to `POST /api/runs/{id}/measurements` (`source: evidence`), which recomputes from
+measured values, not 적합/부적합** (user, 2026-09-30), **in one separate card, not per candidate** (same day — measurements land in the spec and
+re-judge every candidate, so per-candidate forms were redundant): `#panel-evidence` (`renderEvidenceCard`, placed by `flow.js` after the cands card on
+`f1:evidence`) groups the open before_protocol gaps of all passed candidates by requirement (each lists its candidates, one input per key, one grade
+select, one submit); candidate cards keep only a status line (`evidenceBox` → `.ev-box .ev-head` + "입력 카드로" jump) and the waiver box. The card posts to `POST /api/runs/{id}/measurements` (`source: evidence`), which recomputes from
 phase_gates (`Run.reassess_with_measurements` — gates → plan → **re-gates the passed candidates** even when the plan is unchanged, zero LLM calls unless the
 strategy set changed) and returns the recompute as trace events (`trace`: phase_gates node.enter/phase.gate/node.exit → plan → gate verdicts; also appended to
 `bus.history`) because the SSE stream closed at run.end — the UI replays them through `handle()`. Each evidence item carries `inputs` (type · unit · label from
@@ -666,7 +669,8 @@ cards, grayscale tokens from `styles.css`, black pill primary buttons. No sideba
   cards as **frozen clones** (ids stripped, controls disabled).
 - Sequencing hooks: `f1:proposal` → inputs card; `f1:runstart` → chem card; `f1:run` + `F1Discovery.pending()`/`status()` → drq or cands
   (a concluded run — infeasible/no_design/qtpp_review — shows cands immediately); `#drq-submit/#drq-skip` clicks or `f1:drqdone` → cands
-  (`f1:drqdone` arrives *after* the recompute's `f1:run`, so it places the cands itself); `f1:flowready` → agent nudge.
+  (`f1:drqdone` arrives *after* the recompute's `f1:run`, so it places the cands itself); `f1:evidence` (from `loadEvidence`, ≥ 1 passed
+  candidate) → the 근거 결손 게이트 card right after the cands (once per run; re-rendered in place after every recompute); `f1:flowready` → agent nudge.
   A drq card already in the thread never disappears — `renderDataRequests` leaves a "남은 요청 없음" line instead of hiding it.
 - Right column is open by default above 1180 px (pref in `localStorage f1:drawer`), fixed overlay below, full screen ≤ 760 px.
 - Demo cards run on click but follow the same thread shape as an agent start: user bubble → **실험 데이터 입력 card** (moved in by

@@ -3,7 +3,7 @@
    설계 실행 카드(에이전트 제안) ─ 밑에 '실험 데이터값을 입력하시겠습니까?' + 실험 데이터 입력 카드
    [설계 실행] ─ API 물리화학 카드(가로)
    설계 종료 ─ 데이터 요청이 있으면 데이터 요청 카드 → [값 제출] 또는 [전부 건너뛰기] 뒤에 후보 처방 카드
-              데이터 요청이 없으면 바로 후보 처방 카드
+              데이터 요청이 없으면 바로 후보 처방 카드 → 통과 후보가 있으면 근거 결손 게이트 카드(값은 여기서 한 번에)
    카드는 app.js가 채우는 살아 있는 요소를 옮겨 놓는다(아이디 그대로). 새 설계가 시작되면 앞 설계의 카드는
    그 자리에 사본(읽기 전용)으로 남기고 살아 있는 카드는 새 자리로 옮긴다.
    오른쪽 서랍: 에이전트 흐름 · 지금 무슨 일이 · 실행 트레이스 — 탭을 누르면 열리고 ⤢로 크게/작게. */
@@ -68,8 +68,8 @@
         <small>실측은 추정보다 우선 · 비운 칸은 “모른다”로 보고 갈리는 지점에서만 데이터 요청</small>`);
     } else if (manualRun && window.F1Agent) window.F1Agent.say("user", `직접 입력 — ${d.request || "설계 실행"}`);
     manualRun = false;
-    ["drq", "panel-cands"].forEach((id) => { const n = $(id); if (n && !n.closest("#stash")) { freeze(n); $("stash").append(n); } });
-    run = { id: d.runId, drqShown: false, candsShown: false, wantCands: false };
+    ["drq", "panel-cands", "panel-evidence"].forEach((id) => { const n = $(id); if (n && !n.closest("#stash")) { freeze(n); $("stash").append(n); } });
+    run = { id: d.runId, drqShown: false, candsShown: false, wantCands: false, evReady: false, evShown: false };
     $("chem-empty").hidden = false;
     $("chem-body").hidden = true;
     const chemRow = place($("panel-chem"), "API 물리화학 — 구조에서 계산한 값과 경고", "wide");
@@ -84,8 +84,23 @@
     run.candsShown = true;
     const row = place($("panel-cands"), "후보 처방 — 룰북 게이트 · 심사관 점수 · 다음 행동", "wide");
     requestAnimationFrame(() => row.scrollIntoView({ block: "start", behavior: "smooth" }));
+    showEvidence();
     document.dispatchEvent(new CustomEvent("f1:flowready", { detail: { runId: run.id, phase: "cands" } }));
   }
+
+  // 근거 결손 게이트 카드 — 통과 후보가 있을 때 후보 카드 다음에 한 번 놓는다(재계산하면 그 자리에서 다시 그려진다)
+  function showEvidence() {
+    if (!run || run.evShown || !run.evReady || !run.candsShown) return;
+    run.evShown = true;
+    const p = $("panel-evidence");
+    p.hidden = false;
+    place(p, "근거 결손 게이트 — 통과 후보들의 선행 근거를 한 번에 입력", "wide");
+  }
+  document.addEventListener("f1:evidence", (e) => {
+    if (!run || (e.detail && e.detail.runId !== run.id)) return;
+    if (e.detail && e.detail.candidates > 0) run.evReady = true;
+    showEvidence();
+  });
 
   // 설계 종료·재계산·건너뛰기마다 app.js가 f1:run을 보낸다
   document.addEventListener("f1:run", () => {

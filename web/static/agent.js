@@ -250,7 +250,7 @@
         const out = await D.submitMeasurements(p.measurements, gradeSel ? gradeSel.value : "user_statement", p.source || "agent");
         if (!out) { result("제출이 거부되었습니다 — 알림을 확인해 주세요.", "warn"); return false; }
         document.dispatchEvent(new CustomEvent("f1:drqdone", { detail: { how: "agent" } }));
-        const evNote = (p.evidence || []).length ? " 근거 결손 게이트도 다시 판정했습니다 — 후보 카드의 근거 표시를 확인하세요." : "";
+        const evNote = (p.evidence || []).length ? " 근거 결손 게이트도 다시 판정했습니다 — 근거 결손 게이트 카드와 후보 카드의 근거 표시를 확인하세요." : "";
         result((out.regenerated ? "전략이 바뀌어 후보를 다시 생성했습니다." : "phase_gates부터 재계산했습니다 — 전략 집합은 그대로입니다.") + evNote, "ok");
         return true;
       }
@@ -258,7 +258,7 @@
         if (D.runId() !== p.run_id) { result("이 카드는 이전 설계의 후보입니다 — 지금 설계의 후보로 다시 요청해 주세요.", "warn"); return false; }
         const r = await D.develop(p.candidate_id);   // 후보 카드의 '이 후보로 개발 착수'와 같은 길(근거 결손 게이트 포함)
         if (r === "waiver") {
-          result("근거 결손이 남은 후보입니다 — 후보 카드에 사유 칸을 열었습니다. 사유를 적고 [사유 기록 · 개발 착수]를 누르거나, 확인시험 결과를 넣어 다시 판정하세요.", "warn");
+          result("근거 결손이 남은 후보입니다 — 후보 카드에 사유 칸을 열었습니다. 사유를 적고 [사유 기록 · 개발 착수]를 누르거나, 근거 결손 게이트 카드(또는 여기 대화)에 측정값을 넣어 다시 판정하세요.", "warn");
           return true;
         }
         if (r !== "started") { result("2단계로 넘기지 못했습니다 — 알림을 확인해 주세요.", "warn"); return false; }

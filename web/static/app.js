@@ -363,33 +363,115 @@ async function loadEvidence() {
     if (!res.ok) return;
     evidence = (await res.json()).candidates || {};
     renderCandidates();
+    renderEvidenceCard();
+    document.dispatchEvent(new CustomEvent("f1:evidence", { detail: { runId, candidates: Object.keys(evidence).length } }));
   } catch (e) { /* 보조 — 실패해도 후보 목록은 그대로 */ }
 }
+// 후보 카드에는 근거 판정 상태만 — 값은 근거 결손 게이트 카드 하나에서 넣는다(측정값은 후보가 아니라 스펙에 들어가
+// 모든 후보를 같은 규칙으로 다시 판정하므로 후보마다 따로 넣을 이유가 없다 — 사용자 2026-09-30)
 function evidenceBox(id) {
   const ev = evidence[id];
   if (!ev) return "";
   const pr = ev.protocol || {};
   const before = pr.before_protocol || [], par = pr.parallel || [];
   const failed = (ev.failed || []).length, open = (ev.blocking || []).length - failed;
+  const missing = before.filter((g) => g.status === "missing");
   const head = failed ? `<b class="ev-bad">근거 부적합 ${failed}건</b> — 전제가 부정됨, 개발로 넘기지 않음`
-    : open ? `<b class="ev-hold">근거 결손 ${open}건 — 보류</b> · 측정값을 넣으면 phase_gates부터 다시 계산`
+    : open ? `<b class="ev-hold">근거 결손 ${open}건 — 보류</b> · ${missing.map((g) => esc(g.label)).join(" · ")}`
       : `<b class="ev-ok">근거 충족</b>${par.length ? ` · 병행 시험 ${par.length}건` : ""}`;
-  const item = (g) => `<li data-req="${esc(g.requirement_id)}"><b>${esc(g.label)}</b> <code>${esc(g.test_id)}</code> ${esc(g.test_name || "")}
-      <div class="ev-why">${esc(g.why || "")}${g.acceptance_logic ? ` · 판정: ${esc(g.acceptance_logic)}` : ""}${g.result_note ? ` · 결과: ${esc(g.result_note)}` : ""}</div>
-      ${g.status === "missing" && (g.inputs || []).length ? `<div class="ev-form">${(g.inputs || []).map((f) => f.type === "bool"
-          ? `<label class="ev-chk"><input type="checkbox" data-key="${esc(f.key)}" data-type="bool"> ${esc(f.label)} 수행</label>`
-          : `<label class="ev-numl">${esc(f.label)}<input class="ev-num" data-key="${esc(f.key)}" data-type="number" inputmode="decimal"
-              placeholder="값" title="${esc(f.key)}" aria-label="${esc(f.label)}${f.unit ? ` (${esc(f.unit)})` : ""}">${f.unit ? `<small>${esc(f.unit)}</small>` : ""}</label>`).join("")}
-        <select class="ev-grade" aria-label="근거 등급">${Object.entries(GRADE_KO).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("")}</select>
-        <button type="button" class="ev-send">값 입력 → 재계산</button>
-        <button type="button" class="ev-talk ghost" data-label="${esc(g.label)}">말로 입력</button></div>` : ""}</li>`;
-  return `<details class="ev-box ${failed ? "bad" : open ? "hold" : "ok"}"><summary>근거 결손 게이트 · ${head}</summary>
-    ${before.length ? `<ul class="ev-list">${before.map(item).join("")}</ul>` : `<p class="ev-why">선행 확인시험 요구 없음</p>`}
-    ${par.length ? `<p class="ev-why">병행(배치와 함께): ${par.map((g) => `${esc(g.label)} <code>${esc(g.test_id)}</code>`).join(" · ")}</p>` : ""}
-    ${open ? `<p class="ev-why">값은 입력 에이전트에 말로 적어도 된다 — 용해도는 잰 pH와 함께, 투과도는 흡수율·절대 생체이용률·요중 회수율·Papp 중
-      가진 자료를 쓰던 단위 그대로. 단위 환산과 pH별 최저값, 용량/용해도 부피는 코드가 계산해 제출 카드로 만든다.</p>` : ""}
-    <p class="ev-why">요청 시험은 확인시험 마스터(66종)의 실제 행에서만 고른다 — 판정은 결정론, LLM 없음.</p></details>`;
+  return `<div class="ev-box ${failed ? "bad" : open ? "hold" : "ok"}"><span class="ev-head">근거 결손 게이트 · ${head}</span>
+    ${open ? `<button type="button" class="linkish ev-jump">근거 결손 게이트 카드에서 입력 ↓</button>` : ""}</div>`;
 }
+
+// 근거 결손 게이트 카드 — 통과 후보들의 열린 선행 근거를 요구 항목별로 묶는다(항목마다 해당 후보를 표시).
+// 값은 한 번 넣으면 /measurements(source evidence)로 가서 phase_gates부터 다시 계산한다.
+let evgSubmitted = false;
+function renderEvidenceCard() {
+  const body = $("evg-body");
+  if (!body) return;
+  const keep = {};                     // 다시 그려도 입력 중인 값은 남긴다(제출한 직후만 비운다)
+  if (!evgSubmitted) body.querySelectorAll("[data-key]").forEach((el) => { keep[el.dataset.key] = el.type === "checkbox" ? el.checked : el.value; });
+  evgSubmitted = false;
+  const ids = Object.keys(evidence);
+  if (!ids.length) { body.innerHTML = `<p class="ev-why">룰북을 통과한 후보가 없어 따질 근거가 없습니다.</p>`; return; }
+  const items = new Map(), par = new Map();
+  let hold = 0, bad = 0;
+  for (const cid of ids) {
+    const ev = evidence[cid];
+    const f = (ev.failed || []).length, o = (ev.blocking || []).length - f;
+    if (f) bad++; else if (o) hold++;
+    const pr = ev.protocol || {};
+    for (const g of pr.before_protocol || []) {
+      if (g.status === "satisfied") continue;
+      const it = items.get(g.requirement_id) || { ...g, cands: [] };
+      it.cands.push(cid);
+      items.set(g.requirement_id, it);
+    }
+    for (const g of pr.parallel || []) {
+      const it = par.get(g.requirement_id) || { ...g, cands: [] };
+      it.cands.push(cid);
+      par.set(g.requirement_id, it);
+    }
+  }
+  const seen = new Set();              // 같은 측정값을 두 항목이 물으면 칸은 한 번만
+  const field = (f) => {
+    if (seen.has(f.key)) return "";
+    seen.add(f.key);
+    return f.type === "bool"
+      ? `<label class="ev-chk"><input type="checkbox" data-key="${esc(f.key)}" data-type="bool"> ${esc(f.label)} 수행</label>`
+      : `<label class="ev-numl">${esc(f.label)}<input class="ev-num" data-key="${esc(f.key)}" data-type="number" inputmode="decimal"
+          placeholder="값" title="${esc(f.key)}" aria-label="${esc(f.label)}${f.unit ? ` (${esc(f.unit)})` : ""}">${f.unit ? `<small>${esc(f.unit)}</small>` : ""}</label>`;
+  };
+  const item = (g) => `<div class="drq-req ev-item" data-req="${esc(g.requirement_id)}">
+      <b>${esc(g.label)} <code>${esc(g.test_id)}</code> <span class="ev-test">${esc(g.test_name || "")}</span></b>
+      <div class="ev-cands">해당 후보 ${g.cands.map((c) => `<code>${esc(c)}</code>`).join(" ")}</div>
+      <div class="ev-why">${esc(g.why || "")}${g.acceptance_logic ? ` · 판정: ${esc(g.acceptance_logic)}` : ""}${g.result_note ? ` · 결과: ${esc(g.result_note)}` : ""}</div>
+      ${g.status === "missing" && (g.inputs || []).length ? `<div class="ev-form">${g.inputs.map(field).join("")}
+        <button type="button" class="ev-talk" data-label="${esc(g.label)}">말로 입력</button></div>` : ""}</div>`;
+  const open = [...items.values()];
+  const summary = `통과 후보 ${ids.length}개 — ${hold ? `<b class="ev-hold">보류 ${hold}</b>` : ""}${hold && ids.length - hold - bad ? " · " : ""}${ids.length - hold - bad
+    ? `<b class="ev-ok">충족 ${ids.length - hold - bad}</b>` : ""}${bad ? ` · <b class="ev-bad">부적합 ${bad}</b>` : ""}`;
+  body.innerHTML = `<p class="evg-sum">${summary}${open.length ? ` · 선행 근거 결손 ${open.length}항목` : ""}</p>
+    ${open.length ? open.map(item).join("") + `
+    <p class="ev-why">값은 입력 에이전트에 말로 적어도 된다 — 용해도는 잰 pH와 함께, 투과도는 흡수율·절대 생체이용률·요중 회수율·Papp 중 가진 자료를
+      쓰던 단위 그대로. 단위 환산과 pH별 최저값, 용량/용해도 부피는 코드가 계산해 제출 카드로 만든다.</p>
+    <div class="drq-actions">
+      <label class="drq-grade">근거 등급 <select class="ev-grade">${Object.entries(GRADE_KO).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("")}</select></label>
+      <button type="button" class="ev-send">값 입력 → phase_gates부터 재계산</button>
+    </div>`
+    : `<p class="evg-done"><b class="ev-ok">모든 통과 후보의 선행 근거가 충족되었습니다</b> — 후보 카드에서 개발 착수로 넘어가면 됩니다.</p>`}
+    ${par.size ? `<p class="ev-why">병행(배치와 함께): ${[...par.values()].map((g) => `${esc(g.label)} <code>${esc(g.test_id)}</code>`).join(" · ")}</p>` : ""}
+    <p class="ev-why">요청 시험은 확인시험 마스터(66종)의 실제 행에서만 고른다 — 판정은 결정론, LLM 없음.</p>`;
+  body.querySelectorAll("[data-key]").forEach((el) => {
+    const v = keep[el.dataset.key];
+    if (v === undefined) return;
+    if (el.type === "checkbox") el.checked = !!v; else el.value = v;
+  });
+  // '말로 입력'은 입력 에이전트로 넘긴다 — 항목 이름만 채우고 값은 사용자가 쓴다(환산은 서버 코드가 한다)
+  body.querySelectorAll(".ev-talk").forEach((b) => {
+    b.onclick = () => { if (window.F1Agent) window.F1Agent.focus(`${b.dataset.label}: `); };
+  });
+  const send = body.querySelector(".ev-send");
+  if (send) send.onclick = async () => {
+    const measurements = {};
+    let bad = "";
+    body.querySelectorAll("[data-key]").forEach((el) => {
+      if (el.dataset.type === "bool") { if (el.checked) measurements[el.dataset.key] = true; return; }
+      const v = el.value.trim();
+      if (v === "") return;
+      const n = Number(v);
+      if (!Number.isFinite(n)) bad = el.dataset.key; else measurements[el.dataset.key] = n;
+    });
+    if (bad) { notice(`${bad}: 숫자로 넣어 주세요.`, "warn"); return; }
+    if (!Object.keys(measurements).length) { notice("측정값을 넣거나 수행 여부를 체크해 주세요.", "warn"); return; }
+    send.disabled = true; send.textContent = "재계산 중…";
+    // 재계산 · 근거 재판정 · 해설은 submitMeasurements가 한다(말로 입력한 값과 같은 길)
+    evgSubmitted = true;
+    const out = await submitMeasurements(measurements, body.querySelector(".ev-grade").value, "evidence");
+    if (!out) { evgSubmitted = false; send.disabled = false; send.textContent = "값 입력 → phase_gates부터 재계산"; }
+  };
+}
+
 function devButton(id) {
   const ev = evidence[id] || {};
   const failed = (ev.failed || []).length, open = (ev.blocking || []).length - failed;
@@ -397,7 +479,7 @@ function devButton(id) {
   return `<button type="button" class="dev-start${open ? " hold" : ""}" data-cand="${esc(id)}"
     title="이 처방을 프로토타입으로 받아 2단계(QTPP → 위험평가 → DoE → 회귀·ANOVA → Design Space)를 시작합니다">${open ? "결손을 기록하고 개발 착수 →" : "이 후보로 개발 착수 →"}</button>
     ${open ? `<div class="ev-waive" hidden><p class="ev-why">선행 근거 ${open}건이 비어 있습니다 — 아래 사유를 확인하고(고칠 수 있음) <b>사유 기록 · 개발 착수</b>를 누르면
-      사유와 남은 결손이 2단계 기록·보고서에 남고 바로 2단계로 넘어갑니다. 확인시험 결과가 있으면 위 근거 상자에서 넣으면 됩니다.</p>
+      사유와 남은 결손이 2단계 기록·보고서에 남고 바로 2단계로 넘어갑니다. 측정값이 있으면 근거 결손 게이트 카드에 넣으면 됩니다.</p>
       <textarea rows="3" aria-label="근거 결손을 둔 채 진행하는 사유"></textarea>
       <button type="button" class="ev-waive-go">사유 기록 · 개발 착수 →</button><span class="ev-waive-msg" role="status"></span></div>` : ""}`;
 }
@@ -449,33 +531,6 @@ async function startDevelopment(cid, card, retried) {
     if (e.code === "EVIDENCE_GAPS") notice(e.message, "warn");
     return "error";
   }
-}
-function wireEvidence(card, cid) {
-  // 근거 결손 게이트의 입력 = 측정값 — phase_gates부터 다시 계산한다(같은 재계산 경로: POST /measurements). 적합/부적합은 묻지 않는다.
-  // '말로 입력'은 입력 에이전트로 넘긴다 — 항목 이름만 채우고 값은 사용자가 쓴다(환산은 서버 코드가 한다)
-  card.querySelectorAll(".ev-talk").forEach((b) => {
-    b.onclick = () => { if (window.F1Agent) window.F1Agent.focus(`${b.dataset.label}: `); };
-  });
-  card.querySelectorAll(".ev-send").forEach((b) => {
-    b.onclick = async () => {
-      const li = b.closest("li");
-      const measurements = {};
-      let bad = "";
-      li.querySelectorAll("[data-key]").forEach((el) => {
-        if (el.dataset.type === "bool") { if (el.checked) measurements[el.dataset.key] = true; return; }
-        const v = el.value.trim();
-        if (v === "") return;
-        const n = Number(v);
-        if (!Number.isFinite(n)) bad = el.dataset.key; else measurements[el.dataset.key] = n;
-      });
-      if (bad) { notice(`${bad}: 숫자로 넣어 주세요.`, "warn"); return; }
-      if (!Object.keys(measurements).length) { notice("측정값을 넣거나 수행 여부를 체크해 주세요.", "warn"); return; }
-      b.disabled = true; b.textContent = "재계산 중…";
-      // 재계산 · 근거 재판정 · 해설은 submitMeasurements가 한다(말로 입력한 값과 같은 길)
-      const out = await submitMeasurements(measurements, li.querySelector(".ev-grade").value, "evidence");
-      if (!out) { b.disabled = false; b.textContent = "값 입력 → 재계산"; }
-    };
-  });
 }
 
 // 심사관 서술은 세 줄로 접어 두고 필요할 때 펼친다(후보 카드가 한 화면을 넘지 않게)
@@ -538,7 +593,11 @@ function renderCandidates() {
     // 후보 1위가 자동으로 개발에 들어가지 않는다(명세 v6.1 §0 경계 1) — 연구자가 고른 후보만 넘어간다.
     const dev = card.querySelector(".dev-start");
     if (dev) dev.onclick = () => startDevelopment(dev.dataset.cand, card);
-    wireEvidence(card, id);
+    const jump = card.querySelector(".ev-jump");
+    if (jump) jump.onclick = () => {
+      const p = $("panel-evidence");
+      if (p && !p.closest("#stash")) p.scrollIntoView({ block: "start", behavior: "smooth" });
+    };
     box.appendChild(card);
   }
 }

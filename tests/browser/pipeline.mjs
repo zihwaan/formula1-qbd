@@ -52,7 +52,7 @@ await shot('02_cands');
 check('후보 카드에 개발 착수 버튼', true);
 
 console.log('\n[2단계] 개발 착수 → 1–7단계(LLM 초안) → 8 종합 정리');
-const evHead = (await page.locator('#agent-log #panel-cands .ev-box summary').first().textContent().catch(() => '')).replace(/\s+/g, ' ');
+const evHead = (await page.locator('#agent-log #panel-cands .ev-box .ev-head').first().textContent().catch(() => '')).replace(/\s+/g, ' ');
 check('후보 카드에 근거 결손 게이트 판정(발표 ⑤)', /근거 (결손|충족|부적합)/.test(evHead), evHead.slice(0, 90));
 await page.locator('#agent-log #panel-cands .dev-start').first().click();
 const waive = page.locator('#agent-log #panel-cands .ev-waive:not([hidden])').first();

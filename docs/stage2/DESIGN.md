@@ -9,7 +9,8 @@
 - **1단계(후보 탐색)는 그대로 둔다.** 통과 후보 카드의 **[이 후보로 개발 착수]**가 2단계를 연다(1위 자동 진입 없음).
   조성·공정과 요청 맥락(대상 환자·용량·제형·약물 함량·1단계 신호)은 **불변 Handoff**(fingerprint)로 넘어가고, 2단계의 LLM 초안이 함께 읽는다.
 - **입구 = 근거 결손 게이트**(발표 자료 ⑤, `formula/evidence/gate.py` · `evidence_requirements.csv` 16행 · 확인시험 마스터 66종). 통과 후보마다
-  선행(before_protocol) 근거가 있는지 결정론으로 판정해 카드에 보이고(`/api/runs/{id}/evidence`), 결과는 적합/부적합이 아니라 측정값으로 넣는다 —
+  선행(before_protocol) 근거가 있는지 결정론으로 판정한다(`/api/runs/{id}/evidence`). 후보 카드에는 상태 한 줄만, 입력은 후보 카드 다음의
+  **근거 결손 게이트 카드 하나**(통과 후보들의 결손을 요구 항목별로 묶음 — 측정값은 스펙에 들어가 모든 후보를 함께 다시 판정)에서, 적합/부적합이 아니라 측정값으로 넣는다 —
   `POST /api/runs/{id}/measurements`(source `evidence`)로 가서 phase_gates부터 재계산 → 통과 후보 규칙 게이트 재판정 → 근거 재판정(트레이스 기록).
   값은 입력 에이전트에 말로 넣어도 된다(source `agent_evidence`) — 관측(값·단위·pH·방법)만 LLM이 뽑고, 단위 환산·pH 1.2–6.8 최저값·용량/용해도 부피·
   투과도 해석(BA·요중 회수율 ≥ 85 %만 흡수율, Papp 환산 없음)은 `formula/agents/evidence_values.py`가 ICH M9대로 계산한다.
