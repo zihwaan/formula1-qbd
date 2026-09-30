@@ -729,6 +729,9 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
   re-derives the paper's matrices/regression/ANOVA and walks a real study with paper values (approvals/events counted, not typed); §7.6
   reads `stage2_llm.json`; figure 8 is `cbd_surfaces.png` from `surfaces_png.mjs` (it hides the dock/sidebar and un-scrolls the thread,
   otherwise the composer is baked into the figure). The browser-test sentence in §7.8 must list only suites actually run on that build.
+  **Tone (user, 2026-09-30): the report presents the design's strengths** — lead with the measured advantages, state ties as one factual
+  sentence, never self-negate ("우월성의 근거로 쓰지 않는다", "차별점이 되지 않는다"); a short 적용 범위와 향후 과제 instead of a limitations list.
+  Numbers still come only from the json files, and comparison sentences are computed (they flip if a rerun changes the result).
   The report describes the **finished system only** (user, 2026-09-30): no fix history, defect lists or "in review" wording — the old §7.5
   (demo-defect verification, devfix_results.json) was removed; `devfix_check.py` stays as a tool. The report opens with **핵심 요약**:
   `fig_overview()` = presentation pp.5–6 merged (input agent → Stage I ①–⑤ + red reflect loop → evidence gate → Stage II ①–⑤ → QbD PDF,
