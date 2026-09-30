@@ -1,4 +1,5 @@
-// 근거 결손 게이트(발표 자료 ⑤) — 후보 카드 안에서: 결손 표시 → 확인시험 결과 입력 → 재판정 → 개발 착수 / 부적합이면 막힘.
+// 근거 결손 게이트(발표 자료 ⑤) — 후보 카드 안에서: 결손 표시 → 측정값 입력 → phase_gates부터 재계산(트레이스) → 근거 재판정 → 개발 착수.
+// 적합/부적합을 고르는 칸은 없다(사용자 2026-09-30) — 값이 규칙으로 다시 판정된다.
 // 실제 LLM으로 시연 카드 ①을 돌린다(후보가 있어야 한다). F1_LLM=dacon 권장.
 //   F1_LLM=dacon CHROME=<chrome> node tests/browser/evidence.mjs http://localhost:8104/
 import { chromium } from 'playwright-core';
@@ -36,21 +37,28 @@ if (idx < 0) {
   const reqs = await card().locator('.ev-list li[data-req]').evaluateAll((ls) => ls.map((l) => ({ id: l.dataset.req, code: l.querySelector('code')?.textContent || '' })));
   ck('요청 시험은 확인시험 마스터의 test_id', reqs.length > 0 && reqs.every((r) => /^[A-Z]/.test(r.code)), reqs.map((r) => `${r.id}:${r.code}`).join(', '));
 
-  // 결과 입력 — 적합으로 전부 닫는다(각 입력 뒤 카드가 다시 그려진다)
+  ck('적합/부적합 선택 칸 없음', await card().locator('.ev-out, .ev-note').count() === 0);
+  // 측정값 입력 — BCS I이 되는 값(용해도 부피 ≤ 250 mL · 흡수율 ≥ 85 %)으로 넣어 새 판정에서도 후보가 통과하게 한다
+  const VAL = { dose_solubility_volume: '100', fraction_absorbed: '95', aqueous_stability_percent: '99', solubility_mg_per_ml: '5' };
   for (const r of reqs) {
     const li = card().locator(`.ev-list li[data-req="${r.id}"]`);
-    if (!(await li.locator('.ev-send').count())) continue;
+    if (!(await li.count()) || !(await li.locator('.ev-send').count())) continue;
     if (!(await li.isVisible())) await card().locator('.ev-box > summary').click();
-    await li.locator('.ev-note').fill('사내 확인시험 적합(브라우저 테스트)');
-    const num = li.locator('.ev-num');
-    if (await num.count()) await num.fill('');
-    const resp = p.waitForResponse((x) => x.url().includes('/confirmation'));
+    for (const inp of await li.locator('[data-key]').all()) {
+      const key = await inp.getAttribute('data-key');
+      if ((await inp.getAttribute('data-type')) === 'bool') await inp.check();
+      else await inp.fill(VAL[key] || '1');
+    }
+    const before = await p.locator('#trace .ev').count();
+    const resp = p.waitForResponse((x) => x.url().includes('/measurements'));
     await li.locator('.ev-send').click();
-    ck(`결과 입력 ${r.id} → 200`, (await resp).status() === 200);
-    await p.waitForTimeout(300);
+    ck(`측정값 입력 ${r.id} → /measurements 200`, (await resp).status() === 200);
+    await p.waitForTimeout(600);
+    const rows = await p.locator('#trace .ev').evaluateAll((es, n) => es.slice(n).map((e) => e.textContent.replace(/\s+/g, ' ')), before);
+    ck(`${r.id} 재계산이 트레이스에 phase_gates부터 남음`, rows.some((t) => /phase_gates/.test(t)) && rows.some((t) => /gate/.test(t)), rows.slice(0, 3).join(' | ').slice(0, 120));
   }
   const head = (await card().locator('.ev-box > summary').textContent()).replace(/\s+/g, ' ');
-  ck('재판정 → 근거 충족(LLM 없이 즉시)', /근거 충족/.test(head), head.slice(0, 80));
+  ck('재계산 → 근거 충족', /근거 충족/.test(head), head.slice(0, 80));
   ck('버튼이 “이 후보로 개발 착수”로 바뀜', /이 후보로 개발 착수/.test(await card().locator('.dev-start').textContent()));
   const narr = await p.locator('#narration').textContent().catch(() => '');
   ck('해설에 재판정 기록', /근거를 다시 판정/.test(narr));
@@ -58,22 +66,6 @@ if (idx < 0) {
   await p.waitForSelector('#s2 .s2-step.current[data-step="prototype"]', { timeout: 60000 });
   const ho = (await p.locator('#s2 .s2-handoff').textContent()).replace(/\s+/g, ' ');
   ck('사유 없이 2단계 착수 · Handoff에 근거 충족 기록', /근거 결손 게이트/.test(ho) && !/연구자 사유/.test(ho), (ho.match(/근거 결손 게이트[^·]{0,60}/) || [''])[0]);
-}
-
-// 부적합 — 다른 결손 후보가 있으면 부적합 결과로 막히는지
-const other = await passed.evaluateAll((cs) => cs.findIndex((c) => c.querySelector('.ev-box.hold')));
-if (other >= 0) {
-  const card = passed.nth(other);
-  await card.locator('.ev-box > summary').click();
-  const li = card.locator('.ev-list li[data-req]').first();
-  await li.locator('.ev-out').selectOption('fail');
-  await li.locator('.ev-note').fill('분해물 증가(브라우저 테스트)');
-  await li.locator('.ev-send').click();
-  await p.waitForTimeout(800);
-  const c2 = p.locator('#agent-log #panel-cands .card.pass').nth(other);
-  ck('부적합 → 개발 불가(버튼 비활성)', await c2.locator('.dev-start[disabled]').count() === 1 && /부적합/.test(await c2.locator('.ev-box > summary').textContent()));
-} else {
-  console.log('  · 결손 후보가 하나뿐이라 부적합 경로는 pytest(test_evidence_api.py)로만 확인');
 }
 
 // 좁은 화면 — 게이트 상자가 가로로 넘치지 않는다

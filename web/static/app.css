@@ -226,7 +226,11 @@ table.desc tfoot td { padding-top: 6px; }
 .ev-why { color: var(--ink-muted); margin: 3px 0 0; line-height: 1.5; font-size: 11px; }
 .ev-form { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 .ev-form select, .ev-form input { font: inherit; font-size: 11.5px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--page); color: var(--ink-1); min-width: 0; }
-.ev-form input.ev-note { flex: 1 1 120px; } .ev-form input.ev-num { width: 120px; }
+.ev-form { align-items: center; }
+.ev-form input.ev-num { width: 110px; }
+.ev-numl, .ev-chk { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--ink-2); }
+.ev-numl small { color: var(--ink-muted); }
+.ev-chk input { width: auto; }
 .ev-form button, .ev-waive button { font: inherit; font-size: 11.5px; font-weight: 650; padding: 4px 10px; border-radius: 99px; border: 1px solid transparent; background: var(--accent-fixed); color: var(--on-accent-fixed); }
 /* 후보 카드의 진입 버튼 — 원래 모양(검은 알약). 근거 결손이 남았으면 보류 표기(점선 · 흰 바탕) */
 .dev-start {

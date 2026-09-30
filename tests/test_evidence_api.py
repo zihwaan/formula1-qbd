@@ -104,3 +104,47 @@ def test_groq_choice_falls_back_to_contest_api_for_full_sessions(monkeypatch):
         assert c.providers() == ("groq",)                          # 게스트 — 무료 모델만
     with c.use_llm("dacon"):
         assert c.providers() == ("dacon", "groq")
+
+
+def test_evidence_values_recompute_from_phase_gates(app_with_final, monkeypatch):
+    """근거 결손 게이트의 입력은 적합/부적합이 아니라 측정값이다(사용자 2026-09-30). 값은 측정값 재계산 경로로 가서
+    phase_gates부터 다시 계산하고(트레이스에 남는다), 통과 후보를 규칙 게이트로 다시 판정한 뒤 근거를 다시 판정한다.
+    BCS 근거(EVR005)는 용해도 부피 · 흡수율이 들어와 규칙표가 실측 BCS 등급을 만들 때 닫힌다."""
+    server, client, run = app_with_final
+    run.final["spec"].measured_params["dose_mg"] = 200
+    from formula.planner import strategy_planner
+    monkeypatch.setattr(strategy_planner, "signature", lambda planned: "SAME")      # 전략 집합 불변 — LLM 재생성 없이 같은 후보를 다시 판정
+    run.final["plan_signature"] = "SAME"
+    ev = client.get(f"/api/runs/{run.run_id}/evidence").json()["candidates"]["cand-0-WG"]
+    items = {i["requirement_id"]: i for i in ev["protocol"]["before_protocol"]}
+    assert set(ev["blocking"]) == {"EVR001", "EVR004", "EVR005"}
+    assert [f["key"] for f in items["EVR005"]["inputs"]] == ["dose_solubility_volume", "fraction_absorbed"]
+    assert all(f["type"] in ("number", "bool") for i in items.values() for f in i["inputs"])
+
+    r = client.post(f"/api/runs/{run.run_id}/measurements", json={
+        "measurements": {"aqueous_stability_percent": 98.5, "solubility_mg_per_ml": 0.021}, "grade": "self_measured", "source": "evidence"})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    steps = [(e["node"], e["kind"]) for e in out["trace"]]
+    assert steps[0] == ("phase_gates", "node.enter") and ("phase_gates", "phase.gate") in steps
+    assert ("plan", "node.exit") in steps and ("gate", "verdict") in steps
+    assert out["rejudged"][0]["candidate_id"] == "cand-0-WG" and out["results"][0]["passed"]
+    assert any(e["node"] == "phase_gates" and e["kind"] == "node.enter" for e in (x.model_dump(mode="json") for x in run.bus.history))
+    assert client.get(f"/api/runs/{run.run_id}/evidence").json()["candidates"]["cand-0-WG"]["blocking"] == ["EVR005"]
+
+    r = client.post(f"/api/runs/{run.run_id}/measurements", json={
+        "measurements": {"dose_solubility_volume": 9500, "fraction_absorbed": 90}, "grade": "literature", "source": "evidence"})
+    assert r.status_code == 200, r.text
+    assert client.get(f"/api/runs/{run.run_id}/evidence").json()["candidates"]["cand-0-WG"]["blocking"] == []
+    assert _create(client, run).status_code == 200                                    # 결손이 닫혀 사유 없이 착수
+
+
+def test_evidence_done_flag_counts_as_measured(app_with_final, monkeypatch):
+    """'수행' 항목(예: forced_degradation_done)은 체크박스(bool)로 들어와도 실측 기록으로 남아 has_measured()를 채운다."""
+    server, client, run = app_with_final
+    from formula.planner import strategy_planner
+    monkeypatch.setattr(strategy_planner, "signature", lambda planned: "SAME")
+    run.final["plan_signature"] = "SAME"
+    r = client.post(f"/api/runs/{run.run_id}/measurements", json={"measurements": {"forced_degradation_done": True}, "source": "evidence"})
+    assert r.status_code == 200, r.text
+    assert run.final["spec"].measured_params.get("forced_degradation_done") == 1.0

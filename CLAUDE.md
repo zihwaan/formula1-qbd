@@ -10,9 +10,15 @@ Formula 1 is a QbD (Quality-by-Design) validation engine for pharmaceutical **fo
 
 **As of 2026-09-18 the evidence gate's graph node and everything downstream of it (approval, batch, lifecycle) is commented out, not deleted** — see "v3 phase-gate pivot" below.
 **Since 2026-09-28 the evidence gate itself is live again in a different place: the entry to Stage 2** (presentation step ⑤). It is not a graph node — `web/server.py`
-assesses each passed candidate after the run (`GET /api/runs/{id}/evidence`, re-implemented next to the commented-out originals), confirmation results re-assess it
-(`POST /api/runs/{id}/confirmation`, zero LLM calls), and `POST /api/stage2/studies` 409s with `EVIDENCE_GAPS` unless the researcher gives an `evidence_waiver`
-reason, or `EVIDENCE_FAILED` when a result came back 부적합 (no waiver overrides that). The verdict, open gaps and waiver go into the Handoff (inside its fingerprint).
+assesses each passed candidate after the run (`GET /api/runs/{id}/evidence`, re-implemented next to the commented-out originals). **Results are entered as
+measured values, not 적합/부적합** (user, 2026-09-30): the card posts them to `POST /api/runs/{id}/measurements` (`source: evidence`), which recomputes from
+phase_gates (`Run.reassess_with_measurements` — gates → plan → **re-gates the passed candidates** even when the plan is unchanged, zero LLM calls unless the
+strategy set changed) and returns the recompute as trace events (`trace`: phase_gates node.enter/phase.gate/node.exit → plan → gate verdicts; also appended to
+`bus.history`) because the SSE stream closed at run.end — the UI replays them through `handle()`. Each evidence item carries `inputs` (type · unit · label from
+`measurement_output_fields.csv` / `experimental_inputs.yaml`); EVR005 (BCS, no result key) asks `dose_solubility_volume` + `fraction_absorbed`, because
+`bcs_classification` only fires on those measured keys. Boolean "done" keys are also written to `measured_params` so `has_measured()` sees them.
+`POST /api/runs/{id}/confirmation` (pass/fail) still exists as API but the UI no longer uses it. `POST /api/stage2/studies` 409s with `EVIDENCE_GAPS` unless the
+researcher gives an `evidence_waiver` reason (and `EVIDENCE_FAILED` if a 부적합 confirmation was recorded through the API). The verdict, open gaps and waiver go into the Handoff (inside its fingerprint).
 The candidate list is unchanged — the gate holds *development*, it never rejects; approval/batch/lifecycle remain commented out. What *is* live in its place is `formula/biopharm/` (phase gates before generation) plus a non-blocking data-request pattern — read that section before touching anything in this area, since "evidence" and "phase gate" are easy to conflate and they answer different questions (evidence: can we execute this *specific candidate's protocol*; phase gate: what *strategies* should even be generated).
 
 **After the candidate list comes Stage 2** — a 15-step, researcher-approved study from QTPP to ANOVA and a joint-probability Design Space in `formula/stage2/`

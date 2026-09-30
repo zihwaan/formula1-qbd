@@ -372,13 +372,16 @@ function evidenceBox(id) {
   const before = pr.before_protocol || [], par = pr.parallel || [];
   const failed = (ev.failed || []).length, open = (ev.blocking || []).length - failed;
   const head = failed ? `<b class="ev-bad">근거 부적합 ${failed}건</b> — 전제가 부정됨, 개발로 넘기지 않음`
-    : open ? `<b class="ev-hold">근거 결손 ${open}건 — 보류</b> · 확인시험 결과를 넣으면 다시 판정`
+    : open ? `<b class="ev-hold">근거 결손 ${open}건 — 보류</b> · 측정값을 넣으면 phase_gates부터 다시 계산`
       : `<b class="ev-ok">근거 충족</b>${par.length ? ` · 병행 시험 ${par.length}건` : ""}`;
   const item = (g) => `<li data-req="${esc(g.requirement_id)}"><b>${esc(g.label)}</b> <code>${esc(g.test_id)}</code> ${esc(g.test_name || "")}
       <div class="ev-why">${esc(g.why || "")}${g.acceptance_logic ? ` · 판정: ${esc(g.acceptance_logic)}` : ""}${g.result_note ? ` · 결과: ${esc(g.result_note)}` : ""}</div>
-      ${g.status === "missing" ? `<div class="ev-form"><select class="ev-out"><option value="pass">적합</option><option value="fail">부적합</option></select>
-        ${g.result_key ? `<input class="ev-num" inputmode="decimal" placeholder="${esc(g.result_key)}${g.result_unit ? ` (${esc(g.result_unit)})` : ""}">` : ""}
-        <input class="ev-note" placeholder="결과 요약·출처"><button type="button" class="ev-send">결과 입력</button></div>` : ""}</li>`;
+      ${g.status === "missing" && (g.inputs || []).length ? `<div class="ev-form">${(g.inputs || []).map((f) => f.type === "bool"
+          ? `<label class="ev-chk"><input type="checkbox" data-key="${esc(f.key)}" data-type="bool"> ${esc(f.label)} 수행</label>`
+          : `<label class="ev-numl">${esc(f.label)}<input class="ev-num" data-key="${esc(f.key)}" data-type="number" inputmode="decimal"
+              placeholder="값" title="${esc(f.key)}" aria-label="${esc(f.label)}${f.unit ? ` (${esc(f.unit)})` : ""}">${f.unit ? `<small>${esc(f.unit)}</small>` : ""}</label>`).join("")}
+        <select class="ev-grade" aria-label="근거 등급">${Object.entries(GRADE_KO).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("")}</select>
+        <button type="button" class="ev-send">값 입력 → 재계산</button></div>` : ""}</li>`;
   return `<details class="ev-box ${failed ? "bad" : open ? "hold" : "ok"}"><summary>근거 결손 게이트 · ${head}</summary>
     ${before.length ? `<ul class="ev-list">${before.map(item).join("")}</ul>` : `<p class="ev-why">선행 확인시험 요구 없음</p>`}
     ${par.length ? `<p class="ev-why">병행(배치와 함께): ${par.map((g) => `${esc(g.label)} <code>${esc(g.test_id)}</code>`).join(" · ")}</p>` : ""}
@@ -445,27 +448,32 @@ async function startDevelopment(cid, card, retried) {
   }
 }
 function wireEvidence(card, cid) {
+  // 근거 결손 게이트의 입력 = 측정값 — phase_gates부터 다시 계산한다(같은 재계산 경로: POST /measurements). 적합/부적합은 묻지 않는다.
   card.querySelectorAll(".ev-send").forEach((b) => {
     b.onclick = async () => {
       const li = b.closest("li");
-      const num = li.querySelector(".ev-num");
-      const entry = { requirement_id: li.dataset.req, outcome: li.querySelector(".ev-out").value,
-        value: li.querySelector(".ev-note").value.trim(), note: "", value_num: num && num.value.trim() !== "" ? Number(num.value) : null };
-      if (entry.value_num !== null && !Number.isFinite(entry.value_num)) { notice("결과 값은 숫자로 넣어 주세요.", "warn"); return; }
-      b.disabled = true;
-      try {
-        const res = await fetch(api(`/api/runs/${runId}/confirmation`), { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ candidate_id: cid, entries: [entry] }) });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error((out.detail && (out.detail.message || out.detail)) || `결과 입력 실패 (${res.status})`);
-        evidence = out.candidates || evidence;
-        renderCandidates();
-        narrate(`ev-${cid}-${entry.requirement_id}`, { layer: "근거 결손 게이트", kind: "det", once: false,
-          title: entry.outcome === "pass" ? "확인시험 결과로 근거를 다시 판정했다" : "확인시험이 부적합 — 이 후보는 개발로 넘기지 않는다",
-          body: `${esc(cid)} · ${esc(entry.requirement_id)} → ${esc(out.candidate.summary || "")}
-            ${Object.keys(out.applied_measurements || {}).length ? `<br>실측값 자리에 반영: <code>${esc(Object.entries(out.applied_measurements).map(([k, v]) => `${k}=${v}`).join(", "))}</code>` : ""}
-            <span class="nr-why">왜 중요한가: 룰북 통과는 “알려진 금기가 없다”일 뿐이다 — 필수 근거가 없으면 개발(2단계)로 넘기기 전에 확인시험을 먼저 한다.</span>` });
-      } catch (e) { notice(e.message, "error"); b.disabled = false; }
+      const measurements = {};
+      let bad = "";
+      li.querySelectorAll("[data-key]").forEach((el) => {
+        if (el.dataset.type === "bool") { if (el.checked) measurements[el.dataset.key] = true; return; }
+        const v = el.value.trim();
+        if (v === "") return;
+        const n = Number(v);
+        if (!Number.isFinite(n)) bad = el.dataset.key; else measurements[el.dataset.key] = n;
+      });
+      if (bad) { notice(`${bad}: 숫자로 넣어 주세요.`, "warn"); return; }
+      if (!Object.keys(measurements).length) { notice("측정값을 넣거나 수행 여부를 체크해 주세요.", "warn"); return; }
+      b.disabled = true; b.textContent = "재계산 중…";
+      const out = await submitMeasurements(measurements, li.querySelector(".ev-grade").value, "evidence");
+      if (!out) { b.disabled = false; b.textContent = "값 입력 → 재계산"; return; }
+      await loadEvidence();
+      const ev = evidence[cid];
+      narrate(`ev-${cid}-${li.dataset.req}`, { layer: "근거 결손 게이트", kind: "det", once: false,
+        title: "측정값으로 phase_gates부터 다시 계산하고 근거를 다시 판정했다",
+        body: `${esc(cid)} · ${esc(li.dataset.req)} ← <code>${esc(Object.entries(measurements).map(([k, v]) => `${k}=${v}`).join(", "))}</code>
+          ${ev ? `<br>${esc(ev.summary || "")}` : "<br>이 후보는 새 판정에서 통과 목록에 없습니다."}
+          <span class="nr-why">왜 중요한가: 근거는 “있다/없다”를 고르는 칸이 아니라 실측값입니다 — 값이 들어가면 페이즈 게이트·계획·규칙 게이트가
+          같은 규칙으로 다시 판정하고, 그 결과로 근거 충족 여부가 정해집니다.</span>` });
     };
   });
 }
@@ -1112,6 +1120,8 @@ async function submitMeasurements(measurements, grade = "self_measured", source 
       throw new Error(detail.detail || `재계산 요청이 실패했습니다 (${res.status})`);
     }
     const out = await res.json();
+    // 실행 뒤 재계산(phase_gates → plan → gate)도 트레이스·그래프에 같은 처리기로 남긴다(SSE는 run.end에서 닫혔다)
+    (out.trace || []).forEach((ev) => { try { handle(ev.kind, ev); } catch (e) { /* 보조 */ } });
     const beforeCount = pendingRequests.length;
     const afterCount = (out.pending_requests || []).length;
     const bt = (out.backtrack || []).map((d) => `${d.transition_id}(${Object.entries(d.patch || {}).map(([k, v]) => `${k}=${v.join(",")}`).join(" ")})`);
@@ -1163,13 +1173,21 @@ async function submitMeasurements(measurements, grade = "self_measured", source 
       $("consensus").hidden = true;
       renderCandidates();
     } else {
-      const entry = candidates.get(summary.winner);
-      if (entry) {
-        entry.recipe.confidence = summary.confidence;
-        entry.recipe.pending_refinements = summary.pending_refinements;
-        renderCandidates();
+      // 같은 후보를 새 실측값으로 다시 판정했다 — 통과/반려와 순위를 고친다
+      for (const r of out.results || []) {
+        const entry = candidates.get(r.candidate_id);
+        if (!entry) continue;
+        entry.verdicts = r.verdicts || entry.verdicts;
+        entry.gate = { ...(entry.gate || {}), passed: r.passed, total: (r.verdicts || []).length,
+          failures: (r.verdicts || []).filter((v) => v.status === "hard_fail").length };
+        entry.recipe.confidence = r.recipe.confidence;
+        entry.recipe.pending_refinements = r.recipe.pending_refinements;
       }
+      rankOf.clear();
+      (summary.ranked || []).forEach((x) => { if (x.rank) rankOf.set(x.candidate_id, x.rank); });
+      renderCandidates();
     }
+    if (Object.keys(evidence).length) loadEvidence();
     announceRun();
     return out;
   } catch (err) {

@@ -417,7 +417,7 @@ class MeasurementsRequest(BaseModel):
     measurements: Dict[str, Union[bool, float, str, list, dict]] = Field(default_factory=dict, max_length=30)
     # 근거 등급 — 자체 실측 / 문헌 / 사용자 진술. 트레이스에 그대로 남는다.
     grade: str = Field(default="self_measured", pattern="^(self_measured|literature|user_statement)$")
-    source: str = Field(default="form", pattern="^(form|agent|vision_draft|instrument_draft)$")
+    source: str = Field(default="form", pattern="^(form|agent|vision_draft|instrument_draft|evidence)$")
     # 원본 증거 첨부 — measurement_id → [attachment_id]. 판정에는 쓰지 않고 추적용으로 제출 기록에 남긴다.
     attachments: Dict[str, List[str]] = Field(default_factory=dict)
 
@@ -444,13 +444,41 @@ async def submit_measurements(run_id: str, payload: MeasurementsRequest) -> Dict
                                       payload.grade, payload.source, payload.attachments)
     except KeyError as exc:
         raise HTTPException(409, f"아직 설계가 끝나지 않았습니다: {exc}")
-    if out.get("regenerated"):
-        # 전략이 바뀌어 후보를 다시 만들었다 — 화면이 옛 후보 카드를 새 후보로 바꿔 그릴 수 있게 처방·판정을 함께 돌려준다
-        # (옛 카드가 남아 있으면 서버에 없는 후보로 '개발 착수'를 누르게 된다)
-        out["results"] = [{"candidate_id": r["candidate_id"], "recipe": r["recipe"].model_dump(mode="json"), "passed": bool(r.get("passed")),
-                           "verdicts": [{"rule_id": v.rule_id, "status": getattr(v.status, "value", v.status)} for v in r.get("verdicts") or []]}
-                          for r in (execution.final or {}).get("results") or []]
+    # 후보 처방·판정을 함께 돌려준다 — 전략이 바뀌면 새 후보로 카드를 바꾸고(옛 후보는 서버에 없다),
+    # 그대로면 새 실측값으로 다시 판정한 결과(통과/반려)로 카드를 고친다
+    out["results"] = [{"candidate_id": r["candidate_id"], "recipe": r["recipe"].model_dump(mode="json"), "passed": bool(r.get("passed")),
+                       "verdicts": [{"rule_id": v.rule_id, "status": getattr(v.status, "value", v.status)} for v in r.get("verdicts") or []]}
+                      for r in (execution.final or {}).get("results") or []]
+    out["trace"] = _reassess_trace(execution, payload, out)
     return out
+
+
+def _reassess_trace(execution: Run, payload: "MeasurementsRequest", out: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """실행이 끝난 뒤의 재계산도 트레이스에 남긴다 — phase_gates부터 다시 돈 과정을 run 이력(재생)과 화면에 같은 이벤트로.
+    SSE는 run.end에서 닫혔으므로 응답에 이벤트를 함께 실어 화면이 같은 처리기(handle)로 그린다."""
+    evs: List[TraceEvent] = []
+
+    def pub(node: str, kind: EventKind, **payload_: Any) -> None:
+        evs.append(execution.bus.publish(TraceEvent(run_id=execution.run_id, node=node, kind=kind, payload=payload_)))
+
+    pub("phase_gates", EventKind.NODE_ENTER, reason="실측값 제출 → 재계산", source=payload.source,
+        measurements={k: v for k, v in payload.measurements.items()})
+    for g in out.get("phase_signals") or []:
+        pub("phase_gates", EventKind.PHASE_GATE, gate=g.get("gate"), rule_id=g.get("rule_id"), assigned=g.get("assigned"),
+            action=g.get("action"), rationale=g.get("rationale"), citation=g.get("citation"))
+    pub("phase_gates", EventKind.NODE_EXIT, derived=(execution.final or {}).get("phase_derived") or {})
+    pub("plan", EventKind.NODE_ENTER)
+    pub("plan", EventKind.NODE_EXIT, strategies=(execution.final or {}).get("strategies") or [],
+        plan_signature=out.get("plan_signature"), regenerated=bool(out.get("regenerated")))
+    if out.get("rejudged") or out.get("regenerated"):
+        pub("gate", EventKind.NODE_ENTER)
+        rows = out.get("rejudged") or [{"candidate_id": r["candidate_id"], "passed": r["passed"], "total": len(r["verdicts"]),
+                                        "failures": sum(1 for v in r["verdicts"] if v["status"] == "hard_fail"), "blockers": 0}
+                                       for r in out.get("results") or []]
+        for r in rows:
+            pub("gate", EventKind.VERDICT, **r)
+        pub("gate", EventKind.NODE_EXIT)
+    return [e.model_dump(mode="json") for e in evs]
 
 
 class StudyActionRequest(BaseModel):
@@ -587,8 +615,34 @@ def _require_run(run_id: str) -> Run:
     return execution
 
 
+# BCS 근거(EVR005)는 결과 키가 없다 — 실측 BCS 등급은 규칙표(bcs_classification)가 이 두 실측값이 있을 때만 만든다
+EVIDENCE_EXTRA_INPUTS = {"EVR005": ["dose_solubility_volume", "fraction_absorbed"]}
+
+
+def _evidence_inputs(item: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """근거 항목 하나에 필요한 입력 칸 — 타입은 측정 필드 표, 이름·단위는 실험 입력 표나 근거 표에서. 적합/부적합 선택은 두지 않는다
+    (값이 phase_gates로 돌아가 규칙이 다시 판정한다)."""
+    from formula.biopharm.triggers import load_output_fields
+    fields = load_output_fields(ROOT)
+    catalog = experimental_inputs().fields
+    keys = EVIDENCE_EXTRA_INPUTS.get(item.get("requirement_id"), []) or ([item["result_key"]] if item.get("result_key") else [])
+    out = []
+    for k in keys:
+        f = fields.get(k) or {}
+        c = catalog.get(k) or {}
+        t = f.get("field_type") or c.get("type") or ("bool" if k.endswith(("_done", "_verified")) else "number")
+        out.append({"key": k, "type": "bool" if t == "bool" else "number",
+                    "label": f.get("label_kr") or c.get("label") or item.get("label") or k,
+                    "unit": f.get("unit") or c.get("unit") or item.get("result_unit") or ""})
+    return out
+
+
 def _evidence_payload(execution: Run, assessment) -> Dict[str, Any]:
-    return {**assessment.model_dump(mode="json"), "protocol": execution.evidence_gate.protocol(assessment),
+    protocol = execution.evidence_gate.protocol(assessment)
+    for part in ("before_protocol", "parallel"):
+        for item in protocol.get(part) or []:
+            item["inputs"] = _evidence_inputs(item)
+    return {**assessment.model_dump(mode="json"), "protocol": protocol,
             "blocking": [g.requirement_id for g in assessment.blocking], "failed": [g.requirement_id for g in assessment.failed]}
 
 

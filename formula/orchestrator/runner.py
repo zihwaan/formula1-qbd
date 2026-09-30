@@ -197,9 +197,13 @@ class Run:
         spec = self.final.get("spec")
         if spec is None:
             raise KeyError("spec")
+        # 근거 결손 게이트의 '수행 여부' 항목(forced_degradation_done 등)은 실측 기록으로 남긴다 — has_measured()가 실측값 자리를 본다
+        evidence_keys = {str(r.get("result_key")) for r in self.evidence_gate.requirements if r.get("result_key")}
         for key, value in measurements.items():
             if isinstance(value, bool):
                 spec.properties[str(key)] = value
+                if value and str(key) in evidence_keys:
+                    spec.measured_params[str(key)] = 1.0
             elif isinstance(value, (int, float)):
                 spec.measured_params[str(key)] = float(value)
             elif isinstance(value, (list, dict)):
@@ -227,7 +231,8 @@ class Run:
             ctx["routes_provisional"] = True
         fired_signals = run_biopharm_gates(ctx, self.base_dir)
         self.final["reassess_signals"] = [
-            {"gate": f["gate"], "rule_id": f["rule_id"], "assigned": f["assigned"]} for f in fired_signals]
+            {"gate": f["gate"], "rule_id": f["rule_id"], "assigned": f["assigned"], "action": f.get("action"),
+             "rationale": f.get("rationale"), "citation": f.get("citation")} for f in fired_signals]
 
         profile = self.final.get("api_profile")
         flag_names = profile.flag_names() if profile else []
@@ -257,18 +262,39 @@ class Run:
                     "backtrack": [d.as_dict() for d in decisions],
                     "pending_requests": self.final["pending_narrow"], "summary": self.summary()}
         self.final["strategies"] = [p.strategy_code for p in planned]
+        rejudged: List[Dict[str, Any]] = []
         if new_signature == old_signature:
-            # 전략 집합 불변 — 기존 후보들의 confidence만 다시 매긴다(LLM 호출 없음).
+            # 전략 집합 불변 — 기존 통과 후보를 새 실측값으로 규칙 게이트에 다시 넣고(결정론, LLM 호출 없음) confidence를 다시 매긴다.
+            # 새 값이 판정을 바꿀 수 있다(예: 실측 용해도·흡수율 → BCS 등급 확정 → 가용화 규칙).
             for result in self.final.get("results", []):
                 if not result.get("passed"):
                     continue
                 recipe: Recipe = result["recipe"]
+                gate = self.registry.run(spec, recipe, short_circuit=False, derived=dict(public_derived))
+                result.update({"verdicts": gate.verdicts, "passed": gate.passed,
+                               "derived": {k: v for k, v in gate.derived.items() if k != "candidate_id" and not str(k).startswith("_")},
+                               "blockers": [f"{v.rulebook_id}/{v.rule_id}: {v.reason}" for v in gate.blockers]})
+                rejudged.append({"candidate_id": recipe.candidate_id, "passed": gate.passed, "total": len(gate.verdicts),
+                                 "failures": len(gate.failures), "blockers": len(gate.blockers)})
+                if not gate.passed:
+                    continue
                 rctx = {**public_derived, **(result.get("derived") or {})}
                 pending = evaluate_triggers(rctx, "refines_confidence", self.base_dir,
                                             strategy=recipe.strategy, flags=flag_names)
                 recipe.pending_refinements = [p.trigger_id for p in pending]
                 recipe.confidence = "grounded" if not pending else "provisional"
             regenerated = False
+            if any(not r["passed"] for r in rejudged):
+                # 새 실측값으로 반려된 후보는 순위에서 뺀다 — 권고 후보가 반려 후보로 남으면 안 된다
+                passed_ids = {r["candidate_id"] for r in self.final.get("results", []) if r.get("passed")}
+                cons = self.final.get("consensus") or {}
+                cons["ranked"] = [x for x in cons.get("ranked") or [] if x.get("candidate_id") in passed_ids]
+                if cons.get("winner") not in passed_ids:
+                    cons["winner"] = cons["ranked"][0]["candidate_id"] if cons["ranked"] else None
+                self.final["consensus"] = cons
+                self.final["final_candidate"] = cons.get("winner")
+                if not passed_ids:
+                    self.final["status"] = "rejected"
         else:
             # 전략 집합이 바뀌었다 — 새 전략들로 후보를 다시 생성하고 두 게이트를 다시 돈다.
             new_candidates = []
@@ -312,7 +338,7 @@ class Run:
                                     "no_design" if not new_results else "rejected")
             regenerated = True
 
-        return {"regenerated": regenerated, "plan_signature": new_signature,
+        return {"regenerated": regenerated, "plan_signature": new_signature, "rejudged": rejudged,
                 "phase_signals": self.final.get("reassess_signals", []),
                 "backtrack": [d.as_dict() for d in decisions],
                 "pending_requests": self.final["pending_narrow"], "summary": self.summary()}
