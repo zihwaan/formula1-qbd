@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import uuid
@@ -417,7 +418,7 @@ class MeasurementsRequest(BaseModel):
     measurements: Dict[str, Union[bool, float, str, list, dict]] = Field(default_factory=dict, max_length=30)
     # 근거 등급 — 자체 실측 / 문헌 / 사용자 진술. 트레이스에 그대로 남는다.
     grade: str = Field(default="self_measured", pattern="^(self_measured|literature|user_statement)$")
-    source: str = Field(default="form", pattern="^(form|agent|vision_draft|instrument_draft|evidence)$")
+    source: str = Field(default="form", pattern="^(form|agent|vision_draft|instrument_draft|evidence|agent_evidence)$")
     # 원본 증거 첨부 — measurement_id → [attachment_id]. 판정에는 쓰지 않고 추적용으로 제출 기록에 남긴다.
     attachments: Dict[str, List[str]] = Field(default_factory=dict)
 
@@ -701,10 +702,34 @@ def agent_catalog() -> Dict[str, Dict[str, Any]]:
     return _agent_catalog
 
 
+def _agent_evidence(execution: Run) -> Dict[str, Any]:
+    """입력 에이전트가 근거 결손 게이트 값을 말로 받을 수 있게 — 통과 후보들의 열린 근거 항목(요구별로 묶음)과
+    코드 환산에 쓰는 1회 용량·분자량. 판정은 여기서 하지 않는다(같은 결정론 평가를 읽기만 한다)."""
+    items: Dict[str, Dict[str, Any]] = {}
+    for cid, payload in _evidence_all(execution).items():
+        for gap in payload.get("gaps") or []:
+            if gap.get("status") == "satisfied" or gap.get("timing") == "post_batch":
+                continue
+            item = items.setdefault(gap["requirement_id"], {"requirement_id": gap["requirement_id"], "label": gap.get("label", ""),
+                                                            "timing": gap.get("timing"), "inputs": _evidence_inputs(gap), "candidates": []})
+            item["candidates"].append(cid)
+    spec = (execution.final or {}).get("spec")
+    profile = getattr(spec, "api_profile", None)
+    return {"items": list(items.values()),
+            "dose_mg": (spec.measured_params.get("dose_mg") if spec is not None else None),
+            "mw": ((profile.descriptors or {}).get("molecular_weight") if profile is not None else None)}
+
+
 def _agent_context(payload: AgentRequest) -> Dict[str, Any]:
     run = RUNS.get(payload.run_id or "")
     run_summary = run.summary() if run is not None and run.final else None
-    return input_agent.snapshot("discovery", run_summary, None, agent_catalog())
+    evidence = None
+    if run_summary is not None:
+        try:
+            evidence = _agent_evidence(run)
+        except Exception:   # noqa: BLE001 — 근거 맥락은 보조다. 없어도 대화는 돈다
+            logging.getLogger("formula1.agent").exception("agent evidence context")
+    return input_agent.snapshot("discovery", run_summary, None, agent_catalog(), evidence=evidence)
 
 
 def _pubchem_lookup(name: str) -> Dict[str, Any]:

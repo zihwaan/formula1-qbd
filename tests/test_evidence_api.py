@@ -148,3 +148,25 @@ def test_evidence_done_flag_counts_as_measured(app_with_final, monkeypatch):
     r = client.post(f"/api/runs/{run.run_id}/measurements", json={"measurements": {"forced_degradation_done": True}, "source": "evidence"})
     assert r.status_code == 200, r.text
     assert run.final["spec"].measured_params.get("forced_degradation_done") == 1.0
+
+
+def test_agent_takes_evidence_values_in_words(app_with_final, monkeypatch):
+    """근거 결손 게이트 값은 입력 에이전트에 말로 넣어도 된다 — 서버가 열린 항목·용량·분자량을 맥락으로 주고, 카드의 값은
+    같은 재계산 경로(source agent_evidence)로 가서 phase_gates부터 다시 계산한다."""
+    server, client, run = app_with_final
+    run.final["spec"].measured_params["dose_mg"] = 200
+    from formula.planner import strategy_planner
+    monkeypatch.setattr(strategy_planner, "signature", lambda planned: "SAME")
+    run.final["plan_signature"] = "SAME"
+    msg = "용해도는 pH 1.2, 4.5, 6.8에서 각각 5, 3, 2 mg/mL이고 요중 회수율은 90%야"
+    r = client.post("/api/agent/turn", json={"message": msg, "history": [], "run_id": run.run_id})
+    assert r.status_code == 200, r.text
+    p = r.json()["proposals"][0]
+    assert p["source"] == "agent_evidence" and {"EVR004", "EVR005"} <= {e["requirement_id"] for e in p["evidence"]}
+    assert p["measurements"]["dose_solubility_volume"] == 100.0 and p["measurements"]["fraction_absorbed"] == 90.0
+    r = client.post(f"/api/runs/{run.run_id}/measurements", json={"measurements": p["measurements"], "grade": p["grade"],
+                                                                  "source": p["source"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["trace"][0]["payload"]["source"] == "agent_evidence"
+    blocking = client.get(f"/api/runs/{run.run_id}/evidence").json()["candidates"]["cand-0-WG"]["blocking"]
+    assert "EVR004" not in blocking and "EVR005" not in blocking

@@ -60,7 +60,7 @@
   border: 1px solid var(--border); color: var(--ink-2);
 }
 .ad-card dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 10px; margin: 0; }
-.ad-card dt { color: var(--ink-muted); font-size: 11px; }
+.ad-card dt { color: var(--ink-muted); font-size: 11px; max-width: 15em; overflow-wrap: anywhere; }
 .ad-card dd { margin: 0; overflow-wrap: anywhere; font-family: inherit; }
 .ad-card dd pre { margin: 0; font-family: var(--font-mono); font-size: 10.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ad-card dd a { color: var(--ink-1); }

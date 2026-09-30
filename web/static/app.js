@@ -381,10 +381,13 @@ function evidenceBox(id) {
           : `<label class="ev-numl">${esc(f.label)}<input class="ev-num" data-key="${esc(f.key)}" data-type="number" inputmode="decimal"
               placeholder="값" title="${esc(f.key)}" aria-label="${esc(f.label)}${f.unit ? ` (${esc(f.unit)})` : ""}">${f.unit ? `<small>${esc(f.unit)}</small>` : ""}</label>`).join("")}
         <select class="ev-grade" aria-label="근거 등급">${Object.entries(GRADE_KO).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("")}</select>
-        <button type="button" class="ev-send">값 입력 → 재계산</button></div>` : ""}</li>`;
+        <button type="button" class="ev-send">값 입력 → 재계산</button>
+        <button type="button" class="ev-talk ghost" data-label="${esc(g.label)}">말로 입력</button></div>` : ""}</li>`;
   return `<details class="ev-box ${failed ? "bad" : open ? "hold" : "ok"}"><summary>근거 결손 게이트 · ${head}</summary>
     ${before.length ? `<ul class="ev-list">${before.map(item).join("")}</ul>` : `<p class="ev-why">선행 확인시험 요구 없음</p>`}
     ${par.length ? `<p class="ev-why">병행(배치와 함께): ${par.map((g) => `${esc(g.label)} <code>${esc(g.test_id)}</code>`).join(" · ")}</p>` : ""}
+    ${open ? `<p class="ev-why">값은 입력 에이전트에 말로 적어도 된다 — 용해도는 잰 pH와 함께, 투과도는 흡수율·절대 생체이용률·요중 회수율·Papp 중
+      가진 자료를 쓰던 단위 그대로. 단위 환산과 pH별 최저값, 용량/용해도 부피는 코드가 계산해 제출 카드로 만든다.</p>` : ""}
     <p class="ev-why">요청 시험은 확인시험 마스터(66종)의 실제 행에서만 고른다 — 판정은 결정론, LLM 없음.</p></details>`;
 }
 function devButton(id) {
@@ -449,6 +452,10 @@ async function startDevelopment(cid, card, retried) {
 }
 function wireEvidence(card, cid) {
   // 근거 결손 게이트의 입력 = 측정값 — phase_gates부터 다시 계산한다(같은 재계산 경로: POST /measurements). 적합/부적합은 묻지 않는다.
+  // '말로 입력'은 입력 에이전트로 넘긴다 — 항목 이름만 채우고 값은 사용자가 쓴다(환산은 서버 코드가 한다)
+  card.querySelectorAll(".ev-talk").forEach((b) => {
+    b.onclick = () => { if (window.F1Agent) window.F1Agent.focus(`${b.dataset.label}: `); };
+  });
   card.querySelectorAll(".ev-send").forEach((b) => {
     b.onclick = async () => {
       const li = b.closest("li");
@@ -464,16 +471,9 @@ function wireEvidence(card, cid) {
       if (bad) { notice(`${bad}: 숫자로 넣어 주세요.`, "warn"); return; }
       if (!Object.keys(measurements).length) { notice("측정값을 넣거나 수행 여부를 체크해 주세요.", "warn"); return; }
       b.disabled = true; b.textContent = "재계산 중…";
+      // 재계산 · 근거 재판정 · 해설은 submitMeasurements가 한다(말로 입력한 값과 같은 길)
       const out = await submitMeasurements(measurements, li.querySelector(".ev-grade").value, "evidence");
-      if (!out) { b.disabled = false; b.textContent = "값 입력 → 재계산"; return; }
-      await loadEvidence();
-      const ev = evidence[cid];
-      narrate(`ev-${cid}-${li.dataset.req}`, { layer: "근거 결손 게이트", kind: "det", once: false,
-        title: "측정값으로 phase_gates부터 다시 계산하고 근거를 다시 판정했다",
-        body: `${esc(cid)} · ${esc(li.dataset.req)} ← <code>${esc(Object.entries(measurements).map(([k, v]) => `${k}=${v}`).join(", "))}</code>
-          ${ev ? `<br>${esc(ev.summary || "")}` : "<br>이 후보는 새 판정에서 통과 목록에 없습니다."}
-          <span class="nr-why">왜 중요한가: 근거는 “있다/없다”를 고르는 칸이 아니라 실측값입니다 — 값이 들어가면 페이즈 게이트·계획·규칙 게이트가
-          같은 규칙으로 다시 판정하고, 그 결과로 근거 충족 여부가 정해집니다.</span>` });
+      if (!out) { b.disabled = false; b.textContent = "값 입력 → 재계산"; }
     };
   });
 }
@@ -785,7 +785,7 @@ function startRunWith(p) {
   startRun();
   return true;
 }
-window.F1Discovery = { startRunWith, submitMeasurements: (m, g) => submitMeasurements(m, g || "user_statement", "agent"),
+window.F1Discovery = { startRunWith, submitMeasurements: (m, g, src) => submitMeasurements(m, g || "user_statement", src || "agent"),
   develop: (cid) => startDevelopment(cid, null),
   runId: () => runId, running: () => running, pending: () => pendingRequests.length, status: () => lastStatus };
 
@@ -1187,7 +1187,18 @@ async function submitMeasurements(measurements, grade = "self_measured", source 
       (summary.ranked || []).forEach((x) => { if (x.rank) rankOf.set(x.candidate_id, x.rank); });
       renderCandidates();
     }
-    if (Object.keys(evidence).length) loadEvidence();
+    const sent = draft !== "form" ? draft : source;
+    if (sent === "evidence" || sent === "agent_evidence") {
+      // 근거 결손 게이트 입력(카드 폼 · 말로 입력) — 재계산 뒤 근거를 다시 읽고 무엇이 바뀌었는지 남긴다
+      await loadEvidence();
+      const rows = Object.entries(evidence).map(([cid, ev]) => `${esc(cid)} · ${esc(ev.summary || "")}`);
+      narrate(`ev-recalc-${Date.now()}`, { layer: "근거 결손 게이트", kind: "det", once: false,
+        title: "측정값으로 phase_gates부터 다시 계산하고 근거를 다시 판정했다",
+        body: `${sent === "agent_evidence" ? "입력 에이전트(말로 입력) → 코드 환산 → " : ""}<code>${esc(Object.entries(measurements).map(([k, v]) => `${k}=${v}`).join(", "))}</code>
+          <br>${rows.join("<br>") || "새 판정에서 통과한 후보가 없습니다."}
+          <span class="nr-why">왜 중요한가: 근거는 “있다/없다”를 고르는 칸이 아니라 실측값입니다 — 값이 들어가면 페이즈 게이트·계획·규칙 게이트가
+          같은 규칙으로 다시 판정하고, 그 결과로 근거 충족 여부가 정해집니다.</span>` });
+    }
     announceRun();
     return out;
   } catch (err) {

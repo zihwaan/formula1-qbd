@@ -78,7 +78,16 @@
   }
   document.addEventListener("f1:llm", (e) => renderModel(e.detail));
 
-  function focusAgent() { el("agent-input").focus({ preventScroll: false }); }
+  function focusAgent(prefix) {
+    const input = el("agent-input");
+    if (prefix) {
+      dock();
+      input.value = prefix;
+      autosize(input);
+    }
+    input.focus({ preventScroll: false });
+    if (prefix) input.setSelectionRange(input.value.length, input.value.length);
+  }
 
   function renderChips() {
     const box = el("agent-chips");
@@ -163,8 +172,13 @@
       if ((p.required_excipients || []).length) r.push(["반드시 포함", p.required_excipients.join(", ")]);
       if ((p.rejected || []).length) r.push(["허용목록 밖(제외)", p.rejected.join(", ")]);
     } else if (p.kind === "submit_measurements") {
-      Object.entries(p.measurements || {}).forEach(([k, v]) => r.push([k, String(v)]));
-      r.push(["재평가 범위", "이 값에 의존하는 판정만 — 설계를 처음부터 다시 돌리지 않음"]);
+      if ((p.evidence || []).length) r.push(["근거 항목", p.evidence.map((e) => `${e.requirement_id} ${e.label}`).join(" · ")]);
+      const labels = p.labels || {};
+      Object.entries(p.measurements || {}).forEach(([k, v]) => r.push([labels[k] ? `${labels[k]} · ${k}` : k, v === true ? "수행" : String(v)]));
+      (p.lines || []).forEach((line, i) => r.push([i ? "" : "코드 계산", line]));
+      r.push(["재평가 범위", (p.evidence || []).length
+        ? "phase_gates부터 다시 계산 → 계획 → 통과 후보 규칙 게이트 → 근거 결손 재판정 (LLM 호출 없음, 전략 집합이 바뀔 때만 재설계)"
+        : "이 값에 의존하는 판정만 — 설계를 처음부터 다시 돌리지 않음"]);
     } else if (p.kind === "develop_candidate") {
       r.push(["후보", p.candidate_id]);
       r.push(["다음", "이 처방을 프로토타입으로 받아 2단계(QTPP → 위험평가 → DoE → 회귀·ANOVA → Design Space)를 시작합니다"]);
@@ -184,8 +198,8 @@
         ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(v)}</a>` : esc(v)}</dd>`).join("")}</dl>
       ${p.ready ? "" : `<p class="ad-missing">빠진 정보(${esc((p.missing || []).join(", "))})를 알려 주시면 실행할 수 있습니다.</p>`}
       ${p.kind === "submit_measurements" ? `<label class="ad-grade">근거 등급
-        <select class="ad-grade-sel"><option value="user_statement" selected>사용자 진술</option>
-        <option value="self_measured">자체 실측</option><option value="literature">문헌</option></select></label>` : ""}
+        <select class="ad-grade-sel">${[["user_statement", "사용자 진술"], ["self_measured", "자체 실측"], ["literature", "문헌"]]
+          .map(([v, t]) => `<option value="${v}"${(p.grade || "user_statement") === v ? " selected" : ""}>${t}</option>`).join("")}</select></label>` : ""}
       <div class="ad-card-actions">
         <button type="button" class="primary ad-run" ${p.ready ? "" : "disabled"}>${p.kind === "start_run" ? "설계 실행" : "실행"}</button>
         ${p.kind === "start_run" ? `<button type="button" class="ad-fill">직접 입력 폼으로</button>` : ""}
@@ -233,10 +247,11 @@
       if (p.kind === "submit_measurements") {
         if (D.runId() !== p.run_id) { result("그 사이 다른 설계가 시작되어 이 제안은 더 이상 맞지 않습니다.", "warn"); return false; }
         const gradeSel = document.querySelector(`[data-card="${p._cid}"] .ad-grade-sel`);
-        const out = await D.submitMeasurements(p.measurements, gradeSel ? gradeSel.value : "user_statement");
+        const out = await D.submitMeasurements(p.measurements, gradeSel ? gradeSel.value : "user_statement", p.source || "agent");
         if (!out) { result("제출이 거부되었습니다 — 알림을 확인해 주세요.", "warn"); return false; }
         document.dispatchEvent(new CustomEvent("f1:drqdone", { detail: { how: "agent" } }));
-        result(out.regenerated ? "전략이 바뀌어 후보를 다시 생성했습니다." : "재계산했습니다 — 전략 집합은 그대로입니다.", "ok");
+        const evNote = (p.evidence || []).length ? " 근거 결손 게이트도 다시 판정했습니다 — 후보 카드의 근거 표시를 확인하세요." : "";
+        result((out.regenerated ? "전략이 바뀌어 후보를 다시 생성했습니다." : "phase_gates부터 재계산했습니다 — 전략 집합은 그대로입니다.") + evNote, "ok");
         return true;
       }
       if (p.kind === "develop_candidate") {

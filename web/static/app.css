@@ -232,6 +232,7 @@ table.desc tfoot td { padding-top: 6px; }
 .ev-numl small { color: var(--ink-muted); }
 .ev-chk input { width: auto; }
 .ev-form button, .ev-waive button { font: inherit; font-size: 11.5px; font-weight: 650; padding: 4px 10px; border-radius: 99px; border: 1px solid transparent; background: var(--accent-fixed); color: var(--on-accent-fixed); }
+.ev-form button.ev-talk { background: transparent; border-color: var(--border); color: var(--ink-1); }
 /* 후보 카드의 진입 버튼 — 원래 모양(검은 알약). 근거 결손이 남았으면 보류 표기(점선 · 흰 바탕) */
 .dev-start {
   margin-top: 10px; width: 100%; padding: 9px 12px; border-radius: var(--radius-pill);

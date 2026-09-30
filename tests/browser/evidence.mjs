@@ -1,5 +1,6 @@
 // 근거 결손 게이트(발표 자료 ⑤) — 후보 카드 안에서: 결손 표시 → 측정값 입력 → phase_gates부터 재계산(트레이스) → 근거 재판정 → 개발 착수.
 // 적합/부적합을 고르는 칸은 없다(사용자 2026-09-30) — 값이 규칙으로 다시 판정된다.
+// BCS 근거는 입력 에이전트에 말로 넣는다(“말로 입력” → pH별 용해도 · 요중 회수율 → 코드가 환산한 제출 카드 → 실행).
 // 실제 LLM으로 시연 카드 ①을 돌린다(후보가 있어야 한다). F1_LLM=dacon 권장.
 //   F1_LLM=dacon CHROME=<chrome> node tests/browser/evidence.mjs http://localhost:8104/
 import { chromium } from 'playwright-core';
@@ -30,7 +31,7 @@ const idx = await passed.evaluateAll((cs) => cs.findIndex((c) => c.querySelector
 if (idx < 0) {
   ck('결손 후보가 있음(없으면 이 실행에선 결손 경로를 확인할 수 없음)', false);
 } else {
-  const cid = await passed.nth(idx).getAttribute('data-cand');
+  let cid = await passed.nth(idx).getAttribute('data-cand');
   const card = () => p.locator(`#agent-log #panel-cands .card[data-cand="${cid}"]`);
   ck('결손 후보의 버튼 = “결손을 기록하고 개발 착수”(점선)', /결손을 기록하고/.test(await card().locator('.dev-start').textContent()) && await card().locator('.dev-start.hold').count() === 1);
   await card().locator('.ev-box > summary').click();
@@ -38,9 +39,51 @@ if (idx < 0) {
   ck('요청 시험은 확인시험 마스터의 test_id', reqs.length > 0 && reqs.every((r) => /^[A-Z]/.test(r.code)), reqs.map((r) => `${r.id}:${r.code}`).join(', '));
 
   ck('적합/부적합 선택 칸 없음', await card().locator('.ev-out, .ev-note').count() === 0);
+
+  // 말로 입력 — 에이전트가 pH별 용해도·요중 회수율을 관측으로 읽고, 환산·pH 최저값·용량/용해도 부피는 서버 코드가 계산한다
+  const bcs = card().locator('.ev-list li[data-req="EVR005"]');
+  if (await bcs.count()) {
+    await bcs.locator('.ev-talk').click();
+    const pre = await p.locator('#agent-input').inputValue();
+    ck('“말로 입력” → 입력칸에 항목 이름', /BCS/.test(pre), pre);
+    // 설계 직후 에이전트가 먼저 거는 말(개발 착수 카드)과 섞이지 않게 — 이 턴의 응답과 그 제출 카드만 본다
+    const turn = p.waitForResponse((x) => x.url().includes('/api/agent/turn'), { timeout: 180000 });
+    await p.locator('#agent-input').fill(pre + '용해도는 pH 1.2, 4.5, 6.8에서 각각 6, 5.5, 5 mg/mL였고 요중 회수율은 95%야');
+    await p.locator('#agent-input').press('Enter');
+    const tj = await (await turn).json();
+    console.log(`    (에이전트: ${tj.source} · ${(tj.reply || '').slice(0, 80)} · notes ${JSON.stringify(tj.notes || []).slice(0, 160)})`);
+    await p.waitForTimeout(500);
+    const ac = p.locator('#agent-log .ad-card', { hasText: '근거 결손 게이트 입력' }).last();
+    const txt = (await ac.count()) ? (await ac.textContent()).replace(/\s+/g, ' ') : JSON.stringify(tj.proposals || []).slice(0, 200);
+    ck('에이전트 카드 = 근거 결손 게이트 입력 · 코드 계산', /근거 결손 게이트 입력/.test(txt) && /코드 계산/.test(txt)
+      && /dose_solubility_volume/.test(txt) && /fraction_absorbed/.test(txt), txt.slice(0, 200));
+    const resp = p.waitForResponse((x) => x.url().includes('/measurements'), { timeout: 240000 }).catch(() => null);   // 전략이 바뀌면 후보를 다시 설계한다(LLM)
+    await ac.locator('.ad-run').click();
+    const r = await resp;
+    const sent = r ? r.request().postDataJSON() : {};
+    ck('카드 실행 → /measurements 200 (source agent_evidence)', !!r && r.status() === 200 && sent.source === 'agent_evidence',
+      r ? JSON.stringify(sent.measurements) : `요청 없음 — 카드: ${(await ac.locator('.ad-result').textContent().catch(() => '')).trim()} · 알림: ${(await p.locator('#notice').textContent().catch(() => '')).trim().slice(0, 120)} · ${errs.slice(0, 2).join(' | ')}`);
+    const outJ = r ? await r.json().catch(() => ({})) : {};
+    await p.waitForTimeout(1500);
+    if (outJ.regenerated) {
+      // 실측 BCS가 전략 집합을 바꿨다 — 후보를 다시 설계했다(옛 후보는 서버에 없다). 새 통과 후보로 이어 간다.
+      await p.waitForSelector('#agent-log #panel-cands .card.pass .ev-box', { timeout: 120000 });
+      cid = await passed.first().getAttribute('data-cand');
+      ck('실측 BCS로 전략 집합이 바뀌어 재설계 → 새 통과 후보로 이어 감', !!cid, `${outJ.plan_signature} · ${cid}`);
+    }
+    ck('BCS 근거(EVR005)가 말로 넣은 값으로 닫힘',
+      await p.locator('#agent-log #panel-cands .card.pass .ev-box').count() > 0
+      && await p.locator('#agent-log #panel-cands .card.pass .ev-list li[data-req="EVR005"] .ev-send').count() === 0);
+    const narr0 = await p.locator('#narration').textContent().catch(() => '');
+    ck('해설에 “입력 에이전트(말로 입력) → 코드 환산” 재판정 기록', /말로 입력/.test(narr0) && /근거를 다시 판정/.test(narr0));
+  } else {
+    ck('BCS 근거(EVR005) 결손 있음(말로 입력 경로 확인용)', false);
+  }
   // 측정값 입력 — BCS I이 되는 값(용해도 부피 ≤ 250 mL · 흡수율 ≥ 85 %)으로 넣어 새 판정에서도 후보가 통과하게 한다
   const VAL = { dose_solubility_volume: '100', fraction_absorbed: '95', aqueous_stability_percent: '99', solubility_mg_per_ml: '5' };
-  for (const r of reqs) {
+  if (!(await card().locator('.ev-box').evaluate((d) => d.open))) await card().locator('.ev-box > summary').click();
+  const left = await card().locator('.ev-list li[data-req]').evaluateAll((ls) => ls.map((l) => ({ id: l.dataset.req })));
+  for (const r of left) {
     const li = card().locator(`.ev-list li[data-req="${r.id}"]`);
     if (!(await li.count()) || !(await li.locator('.ev-send').count())) continue;
     if (!(await li.isVisible())) await card().locator('.ev-box > summary').click();

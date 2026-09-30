@@ -4,7 +4,8 @@
   1. **맥락을 들고 있다.** 지금 어느 탭인지, 실행 중인 설계·후보·남은 데이터 요청·되돌림 제약,
      개발 스튜디오의 현재 상태와 막힌 규칙까지 서버가 요약한 스냅숏을 받아 대화한다.
   2. **말을 행동으로 바꾼다.** "성인용 이부프로펜 200mg" → 설계 실행 초안, "녹는점 76도" → 측정값 제출,
-     "압축력은 몰라요" → 스튜디오 진입 자료(UNKNOWN 기록). 행동은 **제안 카드**로만 내고,
+     "압축력은 몰라요" → 스튜디오 진입 자료(UNKNOWN 기록), "pH 6.8에서 40 µg/mL, 흡수율 92%" → 근거 결손 게이트 입력
+     (단위 환산·pH 최저값·용량/용해도 부피는 evidence_values.py가 코드로 계산). 행동은 **제안 카드**로만 내고,
      실행은 사용자가 확인 버튼을 눌러야 한다.
   3. **먼저 말을 건다.** 설계가 끝나거나 스튜디오 상태가 바뀌면 다음에 할 일을 짚는다(nudge).
   4. **빠진 것을 묻는다.** 설계에는 SMILES와 1회 용량이 필요하다 — 없으면 묻는다.
@@ -25,6 +26,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field
 
+from formula.agents import evidence_values as ev
 from formula.agents.client import LLMUnavailable, parse_structured
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -52,6 +54,8 @@ class AgentOutput(BaseModel):
     measurements: Dict[str, Union[float, str, bool]] = Field(default_factory=dict)
     candidate_id: str = ""
     asks: List[str] = Field(default_factory=list)
+    observations: List[ev.Observation] = Field(
+        default_factory=list, description="용해도·흡수율·생체이용률·요중 회수율·Papp·Peff 값을 글에 쓰인 그대로(환산하지 않는다)")
 
 
 SYSTEM = """당신은 Formula 1 제형 설계 시스템의 입력 에이전트다. 사용자의 말을 시스템이 실행할 수 있는
@@ -66,10 +70,17 @@ SYSTEM = """당신은 Formula 1 제형 설계 시스템의 입력 에이전트�
   용량이 없으면 dose_mg를 비워 둔다 — 시스템이 따로 묻는다. 대화 앞부분에서 말한 조건도 run에 모은다.
 - intent 고르기:
   start_run — 새 설계 요청(약 이름/SMILES·대상·제형·반드시 넣을 부형제·용량·이미 아는 실측값)
-  submit_measurements — 데이터 요청에 대한 측정값(키는 아래 '받을 수 있는 측정 키'에서만)
+  submit_measurements — 데이터 요청·근거 결손 게이트에 대한 측정값(키는 아래 '받을 수 있는 측정 키'·'근거 결손' 입력 키에서만)
   develop_candidate — 룰북을 통과한 특정 후보로 2단계(Design Space 도출)를 시작하기(candidate_id)
   explain — 지금 상태·판정 이유 설명
   clarify — 정보가 부족해 되묻기
+- 용해도·투과도 계열 값은 measurements가 아니라 **observations**에 글에 쓰인 그대로 옮긴다 — 값, 단위(글의 표기 그대로:
+  mg/mL, µg/mL, mM, %, ×10^-6 cm/s, nm/s …), pH, 온도, 매질(FaSSIF 등), 방법(Caco-2 등). 환산·평균·최저값 계산은 하지 않는다
+  (단위 환산, pH 1.2–6.8 최저값, 용량/용해도 부피는 시스템 코드가 한다). pH마다 값이 다르면 pH마다 한 줄씩.
+  kind: solubility / fraction_absorbed(흡수율·물질수지) / absolute_bioavailability(절대 생체이용률, F) /
+  urinary_recovery(요중 회수율) / papp(Caco-2·PAMPA·MDCK 투과계수) / peff(인체 유효투과도). intent는 submit_measurements.
+- 근거 결손 항목의 수행 여부(강제분해·배합적합성·용출법 확립 …)는 맥락의 '근거 결손' 입력 키에 true로 넣는다.
+  아직 안 했다거나 예정이라는 말이면 넣지 않는다.
 - target_population: adult / pediatric / geriatric.
 - asks에는 예시 값(숫자)을 들지 않는다.
 - reply는 짧고 구체적으로. 무엇을 제안했는지, 확인 버튼을 눌러야 실행된다는 것을 알린다."""
@@ -169,7 +180,14 @@ def rule_parse(message: str, ctx: Dict[str, Any], catalog: Dict[str, Dict[str, A
     out.measurements.update(read_measurements(text, catalog))
 
     run = ctx.get("run") or {}
-    if run and out.measurements and not re.search(DESIGN_WORDS, low):
+    if run and not re.search(DESIGN_WORDS, low):
+        # 용해도·투과도 계열은 단위·pH를 따져야 한다 — 관측으로 읽고 환산은 evidence_values가 한다
+        if ev.looks_like_evidence(text):
+            out.observations = ev.rule_observations(text)
+            for k in ev.OWNED_KEYS:
+                out.measurements.pop(k, None)
+        out.measurements.update(evidence_done(text, ctx))
+    if run and (out.measurements or out.observations) and not re.search(DESIGN_WORDS, low):
         out.intent = "submit_measurements"
         return out
     m = re.search(r"(cand-[\w-]+)", text)
@@ -205,6 +223,32 @@ def rule_parse(message: str, ctx: Dict[str, Any], catalog: Dict[str, Dict[str, A
     return out
 
 
+_DONE = r"(했|완료|끝냈|끝났|마쳤|수행|확인했|확립|진행했|done)"
+_NOT_DONE = r"(안\s*했|못\s*했|아직|안\s*함|미실시|미수행|예정|할\s*거|안\s*됐)"
+_GENERIC = {"시험", "근거", "확인", "수행", "프로파일", "부형제", "있는", "검토", "자료", "조사", "거동", "조건", "형태", "공정",
+            "전략", "가능성", "실현", "여부", "결과"}
+
+
+def evidence_done(text: str, ctx: Dict[str, Any]) -> Dict[str, bool]:
+    """근거 결손 항목의 수행 여부 — '강제분해 했어' → forced_degradation_done. 열린 항목의 라벨 낱말로만 찾는다."""
+    low = text.lower()
+    found: Dict[str, bool] = {}
+    for e in ctx.get("evidence") or []:
+        for i in e.get("inputs") or []:
+            if i.get("type") != "bool" or i["key"] in found:
+                continue
+            words = {w for lab in (i.get("label"), e.get("label")) for w in re.findall(r"[가-힣a-z0-9]{3,}", str(lab or "").lower())}
+            for w in sorted(words - _GENERIC, key=len, reverse=True):
+                pos = low.find(w)
+                if pos < 0:
+                    continue
+                tail = low[pos + len(w): pos + len(w) + 24]
+                if not re.search(_NOT_DONE, tail) and re.search(_DONE, tail):
+                    found[i["key"]] = True
+                break
+    return found
+
+
 # ── 맥락 요약 (LLM 입력) ─────────────────────────────────────────────────
 def context_text(ctx: Dict[str, Any]) -> str:
     lines = [f"탭: {ctx.get('tab') or 'discovery'}"]
@@ -217,6 +261,12 @@ def context_text(ctx: Dict[str, Any]) -> str:
                 f"{g['name']}(Tier {g['tier']}) → {', '.join(g['result_keys'])}" for g in run["request_groups"]))
         if run.get("backtrack"):
             lines.append(f"마지막 되돌림: {run['backtrack'].get('transition_id')} → {run['backtrack'].get('return_phase')}")
+    evs = ctx.get("evidence") or []
+    if evs:
+        lines.append("근거 결손(개발 착수 전 필요 — 값을 말하면 phase_gates부터 재계산): " + "; ".join(
+            f"{e['requirement_id']} {e.get('label')} → " + ", ".join(
+                f"{i['key']}({'수행 여부' if i.get('type') == 'bool' else i.get('unit') or '값'})" for i in e.get("inputs") or [])
+            for e in evs))
     keys = ctx.get("measurement_keys") or []
     if keys:
         lines.append("받을 수 있는 측정 키: " + ", ".join(keys[:60]))
@@ -235,7 +285,7 @@ def run_turn(message: str, history: List[Dict[str, str]], ctx: Dict[str, Any],
     # 측정값 제출은 LLM 분류보다 먼저 규칙으로 잡는다 — 열린 설계에 대해 "이름 + 숫자"가 있고 새 설계를
     # 요청하는 말이 없으면 제출이다. LLM이 이걸 새 설계 요청으로 오분류하면 intake부터 전체가 다시 돌고
     # 값은 반영되지 않는다(데모 ③ VX-770에서 실제로 일어남 — 개발자 수정 과제 P0-3).
-    if ctx.get("run") and not re.search(DESIGN_WORDS, message):
+    if ctx.get("run") and not re.search(DESIGN_WORDS, message) and not ev.looks_like_evidence(message):
         found = read_measurements(message, catalog)
         allowed = set(ctx.get("measurement_keys") or [])
         if found and all(k in allowed for k in found):
@@ -297,8 +347,9 @@ def _canon_key(key: str, catalog: Dict[str, Dict[str, Any]]) -> Optional[str]:
 
 # ── 맥락 스냅숏 (서버가 만든다 — 클라이언트가 보낸 상태를 믿지 않는다) ─────────────
 def snapshot(tab: str, run: Optional[Dict[str, Any]], study: Optional[Dict[str, Any]],
-             catalog: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
-    """맥락 = 1단계 설계 실행 요약 + 받을 수 있는 측정 키. (tab·study는 호환용 인자 — 2단계는 화면의 단계 카드가 진행한다.)"""
+             catalog: Dict[str, Dict[str, Any]], evidence: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """맥락 = 1단계 설계 실행 요약 + 받을 수 있는 측정 키 + 근거 결손 게이트의 열린 항목(`evidence`: items · dose_mg · mw).
+    (tab·study는 호환용 인자 — 2단계는 화면의 단계 카드가 진행한다.)"""
     ctx: Dict[str, Any] = {"tab": "discovery"}
     if run:
         ranked = {r.get("candidate_id"): r for r in run.get("ranked", [])}
@@ -316,6 +367,11 @@ def snapshot(tab: str, run: Optional[Dict[str, Any]], study: Optional[Dict[str, 
             "strategies": run.get("strategies") or [],
         }
     ctx["measurement_keys"] = [k for k, m in catalog.items() if not m.get("alias_of")]
+    if run and evidence:
+        ctx["evidence"] = evidence.get("items") or []
+        ctx["dose_mg"] = evidence.get("dose_mg")
+        ctx["mw"] = evidence.get("mw")
+    ctx["evidence_keys"] = sorted({i["key"] for e in ctx.get("evidence") or [] for i in e.get("inputs") or []})
     return ctx
 
 
@@ -393,6 +449,13 @@ def build_response(out: AgentOutput, source: str, message: str, history: List[Di
 
     if out.intent in ("clarify", "none") and out.run and (out.run.api_name or out.run.smiles):
         out.intent = "start_run"
+    # 용해도·투과도 계열 글 — LLM이 관측을 안 뽑았으면 규칙으로 읽는다(바닥). 값이 있으면 제출 제안이다.
+    evidence_like = bool(run) and ev.looks_like_evidence(message) and not re.search(DESIGN_WORDS, message)
+    if evidence_like and out.intent in ("clarify", "none", "explain", "submit_measurements"):
+        if not out.observations:
+            out.observations = ev.rule_observations(message)
+        if out.observations:
+            out.intent = "submit_measurements"
     if out.intent == "start_run" and out.run:
         d = out.run
         if code and (not d.api_name or (not is_spelling_variant(d.api_name, code)
@@ -436,10 +499,16 @@ def build_response(out: AgentOutput, source: str, message: str, history: List[Di
         })
 
     elif out.intent == "submit_measurements" and run:
-        allowed = {k for g in run.get("request_groups", []) for k in g.get("result_keys") or []} | set(ctx.get("measurement_keys") or [])
+        evidence_keys = set(ctx.get("evidence_keys") or [])
+        allowed = ({k for g in run.get("request_groups", []) for k in g.get("result_keys") or []}
+                   | set(ctx.get("measurement_keys") or []) | evidence_keys)
+        # 단위·pH를 따져야 하는 키는 관측 → 코드 환산으로만 채운다(LLM이 곧바로 넣은 값은 쓰지 않는다)
+        owned = set(ev.OWNED_KEYS) if (out.observations or evidence_like) else set()
         clean: Dict[str, Any] = {}
         for k, v in out.measurements.items():
-            key = _canon_key(k, catalog)
+            key = _canon_key(k, catalog) or (k if k in evidence_keys else None)
+            if key in owned:
+                continue
             if not key or key not in allowed:
                 notes.append(f"'{k}'는 받을 수 있는 측정 키가 아니라 뺐습니다.")
                 continue
@@ -457,9 +526,29 @@ def build_response(out: AgentOutput, source: str, message: str, history: List[Di
                 g = strip_ungrounded(v, pool, dropped, key)
                 if g is not None:
                     clean[key] = g
+        norm = None
+        if out.observations:
+            norm = ev.normalize(out.observations, user_text, dose_mg=ctx.get("dose_mg"), mw=ctx.get("mw"),
+                                open_keys=evidence_keys)
+            clean.update(norm.measurements)     # 사용자 숫자에서 코드가 계산한 값 — 숫자·단위 가드는 normalize가 했다
+            notes.extend(norm.notes)
+            asks.extend(norm.asks)
         if clean:
+            touched = [{"requirement_id": e["requirement_id"], "label": e.get("label", "")} for e in ctx.get("evidence") or []
+                       if any(i["key"] in clean for i in e.get("inputs") or [])]
             proposals.append({"kind": "submit_measurements", "ready": True, "run_id": run.get("run_id"),
-                              "title": "측정값 제출 → 재계산", "measurements": clean})
+                              "title": "근거 결손 게이트 입력 → phase_gates부터 재계산" if touched else "측정값 제출 → 재계산",
+                              "measurements": clean, "labels": _labels(clean, catalog, ctx),
+                              "lines": norm.lines if norm else [], "evidence": touched,
+                              "source": "agent_evidence" if touched else "agent", "grade": ev.guess_grade(message)})
+            if norm is not None or touched:
+                # 말은 코드가 만든다 — LLM 문장이 코드가 계산한 부피·환산값을 다른 숫자로 말하지 않게
+                out.reply = (("근거 결손 게이트 입력으로 정리했습니다 — " + ", ".join(t["label"] for t in touched) + "."
+                              if touched else "측정값 제출 카드로 정리했습니다.")
+                             + (" 단위 환산과 pH별 최저값·용량/용해도 부피는 코드가 계산했습니다(과정은 카드에)." if norm and norm.lines else "")
+                             + " 실행하면 phase_gates부터 다시 계산합니다.")
+        elif norm is not None:
+            out.reply = "말씀하신 값을 읽었지만 아직 제출할 수 있는 값이 없습니다 — 아래 이유를 확인해 주세요."
 
     elif out.intent == "develop_candidate" and run:
         if out.candidate_id in (run.get("passed") or []):
@@ -490,6 +579,20 @@ def build_response(out: AgentOutput, source: str, message: str, history: List[Di
         reply += " 아래 카드를 확인하고 실행을 눌러야 반영됩니다."
     return mask_names({"reply": reply.strip(), "intent": out.intent, "proposals": proposals,
                        "asks": list(dict.fromkeys(asks)), "notes": notes, "source": source}, names)
+
+
+def _labels(values: Dict[str, Any], catalog: Dict[str, Dict[str, Any]], ctx: Dict[str, Any]) -> Dict[str, str]:
+    """카드에 보일 이름(단위) — 근거 항목 입력 칸 → 측정 필드 표 → 실험 입력 표 순."""
+    from formula.biopharm.triggers import load_output_fields
+    fields = load_output_fields(ROOT_DIR)
+    ev_inputs = {i["key"]: i for e in ctx.get("evidence") or [] for i in e.get("inputs") or []}
+    out = {}
+    for k in values:
+        i, f, c = ev_inputs.get(k) or {}, fields.get(k) or {}, catalog.get(k) or {}
+        label = i.get("label") or f.get("label_kr") or (c.get("label") if c.get("label") != k else "") or k
+        unit = i.get("unit") or f.get("unit") or ""
+        out[k] = f"{label} ({unit})" if unit and i.get("type") != "bool" else label
+    return out
 
 
 def explain(ctx: Dict[str, Any]) -> str:
@@ -532,5 +635,9 @@ def nudge(ctx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             text += " 1회 투여 용량이 없어 후보의 API 함량을 검사하지 못했습니다 — 용량(mg)을 알려 주시면 그 용량으로 다시 설계합니다."
         if run.get("request_groups"):
             text += " 측정값이 있으면 이름과 값을 그대로 말해 주세요 — 제출 카드로 바꿔 드립니다. 없으면 건너뛰어도 예측값으로 계속합니다."
+        if ctx.get("evidence"):
+            text += (f" 개발 착수 전 근거 결손 {len(ctx['evidence'])}건(" + ", ".join(e.get("label", "") for e in ctx["evidence"][:3])
+                     + (" 등" if len(ctx["evidence"]) > 3 else "") + ")은 여기에 말로 적어도 됩니다 — 용해도는 잰 pH와 함께, "
+                     "투과도는 흡수율·절대 생체이용률·요중 회수율·Papp 중 가진 자료를 쓰던 단위 그대로 적으면 코드가 환산해 제출 카드로 만듭니다.")
         return {"reply": text, "proposals": proposals, "asks": [], "notes": [], "source": "context"}
     return None

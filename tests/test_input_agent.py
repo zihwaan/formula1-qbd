@@ -161,3 +161,57 @@ def test_running_blind_map_masks_later_turns():
     res = ia.build_response(out, "llm", "왜 분무건조야?", [], ia.snapshot("discovery", None, None, CATALOG), CATALOG, INPUTS,
                             None, {"ivacaftor": "VX-770"})
     assert "ivacaftor" not in res["reply"].lower() and "VX-770" in res["reply"]
+
+
+# ── 근거 결손 게이트 값을 말로 받기 (사용자 2026-09-30: 용해도는 pH마다, 투과도는 단위가 제각각이라 자연어가 편하다) ──
+def _evidence_ctx(dose=100.0):
+    run = {"run_id": "r1", "status": "passed", "winner": "cand-0-WG", "candidates": ["cand-0-WG"],
+           "ranked": [{"candidate_id": "cand-0-WG"}], "request_groups": []}
+    items = [
+        {"requirement_id": "EVR004", "label": "실험 용해도 (pH 1.2 / 4.5 / 6.8)",
+         "inputs": [{"key": "solubility_mg_per_ml", "type": "number", "label": "최저 평형용해도 (pH 1.2–6.8)", "unit": "mg/mL"}]},
+        {"requirement_id": "EVR005", "label": "BCS 등급 근거 자료",
+         "inputs": [{"key": "dose_solubility_volume", "type": "number", "label": "용량/용해도 부피", "unit": "mL"},
+                    {"key": "fraction_absorbed", "type": "number", "label": "흡수율", "unit": "%"}]},
+        {"requirement_id": "EVR002", "label": "강제분해 프로파일 (가수분해·산화·열)",
+         "inputs": [{"key": "forced_degradation_done", "type": "bool", "label": "강제분해 수행", "unit": ""}]},
+    ]
+    return ia.snapshot("discovery", run, None, CATALOG, evidence={"items": items, "dose_mg": dose, "mw": 206.3})
+
+
+def test_evidence_values_in_words_become_an_evidence_card():
+    msg = "pH 1.2에서 2.1 mg/mL, 4.5에서 0.35 mg/mL, pH 6.8에서 40 µg/mL였고 흡수율 92%야"
+    ctx = _evidence_ctx()
+    out = ia.rule_parse(msg, ctx, CATALOG)
+    assert out.intent == "submit_measurements" and out.observations
+    res = ia.build_response(out, "rules", msg, [], ctx, CATALOG, INPUTS)
+    p = res["proposals"][0]
+    assert p["measurements"] == {"solubility_mg_per_ml": 0.04, "dose_solubility_volume": 2500.0, "fraction_absorbed": 92.0}
+    assert p["source"] == "agent_evidence" and {e["requirement_id"] for e in p["evidence"]} == {"EVR004", "EVR005"}
+    assert any("2500 mL" in line for line in p["lines"]) and "근거 결손 게이트" in res["reply"]
+    assert "용량/용해도 부피 (mL)" in p["labels"]["dose_solubility_volume"]
+
+
+def test_llm_bcs_numbers_go_through_the_code():
+    """LLM이 '절대 생체이용률 70%'를 흡수율 70으로 곧바로 넣어도 쓰지 않는다 — 85% 미만 BA는 저흡수의 근거가 아니다."""
+    out = ia.AgentOutput(reply="흡수율 70%로 제출합니다.", intent="submit_measurements", measurements={"fraction_absorbed": 70})
+    res = _respond(out, "절대 생체이용률 70%", ctx=_evidence_ctx())
+    assert all("fraction_absorbed" not in p["measurements"] for p in res["proposals"])
+    assert any("85" in n for n in res["notes"])
+
+
+def test_ph_tagged_solubility_is_not_read_as_the_minimum_by_rules_first():
+    """'용해도 2.1 mg/mL (pH 1.2)'를 이름+숫자 규칙이 최저 용해도 2.1로 잡으면 안 된다 — 관측으로 읽고 pH별 최저값을 쓴다."""
+    msg = "용해도 2.1 mg/mL (pH 1.2), 0.02 mg/mL (pH 6.8)"
+    out, source = ia.run_turn(msg, [], _evidence_ctx(), CATALOG)
+    res = ia.build_response(out, source, msg, [], _evidence_ctx(), CATALOG, INPUTS)
+    m = res["proposals"][0]["measurements"]
+    assert m == {"dose_solubility_volume": 5000.0}                          # pH 6.8에서 250 mL 초과 → 저용해도 확정, 4.5 미측정
+
+
+def test_done_items_are_read_from_words_but_not_from_negations():
+    ctx = _evidence_ctx()
+    assert ia.rule_parse("강제분해 시험 끝냈어", ctx, CATALOG).measurements == {"forced_degradation_done": True}
+    assert ia.rule_parse("강제분해는 아직 안 했어", ctx, CATALOG).measurements == {}
+    nudge = ia.nudge(ctx)
+    assert "근거 결손 3건" in nudge["reply"] and "pH" in nudge["reply"]

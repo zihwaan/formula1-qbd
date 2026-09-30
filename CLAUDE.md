@@ -17,7 +17,19 @@ strategy set changed) and returns the recompute as trace events (`trace`: phase_
 `bus.history`) because the SSE stream closed at run.end — the UI replays them through `handle()`. Each evidence item carries `inputs` (type · unit · label from
 `measurement_output_fields.csv` / `experimental_inputs.yaml`); EVR005 (BCS, no result key) asks `dose_solubility_volume` + `fraction_absorbed`, because
 `bcs_classification` only fires on those measured keys. Boolean "done" keys are also written to `measured_params` so `has_measured()` sees them.
-`POST /api/runs/{id}/confirmation` (pass/fail) still exists as API but the UI no longer uses it. `POST /api/stage2/studies` 409s with `EVIDENCE_GAPS` unless the
+**Values can also be given to the input agent in words** (user, 2026-09-30: solubility depends on pH and permeability comes in many units —
+a sentence is easier than a box): `/api/agent/turn` gets the open items + dose + MW in its context (`server._agent_evidence`), the LLM (or
+`evidence_values.rule_observations`) extracts **observations as written** (value · unit · pH · temp · medium · method — never converted), and
+`formula/agents/evidence_values.normalize` does the rest by ICH M9: unit → mg/mL · cm/s (molar via MW), minimum over pH 1.2–6.8 → `solubility_mg_per_ml`
++ `dose_solubility_volume` (**high solubility only with 1.2, 4.5 and 6.8 all present**; one point > 250 mL settles *low* alone and submits only the
+volume, a lower bound), out-of-range pH / non-37 °C points excluded, absolute BA / urinary recovery → `fraction_absorbed` **only when ≥ 85 %**
+(lower may be first-pass), Papp never converted to fa (recorded; sets `permeability_evidence_done` if EVR011 is open). Guards: value/pH/exponent
+must be numbers in the user text (scientific notation expanded), and the claimed unit must be **the unit written right after that value**
+(`_unit_after`) — catches µg→mg swaps and dropped ×10⁻⁶. LLM `measurements` for those keys are ignored (`OWNED_KEYS`); rules-first "name +
+number" is skipped for such text (`looks_like_evidence`), otherwise "용해도 2.1 mg/mL (pH 1.2)" became the minimum. The card (`source:
+agent_evidence`, grade guessed from wording) shows the code's derivation lines and posts to the same `/measurements` recompute; bool "done"
+items are read from open-item label words (`evidence_done`, negations skipped). A measured BCS can change the strategy set and regenerate
+candidates (BCS I drops MICRO) — `evidence.mjs` follows the new cards. `POST /api/runs/{id}/confirmation` (pass/fail) still exists as API but the UI no longer uses it. `POST /api/stage2/studies` 409s with `EVIDENCE_GAPS` unless the
 researcher gives an `evidence_waiver` reason (and `EVIDENCE_FAILED` if a 부적합 confirmation was recorded through the API). The verdict, open gaps and waiver go into the Handoff (inside its fingerprint).
 The candidate list is unchanged — the gate holds *development*, it never rejects; approval/batch/lifecycle remain commented out. What *is* live in its place is `formula/biopharm/` (phase gates before generation) plus a non-blocking data-request pattern — read that section before touching anything in this area, since "evidence" and "phase gate" are easy to conflate and they answer different questions (evidence: can we execute this *specific candidate's protocol*; phase gate: what *strategies* should even be generated).
 
@@ -32,7 +44,7 @@ The UI is one ChatGPT-style conversation — read "Chat UI" below before touchin
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 234 tests — run this first when changing the core
+.venv/bin/pytest                                  # 251 tests — run this first when changing the core
 python scripts/audit_conditions.py                # every CSV/manifest condition names a variable something actually sets (exit 1 on a dead name)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
@@ -707,7 +719,8 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
   the rule result wins (`source: "llm+rules"`). Execution goes through the same functions as a human click
   (`F1Discovery.startRunWith` fills the form first, `submitMeasurements`, `F1Stage2.startFromCandidate`);
   nudges fire on `f1:flowready` (after the drq/cands card is placed).
-  Tests: `tests/test_input_agent.py`, `tests/browser/agent.mjs`.
+  Evidence-gate values in words go through `formula/agents/evidence_values.py` (see the evidence gate paragraph at the top).
+  Tests: `tests/test_input_agent.py`, `tests/test_evidence_values.py`, `tests/browser/agent.mjs`, `tests/browser/evidence.mjs`.
 - **Report** — `scripts/report/{figdata,build_report}.py` → `docs/report/`. §6 + §7.1 + §7.2 + §7.6 are Stage 2: `figdata.stage2_block()`
   re-derives the paper's matrices/regression/ANOVA and walks a real study with paper values (approvals/events counted, not typed); §7.6
   reads `stage2_llm.json`; figure 8 is `cbd_surfaces.png` from `surfaces_png.mjs` (it hides the dock/sidebar and un-scrolls the thread,

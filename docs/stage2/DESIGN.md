@@ -11,6 +11,8 @@
 - **입구 = 근거 결손 게이트**(발표 자료 ⑤, `formula/evidence/gate.py` · `evidence_requirements.csv` 16행 · 확인시험 마스터 66종). 통과 후보마다
   선행(before_protocol) 근거가 있는지 결정론으로 판정해 카드에 보이고(`/api/runs/{id}/evidence`), 결과는 적합/부적합이 아니라 측정값으로 넣는다 —
   `POST /api/runs/{id}/measurements`(source `evidence`)로 가서 phase_gates부터 재계산 → 통과 후보 규칙 게이트 재판정 → 근거 재판정(트레이스 기록).
+  값은 입력 에이전트에 말로 넣어도 된다(source `agent_evidence`) — 관측(값·단위·pH·방법)만 LLM이 뽑고, 단위 환산·pH 1.2–6.8 최저값·용량/용해도 부피·
+  투과도 해석(BA·요중 회수율 ≥ 85 %만 흡수율, Papp 환산 없음)은 `formula/agents/evidence_values.py`가 ICH M9대로 계산한다.
   선행 결손이 남았으면 연구자 사유(`evidence_waiver`)가 있어야 착수한다(없으면 409 `EVIDENCE_GAPS`).
   판정·남은 결손·사유는 Handoff에 들어가 지문에 포함되고, LLM 초안 맥락("근거 결손(확인 전)")과 최종 보고서에도 실린다. 반려 권한은 여전히 룰북에만 있다.
 - **논문은 참고 자료이지 정답지가 아니다.** 위험 등급처럼 판단인 칸은 논문과 달라도 오답이 아니라 검토 지점(화면: "참고 · 논문의 판단")이고,
