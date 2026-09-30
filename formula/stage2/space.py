@@ -436,6 +436,55 @@ def render(design: Dict[str, Any], reg: Dict[str, Any], specs: Sequence[Dict[str
                 ax.contourf(Xa, Ya, edge, levels=[-1e9, -1e-6], colors=["white"])
                 ax.contourf(Xa, Ya, edge, levels=[-1e9, -1e-6], colors="none", hatches=["/////"])
                 ax.contour(Xa, Ya, edge, levels=[-1e-6], colors="#9a9a9a", linewidths=0.6)
+            on = np.ones(len(x), bool) if fx is None else np.isclose(x[:, fx], s["level"])
+            # 라벨 자리 — 설계점·최적점·control space 테두리·다른 선·다른 라벨에서 가장 먼 곳(축 정규화 좌표). 겹치면 읽을 수 없다.
+            spanx, spany = float(Xa.max() - Xa.min()) or 1.0, float(Ya.max() - Ya.min()) or 1.0
+            nrm = lambda pts: np.column_stack([(np.asarray(pts)[:, 0] - Xa.min()) / spanx, (np.asarray(pts)[:, 1] - Ya.min()) / spany])   # noqa: E731
+            avoid = [nrm(np.column_stack([T.to_actual(x[on, xy[0]], cod[xy[0]]), T.to_actual(x[on, xy[1]], cod[xy[1]])]))] if on.any() else []
+            if cs_on and s is best:
+                (xl, xh), (yl, yh) = c["control_space"][fn[xy[0]]], c["control_space"][fn[xy[1]]]
+                tt = np.linspace(0, 1, 25)
+                avoid.append(nrm(np.concatenate([np.column_stack([xl + (xh - xl) * tt, np.full(25, yl)]), np.column_stack([xl + (xh - xl) * tt, np.full(25, yh)]),
+                                                 np.column_stack([np.full(25, xl), yl + (yh - yl) * tt]), np.column_stack([np.full(25, xh), yl + (yh - yl) * tt]),
+                                                 [[c["optimum"]["actual"][fn[xy[0]]], c["optimum"]["actual"][fn[xy[1]]]]]])))
+            spec_lines = []
+
+            def spot(seg, hw, hh=0.035, extra=()):
+                """선 위 후보(양 끝 10 % 제외) 가운데 라벨 상자(반폭 hw · 반높이 hh, 축 정규화)가 피할 것들과 가장 덜 겹치는 점."""
+                cand = np.asarray(seg)[int(len(seg) * 0.10):max(int(len(seg) * 0.90), int(len(seg) * 0.10) + 1)]
+                q = nrm(cand)
+                ok = (q[:, 0] > hw + 0.01) & (q[:, 0] < 0.99 - hw) & (q[:, 1] > hh + 0.01) & (q[:, 1] < 0.99 - hh)
+                if ok.any():
+                    cand, q = cand[ok], q[ok]
+                pool = list(avoid) + [e for e in extra if e is not None and len(e)]
+                others = np.concatenate(pool) if pool else np.empty((0, 2))
+                if not len(others):
+                    return cand[len(cand) // 2], np.inf
+                # 상자 기준 거리 — 가로는 라벨 반폭, 세로는 반높이로 나눈 체비셰프 거리(1 미만이면 상자 안에 들어온다)
+                d = np.min(np.maximum(np.abs(q[:, None, 0] - others[None, :, 0]) / hw, np.abs(q[:, None, 1] - others[None, :, 1]) / hh), axis=1)
+                return cand[int(np.argmax(d))], float(np.max(d))
+
+            def near(a, b, tol=0.03):
+                """두 선(정규화 점들)이 거의 겹쳐 달리는가 — a의 점 중앙값 기준 b까지 거리."""
+                if not len(a) or not len(b):
+                    return False
+                dd = np.min(np.hypot(a[:, None, 0] - b[None, :, 0], a[:, None, 1] - b[None, :, 1]), axis=1)
+                return float(np.median(dd)) < tol
+
+            def box_pts(px, py, hw, hh=0.035):
+                c0 = nrm([[px, py]])[0]
+                gx, gy = np.meshgrid(np.linspace(-hw, hw, 7), np.linspace(-hh, hh, 3))
+                return np.column_stack([c0[0] + gx.ravel(), c0[1] + gy.ravel()])
+
+            pcs = []
+            if aux and s["means"]:
+                Pm = np.where(inD, s["P"], np.nan)
+                if np.isfinite(Pm).any():
+                    for lv in [v for v in c["aux"]["contour_levels"] if np.nanmin(Pm) < v < np.nanmax(Pm)]:
+                        cc = ax.contour(Xa, Ya, Pm, levels=[lv], colors="#7a7a7a", linewidths=0.6, linestyles=[(0, (1.5, 1.5))])
+                        segs = [q for q in cc.allsegs[0] if len(q) > 2] if cc.allsegs else []
+                        if segs:
+                            pcs.append((cc, lv, max(segs, key=len), nrm(np.concatenate(segs))))
             for y, m in s["means"].items():
                 sp = models[y]["spec"]
                 M = np.where(inD, m, np.nan)
@@ -446,16 +495,25 @@ def render(design: Dict[str, Any], reg: Dict[str, Any], specs: Sequence[Dict[str
                         segs = [q for q in cs.allsegs[0] if len(q) > 2] if cs.allsegs else []
                         if segs:
                             seg = max(segs, key=len)
-                            px, py = seg[int(len(seg) * 0.45)]
+                            me = nrm(np.concatenate(segs))
+                            # 목표 경계와 거의 겹쳐 달리는 보조 등고선(예: P 0.5)은 피할 대상에서 빼고 라벨도 달지 않는다 — 어디에 두어도 겹친다
+                            for k_, (cc_, lv_, sg_, ln_) in enumerate(pcs):
+                                if near(ln_[::4], me[::2]):
+                                    pcs[k_] = (cc_, lv_, sg_, None)
+                            hw = 0.012 * len(f"{y}: {lim:g}") + 0.02
+                            (px, py), _ = spot(seg, hw, extra=[ln_ for *_, ln_ in pcs if ln_ is not None] + spec_lines)
+                            avoid.append(box_pts(px, py, hw))
+                            spec_lines.append(me)
                             ax.annotate(f"{y}: {lim:g}", (px, py), fontsize=6.5, ha="center", va="center", zorder=12,
                                         bbox=dict(boxstyle="square,pad=0.18", fc="white", ec="#555", lw=0.5))
-            if aux and s["means"]:
-                Pm = np.where(inD, s["P"], np.nan)
-                if np.isfinite(Pm).any():
-                    for lv in [v for v in c["aux"]["contour_levels"] if np.nanmin(Pm) < v < np.nanmax(Pm)]:
-                        cc = ax.contour(Xa, Ya, Pm, levels=[lv], colors="#7a7a7a", linewidths=0.6, linestyles=[(0, (1.5, 1.5))])
-                        ax.clabel(cc, fmt={lv: f"P {lv:g}"}, fontsize=5.5, inline_spacing=2)
-            on = np.ones(len(x), bool) if fx is None else np.isclose(x[:, fx], s["level"])
+            for cc, lv, seg, ln in pcs:                               # 보조 등고선 라벨은 경계 라벨을 피해 마지막에 — 겹칠 자리뿐이면 달지 않는다
+                if ln is None:
+                    continue
+                (px, py), score = spot(seg, 0.045, 0.03, extra=spec_lines + [l2 for *_, l2 in pcs if l2 is not None and l2 is not ln])
+                if score < 1.0:
+                    continue
+                avoid.append(box_pts(px, py, 0.045, 0.03))
+                ax.clabel(cc, fmt={lv: f"P {lv:g}"}, fontsize=5.5, inline_spacing=2, manual=[(px, py)])
             ax.scatter(T.to_actual(x[on, xy[0]], cod[xy[0]]), T.to_actual(x[on, xy[1]], cod[xy[1]]), s=9, c=RED, zorder=10, clip_on=False, linewidths=0)
             if cs_on and s is best:
                 (xl, xh), (yl, yh) = c["control_space"][fn[xy[0]]], c["control_space"][fn[xy[1]]]

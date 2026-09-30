@@ -1,6 +1,6 @@
 """2단계 LLM 초안을 논문과 나란히 — CBD 논문 프로토타입으로 study를 열고 2~8단계를 LLM 초안 그대로 승인해 가며 논문 표와 대조한다.
 
-    python3 scripts/report/stage2_llm.py http://localhost:8104 dacon     → docs/report/stage2_llm.json (보고서 7.2절)
+    python3 scripts/report/stage2_llm.py http://localhost:8104 dacon     → docs/report/stage2_llm.json (보고서 7.6절)
 
 초안은 고치지 않는다(연구자 편집 없음). 승인이 막히면 그 단계에서 멈추고 막은 검사 코드를 기록한다.
 대조는 이름이 같은 변수 · CQA 칸끼리만 한다(LLM이 다른 이름을 쓰면 그 칸은 비교 밖으로 센다).

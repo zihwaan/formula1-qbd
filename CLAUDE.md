@@ -35,9 +35,9 @@ python scripts/audit_conditions.py                # every CSV/manifest condition
 .venv/bin/python scripts/import_rulebook.py       # re-import rulebook zips from 추가자료/
 # 기술 보고서(논문 PDF, zihwan.com/pdf): 수치는 엔진으로 계산 → HTML → 헤드리스 Chrome PDF → hub/reports/ 복사 → hub 재배포
 docker run --rm -e FORMULA1_LLM_PROVIDER=none -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1:latest python scripts/report/figdata.py
-python3 scripts/report/demo_cards.py <url> dacon 2 [card1,card3…]   # 시연 쿼리 카드 3장 → docs/report/demo_cards.json(보고서 7.6)
-python3 scripts/report/stage2_llm.py http://localhost:<port> dacon   # 2단계 LLM 초안 vs 논문 → docs/report/stage2_llm.json(보고서 7.7)
-# 어블레이션(보고서 7.8): 순수 LLM · 검증 계층 제거 · 전체 시스템 — 컨테이너 안에서 in-process, 대회 키만(Groq 폴백 없음 = 같은 모델끼리)
+python3 scripts/report/demo_cards.py <url> dacon 2 [card1,card3…]   # 시연 쿼리 카드 3장 → docs/report/demo_cards.json(보고서 7.5)
+python3 scripts/report/stage2_llm.py http://localhost:<port> dacon   # 2단계 LLM 초안 vs 논문 → docs/report/stage2_llm.json(보고서 7.6)
+# 어블레이션(보고서 7.7): 순수 LLM · 검증 계층 제거 · 전체 시스템 — 컨테이너 안에서 in-process, 대회 키만(Groq 폴백 없음 = 같은 모델끼리)
 docker run --rm --env-file <DACON_API_KEY만 든 파일> -e FORMULA1_LLM_PROVIDER=dacon -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1:test python scripts/report/ablation.py 2 all s1,s2
 CHROME=<chrome> node scripts/report/surfaces_png.mjs http://localhost:<port>/ docs/report/cbd_surfaces.png   # 그림 8 — 2단계 11단계 화면 그대로
 python3 scripts/report/build_report.py --tests <pytest 통과 수> --browser "<브라우저 스위트 요약>"
@@ -702,11 +702,15 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
   (`F1Discovery.startRunWith` fills the form first, `submitMeasurements`, `F1Stage2.startFromCandidate`);
   nudges fire on `f1:flowready` (after the drq/cands card is placed).
   Tests: `tests/test_input_agent.py`, `tests/browser/agent.mjs`.
-- **Report** — `scripts/report/{figdata,build_report}.py` → `docs/report/`. §6 + §7.1 + §7.6 are Stage 2: `figdata.stage2_block()`
+- **Report** — `scripts/report/{figdata,build_report}.py` → `docs/report/`. §6 + §7.1 + §7.2 + §7.6 are Stage 2: `figdata.stage2_block()`
   re-derives the paper's matrices/regression/ANOVA and walks a real study with paper values (approvals/events counted, not typed); §7.6
   reads `stage2_llm.json`; figure 8 is `cbd_surfaces.png` from `surfaces_png.mjs` (it hides the dock/sidebar and un-scrolls the thread,
-  otherwise the composer is baked into the figure). The browser-test sentence in §7.9 must list only suites actually run on that build.
-  §7.8 is the **ablation** (`scripts/report/ablation.py` → `docs/report/ablation.json`, run in-process in a container with only the
+  otherwise the composer is baked into the figure). The browser-test sentence in §7.8 must list only suites actually run on that build.
+  The report describes the **finished system only** (user, 2026-09-30): no fix history, defect lists or "in review" wording — the old §7.5
+  (demo-defect verification, devfix_results.json) was removed; `devfix_check.py` stays as a tool. The report opens with **핵심 요약**:
+  `fig_overview()` = presentation pp.5–6 merged (input agent → Stage I ①–⑤ + red reflect loop → evidence gate → Stage II ①–⑤ → QbD PDF,
+  data band) plus a one-glance table; figures/tables are numbered in order of appearance (fig 1–11, table 1–16).
+  §7.7 is the **ablation** (`scripts/report/ablation.py` → `docs/report/ablation.json`, run in-process in a container with only the
   contest key so all three conditions use the same model): P pure LLM (one structured call) / G system minus verification layer
   (planner + generator, no gate/contract/reflect/infeasible) / F full graph, graded by the same `registry.run`; stage 2 = pure LLM
   asked to compute CBD regression, a Lornoxicam Design Space and a CBD risk table. Only mechanically-scored metrics (user,
