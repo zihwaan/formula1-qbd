@@ -71,8 +71,11 @@ def exec_summary(data, ab, tests) -> str:
         rep.append(f"로르녹시캄 {L['n']} run 네 반응 검증 게이트 통과 · 최적 처방 비 {op['MCC:Mannitol']:g} · {op['Mixing time']:g}분 · {op['Crospovidone']:g} %")
     if ab and "stage1" in ab:
         a = _ab_agg(ab)
-        abl = (f"같은 LLM 비교 — 금기 처방 제시 순수 LLM {a['P']['bad']}/{a['P']['outputs']}, 검증 계층 제거 {a['G']['bad']}/{a['G']['outputs']}, "
-               f"전체 시스템 {a['F']['bad']}/{a['F']['outputs']} · 불가능 요청의 올바른 종결 {a['P']['inf_ok']}/{a['P']['inf_runs']} · {a['G']['inf_ok']}/{a['G']['inf_runs']} · "
+        sc = a["scale"]
+        abl = (f"같은 LLM, 요청 {sc['requests']}건(금기 고정 {sc['infeasible']}) · 실행 {sc['runs']}회 · 처방 {sc['formulations']}건 — "
+               f"금기 처방 제시 순수 LLM {a['P']['bad']}/{a['P']['outputs']}, 검증 계층 제거 {a['G']['bad']}/{a['G']['outputs']}, "
+               f"전체 시스템 {a['F']['bad']}/{a['F']['outputs']} · 금기 요청 후보 반려 {a['F']['inf_rejected']}/{a['F']['inf_generated']} · "
+               f"불가능 요청의 올바른 종결 {a['P']['inf_ok']}/{a['P']['inf_runs']} · {a['G']['inf_ok']}/{a['G']['inf_runs']} · "
                f"{a['F']['concluded_infeasible']}/{a['F']['inf_runs']} · 과잉 거부 {a['F']['refused']}")
     rows = [
         ("문제", "LLM은 처방 후보를 폭넓게 제안하지만 배합 금기·공정 한계·규제 상한 판단에서 근거 없는 결론을 낼 수 있다."),
@@ -448,9 +451,12 @@ def abstract(data, lm, ab) -> str:
     if ab and "stage1" in ab:
         a = _ab_agg(ab)
         P, G, F = a["P"], a["G"], a["F"]
-        txt += (f" 같은 LLM으로 비교한 어블레이션에서 규칙표가 금지하는 처방은 순수 LLM {_pp(P['bad'], P['outputs'])}, 검증 계층 제거 조건 {_pp(G['bad'], G['outputs'])}에서 "
-                f"제시되었으나 전체 시스템에서는 {_pp(F['bad'], F['outputs'])}였다. 금기 성분이 고정된 요청은 전체 시스템만 모든 실행({F['concluded_infeasible']}/{F['inf_runs']})에서 "
-                f"차단 규칙과 대체 성분을 제시하며 종결하였고, 가능한 요청에서의 과잉 거부는 {F['refused']}건이었다.")
+        sc = a["scale"]
+        txt += (f" 같은 LLM으로 요청 {sc['requests']}건을 {sc['runs']}회 실행해 처방 {sc['formulations']}건을 비교한 어블레이션에서 규칙표가 금지하는 처방은 "
+                f"순수 LLM {_pp(P['bad'], P['outputs'])}, 검증 계층 제거 조건 {_pp(G['bad'], G['outputs'])}에서 "
+                f"제시되었으나 전체 시스템에서는 {_pp(F['bad'], F['outputs'])}였다. 금기 성분이 고정된 요청에서 전체 시스템은 생성 후보 "
+                f"{F['inf_rejected']}/{F['inf_generated']}건을 반려하고 모든 실행({F['concluded_infeasible']}/{F['inf_runs']})을 차단 규칙·대체 성분과 함께 종결하였으며, "
+                f"가능한 요청에서의 과잉 거부는 {F['refused']}건이었다.")
     return txt
 
 
@@ -715,6 +721,7 @@ def _ab_agg(ab):
     out = {}
     for k in ("F", "G", "P"):
         runs = [(c, r) for c in cases for r in c[k]]
+        inf_out = sum(len(r["outputs"]) for c in cases if c["expect_infeasible"] for r in c[k])
         outs = [o for _, r in runs for o in r["outputs"]]
         bad = lambda o: o["unsafe"] or o["contract"]                                   # noqa: E731
         inf = [(c, r) for c, r in runs if c["expect_infeasible"]]
@@ -724,7 +731,8 @@ def _ab_agg(ab):
              "runs_bad": sum(any(bad(o) for o in r["outputs"]) for _, r in runs),
              "feasible_runs_bad": sum(any(bad(o) for o in r["outputs"]) for _, r in fea), "feasible_runs": len(fea),
              "inf_runs": len(inf), "inf_ok": sum(not any(bad(o) for o in r["outputs"]) for _, r in inf),
-             "refused": sum(not r["outputs"] for _, r in fea),
+             "refused": sum(not r["outputs"] for _, r in fea), "inf_outputs": inf_out,
+             "inf_bad": sum(o["unsafe"] or o["contract"] for _, r in inf for o in r["outputs"]),
              "repro": sum(c["reproducible"][k] for c in cases), "cases": len(cases),
              "sec": sum(r.get("seconds") or 0 for _, r in runs) / max(len(runs), 1),
              "calls": sum(r.get("llm_calls") or 0 for _, r in runs) / max(len(runs), 1),
@@ -735,10 +743,17 @@ def _ab_agg(ab):
             a["said_infeasible"] = sum(r.get("feasible") is False for _, r in inf)
             a["said_infeasible_fea"] = sum(r.get("feasible") is False for _, r in fea)
         if k == "F":
+            a["rejected"] = sum(r.get("rejected_candidates") or 0 for _, r in runs)
+            a["generated"] = a["outputs"] + a["rejected"]
+            a["inf_rejected"] = sum(r.get("rejected_candidates") or 0 for _, r in inf)
+            a["inf_generated"] = a["inf_rejected"] + sum(len(r["outputs"]) for _, r in inf)
             j = [r["judge"] for _, r in runs]
             a["judge_scored"], a["judge_uncited"] = sum(x["scored"] for x in j), sum(x["uncited_invalidated"] for x in j)
             a["concluded_infeasible"] = sum(r["status"] == "infeasible" for _, r in inf)
         out[k] = a
+    out["scale"] = {"requests": len(cases), "infeasible": sum(c["expect_infeasible"] for c in cases),
+                    "runs": sum(out[k]["runs"] for k in "FGP"),
+                    "formulations": out["P"]["outputs"] + out["G"]["outputs"] + out["F"]["generated"]}
     return out
 
 
@@ -818,8 +833,10 @@ def ablation_section(ab) -> str:
 실측값, 고정 성분, 용량 기준만 받아 처방 한 건(성분, mg, 공정, 근거 DOI/PMID)을 JSON으로 낸다. 검증 계층 제거(G)는 시스템의 계획(페이즈 게이트, 전략 선택)과 설계
 에이전트(규칙표 근거 검색 포함)를 그대로 쓰되 규칙 게이트·요청 계약·반성·불가능 판정을 빼고 생성된 후보를 모두 제시한다. 전체 시스템(F)은 실제 그래프 전체이며
 연구자에게 통과 후보로 제시되는 처방만 센다. G와 F는 계획·설계 모듈을 공유하고 검증 계층 유무만 다르므로, 두 조건의 차이가 곧 검증 계층의 효과이다. 입력은
-시연 쿼리 카드 3건과 7.4절 시나리오 4건을 포함한 요청 {len(cases)}건이며, 그중 {n_inf}건은 고정 성분이 규칙표상 금기인 요청이다(F·G {ab['repeat']}회, P {ab['p_repeat']}회
-반복).</p>
+시연 쿼리 카드 3건과 7.4절 시나리오 4건을 포함한 요청 {len(cases)}건이며, 그중 {n_inf}건은 고정 성분이 규칙표상 금기인 요청이다. 금기 요청은 규칙 조합으로
+만든 합성 요청이 아니라 근거 문헌이 그 분자나 화학 계열을 직접 다루는 실제 사례(플루옥세틴–유당[13], 암로디핀–유당[14])만 썼다 — 합성 요청은 정답이 채점 규칙표와
+순환하기 때문이다. <b>실험 규모: F·G {ab['repeat']}회, P {ab['p_repeat']}회 반복으로 실행 {g['scale']['runs']}회(F {F['runs']} · G {G['runs']} · P {P['runs']}), 평가한 처방
+{g['scale']['formulations']}건(P 제시 {P['outputs']} · G 제시 {G['outputs']} · F 생성 {F['generated']} 중 제시 {F['outputs']} · 반려 {F['rejected']}).</b></p>
 <p><b>평가 지표.</b> 정답이 하나로 정해져 기계적으로 채점할 수 있는 항목만 썼다(표 11). 처방은 세 조건 모두 같은 채점기, 즉 출처가 명시된 규칙표 전체를 적용하는
 사후 채점(<code>registry.run</code>)으로 평가하였고, 각 반려에는 규칙의 근거 문헌이 함께 기록된다(표 14). LLM이 매기는 품질 점수(순환 채점), 논문과의 일치율(논문은
 정답지가 아님), 토큰 사용량(요청별 측정 불가)처럼 해석이 자의적인 지표는 제외하였다. 무료 모델 키를 제거해 세 조건이 같은 모델만 쓰도록 하였다.</p>
@@ -834,7 +851,9 @@ def ablation_section(ab) -> str:
 </tbody></table>
 <div class="tcap"><b>표 11.</b> 어블레이션 지표와 판정 기준. 모든 항목은 결정론적으로 채점한다.</div>
 <table><thead><tr><th>지표</th><th>P 순수 LLM</th><th>G 검증 계층 제거</th><th>F 전체 시스템</th></tr></thead><tbody>
-<tr><td>제시된 처방</td><td>{P['outputs']} (실행 {P['runs']})</td><td>{G['outputs']} (실행 {G['runs']})</td><td>{F['outputs']} (실행 {F['runs']})</td></tr>
+<tr><td>실행 수</td><td>{P['runs']}</td><td>{G['runs']}</td><td>{F['runs']}</td></tr>
+<tr><td>생성된 처방 → 제시된 처방</td><td>{P['outputs']} → {P['outputs']} (검증 없음)</td><td>{G['outputs']} → {G['outputs']} (검증 없음)</td><td>{F['generated']} → {F['outputs']} (규칙 게이트 반려 {F['rejected']})</td></tr>
+<tr><td>금기 요청에서 반려된 처방</td><td>0/{P['inf_outputs']} (위반 {P['inf_bad']}건 그대로 제시)</td><td>0/{G['inf_outputs']} (위반 {G['inf_bad']}건 그대로 제시)</td><td>{_pct(F['inf_rejected'], F['inf_generated'])}</td></tr>
 <tr><td>금기 위반 처방</td><td>{_pct(P['unsafe'], P['outputs'])}</td><td>{_pct(G['unsafe'], G['outputs'])}</td><td>{_pct(F['unsafe'], F['outputs'])}</td></tr>
 <tr><td>요청 계약 위반 처방</td><td>{_pct(P['contract'], P['outputs'])}</td><td>{_pct(G['contract'], G['outputs'])}</td><td>{_pct(F['contract'], F['outputs'])}</td></tr>
 <tr><td>가능 요청에서 위반 처방이 나온 실행</td><td>{_pct(P['feasible_runs_bad'], P['feasible_runs'])}</td><td>{_pct(G['feasible_runs_bad'], G['feasible_runs'])}</td><td>{_pct(F['feasible_runs_bad'], F['feasible_runs'])}</td></tr>
