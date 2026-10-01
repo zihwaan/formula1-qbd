@@ -102,3 +102,5 @@
   background: var(--page); color: var(--ink-1); }
 .ad-pick { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px; font-size: 12px; color: var(--ink-2); }
 .ad-pick select { font: inherit; font-size: 12px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); color: var(--ink-1); min-width: 0; max-width: 100%; }
+.ad-pick { flex-wrap: wrap; min-width: 0; }
+.ad-pick select { flex: 1 1 220px; min-width: 0; width: 100%; }

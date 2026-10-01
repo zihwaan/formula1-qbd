@@ -683,7 +683,10 @@ cards, grayscale tokens from `styles.css`, black pill primary buttons. No sideba
 - Sequencing hooks: `f1:proposal` → inputs card; `f1:runstart` → chem card; `f1:run` + `F1Discovery.pending()`/`status()` → drq or cands
   (a concluded run — infeasible/no_design/qtpp_review — shows cands immediately); `#drq-submit/#drq-skip` clicks or `f1:drqdone` → cands
   (`f1:drqdone` arrives *after* the recompute's `f1:run`, so it places the cands itself). An infeasible run (no candidate to judge) still shows
-  the jury card with the `planned_judges` marked 소집 예정 — REV003 (`always`) is always there. **At run end the 심사위원단 card (`#panel-jury`,
+  the jury card with the `planned_judges` marked 소집 예정 — REV003 (`always`) is always there. The jury card also carries a **single candidate
+  picker + approve** (`wireJuryPick`; default = recommended, rank · score · gaps per option, reason box when gaps, shared `waiverText`) so a
+  strategy can be chosen and taken to stage 2 *before* the drq card (user, 2026-10-01 — the choice used to appear only after a drq recompute
+  placed the cands card). **At run end the 심사위원단 card (`#panel-jury`,
   `renderJury`: one card per summoned reviewer — condition · weight · per-candidate score, rationale, citations) is placed before the drq
   card** (user, 2026-10-01). After any later measurement submission (`f1:recomputing` → `f1:recomputed`) the live cands card (and the
   jury card if regenerated, and the evidence card) is **moved to the bottom of the thread**, the old one frozen in place — the recompute

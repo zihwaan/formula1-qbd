@@ -32,6 +32,15 @@ ck('심사위원단 카드가 데이터 요청 카드보다 먼저', await p.eva
 const juryScores = await p.locator('#agent-log #panel-jury .jury-score').count();
 if (process.env.SHOTS) await p.locator('#agent-log #panel-jury').screenshot({ path: `${process.env.SHOTS}/jury_1440.png` });
 ck('심사관 카드마다 후보별 점수와 근거', juryScores > 0 && await p.locator('#agent-log #panel-jury .jury-why').count() === juryScores, `점수 ${juryScores}건`);
+// 데이터 요청 카드보다 먼저 — 심사위원단 카드에서 통과 후보 하나를 골라 승인할 수 있다(에이전트 추천에서 바꿀 수 있음)
+const pickOpts = await p.locator('#agent-log #panel-jury .jury-cand option').evaluateAll((os) => os.map((o) => o.value));
+const passedNow = await p.evaluate(() => window.F1Discovery.passedIds());
+ck('데이터 요청 전 심사위원단 카드에서 후보 선택 · 승인(통과 후보 전부 · 추천 표시)', pickOpts.length > 0 && pickOpts.length === passedNow.length
+  && passedNow.every((id) => pickOpts.includes(id)) && /에이전트 추천/.test(await p.locator('#agent-log #panel-jury .jury-cand').textContent()), pickOpts.join(','));
+if (pickOpts.length > 1) {
+  await p.locator('#agent-log #panel-jury .jury-cand').selectOption(pickOpts[1]);
+  ck('다른 후보를 고르면 “연구자가 고른 후보” · 결손이면 사유 칸', /연구자가 고른 후보/.test(await p.locator('#agent-log #panel-jury .jury-gap').textContent()));
+}
 if (await p.locator('#agent-log #drq:not([hidden])').count()) await p.click('#drq-skip');
 await p.waitForSelector('#agent-log #panel-cands .card.pass .ev-box', { timeout: 120000 });
 const passed = p.locator('#agent-log #panel-cands .card.pass');
@@ -140,10 +149,15 @@ if (idx < 0 || !its.some((i) => i.id === 'EVR005')) {
   const ok = p.locator('#agent-log #panel-cands .card.pass', { has: p.locator('.ev-box.ok') }).first();
   if (await ok.count()) {
     ck('근거 충족 후보의 버튼 = “이 후보로 개발 착수”', /이 후보로 개발 착수/.test(await ok.locator('.dev-start').textContent()));
-    await ok.locator('.dev-start').click();
+    // 심사위원단 카드의 선택으로 승인 — 근거 충족 후보는 사유 칸 없이 바로
+    const okId = await ok.getAttribute('data-cand');
+    await p.locator('#agent-log #panel-jury .jury-cand').selectOption(okId);
+    ck('심사위원단 카드에서 근거 충족 후보를 고르면 사유 칸 없이 승인', await p.locator('#agent-log #panel-jury .jury-reason').isHidden(), okId);
+    await p.locator('#agent-log #panel-jury .jury-go').click();
     await p.waitForSelector('#s2 .s2-step.current[data-step="prototype"]', { timeout: 60000 });
     const ho = (await p.locator('#s2 .s2-handoff').textContent()).replace(/\s+/g, ' ');
-    ck('사유 없이 2단계 착수 · Handoff에 근거 충족 기록', /근거 결손 게이트/.test(ho) && !/연구자 사유/.test(ho), (ho.match(/근거 결손 게이트[^·]{0,60}/) || [''])[0]);
+    ck('사유 없이 2단계 착수 · Handoff에 근거 충족 기록 · 고른 후보', /근거 결손 게이트/.test(ho) && !/연구자 사유/.test(ho) && ho.includes(okId),
+      (ho.match(/근거 결손 게이트[^·]{0,60}/) || [''])[0]);
   } else {
     const left = (await items()).map((i) => i.id).join(', ');
     ck('근거 충족 후보가 있음', false, `남은 결손: ${left}`);

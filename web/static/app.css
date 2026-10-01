@@ -278,3 +278,11 @@ table.desc tfoot td { padding-top: 6px; }
 .card .ev-waive { margin-top: 10px; }
 .card .ev-waive .dev-start { margin-top: 2px; }
 .jury-card.planned { opacity: .9; }
+.jury-pick { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--page); display: grid; gap: 6px; }
+.jury-pick b { font-size: 12.5px; }
+.jury-pick select { font: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--page); color: var(--ink-1); max-width: 100%; }
+.jury-pick textarea { font: inherit; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); color: var(--ink-1); resize: vertical; }
+.jury-pick .dev-start { margin-top: 2px; }
+/* 좁은 화면 — 긴 선택지 문구가 선택 상자를 밀어 가로로 넘치지 않게(라벨은 줄바꿈, 상자는 폭에 맞게 줄어든다) */
+.jury-pick label.drq-grade { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.jury-pick select { flex: 1 1 220px; min-width: 0; width: 100%; }
