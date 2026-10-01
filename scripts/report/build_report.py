@@ -95,7 +95,7 @@ def exec_summary(data, ab, tests) -> str:
 <figure>{fig_overview(data)}
 <figcaption><b>그림 1.</b> 전체 아키텍처. 입력 에이전트가 요청을 실행 가능한 입력으로 정리하고, Stage I이 후보 처방을 생성·판정·순위화한다. 연구자가 고른 후보는
 근거 결손 게이트를 거쳐 Stage II의 15단계 승인 절차로 Design Space까지 도출된다. 선 모양은 담당 주체이다(실선: 결정론, 파선: LLM, 점선: 순위만 매기는 심사관,
-빨간 파선: 반려와 되돌림). 세부는 그림 2(후보 탐색), 그림 6(그래프 노드), 그림 8(2단계)에 있다.</figcaption></figure>
+빨간 파선: 반려와 되돌림). 세부는 그림 2(후보 탐색), 그림 6(그래프 노드), 그림 7(2단계)에 있다.</figcaption></figure>
 """
 
 
@@ -398,22 +398,22 @@ def lornox_section(L) -> str:
     return f"""<h3>7.2 로르녹시캄 분산정의 검증 게이트와 Overlay plot</h3>
 <p>시연 사례 ①(성인용 로르녹시캄 8 mg 분산정, 유동성 실측에 따라 직접타정 유지)의 후보로 2단계에 들어가면, 9단계에서 Almotairi 등[11]의 Box–Behnken 실측
 {L['n']} run(Table 3; 요인 MCC:만니톨 비 1–3, 혼합 시간 5–15분, 크로스포비돈 2–10 %; 반응 분산 시간, 마손도, 30분 용출률 DE30, 함량균일성 AV)을 불러온다.
-10단계 선택기는 네 반응 모두 축소 2차 모형을 골랐고 네 모형 모두 검증 게이트를 통과하였다(표 6). 전체 2차 모형이 과적합으로 떨어진 반응({', '.join(E(q) for q in qd)})에서도
+10단계 선택기는 네 반응 모두 축소 2차 모형을 골랐고 네 모형 모두 검증 게이트를 통과하였다(표 8). 전체 2차 모형이 과적합으로 떨어진 반응({', '.join(E(q) for q in qd)})에서도
 유의하지 않은 항을 계층적으로 제거한 축소 모형은 네 조건을 모두 충족하였다.</p>
 <table><thead><tr><th>반응</th><th>선택 모형</th><th>항</th><th>조정 R²</th><th>예측 R²</th><th>게이트</th><th>전체 2차가 떨어진 이유</th></tr></thead><tbody>{fit}</tbody></table>
-<div class="tcap"><b>표 6.</b> 로르녹시캄 15 run의 모형 선택 결과(엔진 계산). 후보 모형을 AICc 순으로 정렬하고(최솟값 + 2 이내이면 항 수가 적은 모형 우선)
+<div class="tcap"><b>표 8.</b> 로르녹시캄 15 run의 모형 선택 결과(엔진 계산). 후보 모형을 AICc 순으로 정렬하고(최솟값 + 2 이내이면 항 수가 적은 모형 우선)
 검증 게이트(모형 p &lt; 0.05, 적합결여 p ≥ 0.05, 조정 R² − 예측 R² ≤ 0.2, 예측 R² &gt; 0)를 처음 통과한 모형을 채택하였다. 축소 모형의 예측력은 14단계에서
 잠근 확인계획의 독립 배치로 최종 확인한다.</div>
 <p>목표(분산 ≤ 180 s, 마손도 ≤ 1.0 %, DE30 ≥ 75 %, AV ≤ 15; DE30은 프로젝트 가정값)를 적용하면, 효과가 가장 작은 {E(sl['name'])}을 고정한 세 단면에서 평균
-예측이 네 목표를 모두 만족하는 영역의 비율은 {fr}이다(그림 11). 가장 넓은 {cs['Mixing time']:g}분 단면에서 MCC:만니톨 {cs['MCC:Mannitol'][0]:g}–{cs['MCC:Mannitol'][1]:g} ×
+예측이 네 목표를 모두 만족하는 영역의 비율은 {fr}이다(그림 10). 가장 넓은 {cs['Mixing time']:g}분 단면에서 MCC:만니톨 {cs['MCC:Mannitol'][0]:g}–{cs['MCC:Mannitol'][1]:g} ×
 크로스포비돈 {cs['Crospovidone'][0]:g}–{cs['Crospovidone'][1]:g} %의 control space가 구성되고, 그 안에서 새 배치의 네 목표 동시 충족 확률이 가장 큰 최적 처방은 비
 {op['actual']['MCC:Mannitol']:g}, 혼합 {op['actual']['Mixing time']:g}분, 크로스포비돈 {op['actual']['Crospovidone']:g} %(확률 {op['joint']:.3f})이다. 이는 논문의 desirability
 최적점(3:1, 11분, 6.23 %)과 근접하다.</p>
 <figure><img src="lornoxicam_overlay.png" style="width:100%" alt="로르녹시캄 Overlay plot">
-<figcaption><b>그림 11.</b> 13단계 Overlay plot(논문 Figure 2 형식, 화면과 같은 코드로 생성). 혼합 시간 (a) 5, (b) 10, (c) 15분 단면. 노란 영역은 평균 예측이
+<figcaption><b>그림 10.</b> 13단계 Overlay plot(논문 Figure 2 형식, 화면과 같은 코드로 생성). 혼합 시간 (a) 5, (b) 10, (c) 15분 단면. 노란 영역은 평균 예측이
 모든 목표를 만족하는 구간, 해칭은 외삽, 빨간 점선 사각형은 control space, 큰 빨간 점은 최적 처방, 회색 점선은 새 배치 통과확률(0.5, 0.8, 0.9) 등고선이다.</figcaption></figure>
 <table><thead><tr><th>확인점</th><th>설정(비 · 분 · %)</th><th>새 배치 통과확률</th><th>DE30 예측 (구간)</th><th>AV 예측 (구간)</th></tr></thead><tbody>{rows}</tbody></table>
-<div class="tcap"><b>표 7.</b> 14단계 확인계획. 결과 확인 전에 잠그는 확인점과 동시 예측구간({L['plan']['pi_policy']['comparisons']}개 비교 Bonferroni,
+<div class="tcap"><b>표 9.</b> 14단계 확인계획. 결과 확인 전에 잠그는 확인점과 동시 예측구간({L['plan']['pi_policy']['comparisons']}개 비교 Bonferroni,
 개별 {100 * L['plan']['pi_policy']['per_comparison_level']:.2f} %)이다. AV 하한은 0에서 절단하였다. 논문 최적 처방의 배치는 결과가 이미 공개되어 있으므로
 참고점으로만 비교한다.</div>
 <p>최적점의 DE30 예측값은 {de['mean']:.1f} %(동시 예측구간 {de['pi_lower']:.1f}–{de['pi_upper']:.1f})이다. 모형 선택, 게이트, 영역, control space, 최적점은 overlay
@@ -479,26 +479,26 @@ def stage2_section(g) -> str:
 칸이 하나라도 있으면 승인이 막힌다(JUST_MISSING). 8단계에서는 두 행렬을 합쳐 High 변수({cand})를 DoE 후보로 제시하고 위험평가 보고서를 제공한다. 논문은 이 중
 {', '.join(E(v) for v in g['paper_doe'])}을 요인으로 썼다(Spray-dried mannitol은 균형 성분이라 제외). 요인 선택은 연구자의 판단이므로 9단계 표에서 연구자가 직접
 정한다.</p>
-<p>10단계 검증 게이트는 논문 모형 가운데 예측력이 부족한 두 모형을 걸러 낸다(표 5). 논문 모형 차수(경도 선형, 붕해시간 2차, 마손도 2요인 교호작용)로 적합하면
+<p>10단계 검증 게이트는 논문 모형 가운데 예측력이 부족한 두 모형을 걸러 낸다(표 7). 논문 모형 차수(경도 선형, 붕해시간 2차, 마손도 2요인 교호작용)로 적합하면
 경도만 통과하고, 붕해시간 2차 모형은 모형 p가 0.05를 넘으며(논문에서도 유의하지 않음), 마손도 모형은 조정 R²와 예측 R²의 차이가 0.2를 넘는다. 두 반응은 영역과
-ANOVA에서 빠지고 관측 범위로 목표와 비교되며(범위가 목표 안이라 경고 없음), 반응 곡면에는 참고로 표시된다(그림 9).</p>
+ANOVA에서 빠지고 관측 범위로 목표와 비교되며(범위가 목표 안이라 경고 없음), 반응 곡면에는 참고로 표시된다(그림 8).</p>
 <table><thead><tr><th>반응</th><th>선택기의 제안</th><th>논문 모형</th><th>논문 모형으로 다시 적합한 coded 식</th><th>모형 SS · p (논문)</th><th>적합결여 p (논문)</th><th>잔차 df (논문)</th></tr></thead><tbody>{rows}</tbody></table>
-<div class="tcap"><b>표 5.</b> 회귀식과 ANOVA. Table 9 원자료로 재계산한 값과 논문 값(괄호)을 비교하였으며, 계수는 논문에서 옮겨 적지 않았다. 선택기의
+<div class="tcap"><b>표 7.</b> 회귀식과 ANOVA. Table 9 원자료로 재계산한 값과 논문 값(괄호)을 비교하였으며, 계수는 논문에서 옮겨 적지 않았다. 선택기의
 제안은 AICc 순으로 정렬해 검증 게이트를 처음 통과한 모형이다(없으면 평균 모형 = 요인으로 설명되지 않음). 붕해시간은 논문에서도 모형이 유의하지 않았고
 (p = {_p(g['responses'][1]['paper_model_p'])}), 마손도는 축소 2차 모형도 과적합(조정 − 예측 R² 0.35)으로 탈락한다. 제안과 다른 모형을 고르면 연구자 선택으로 기록된다.</div>
 <figure><img src="cbd_surfaces.png" style="width:66%;display:block;margin:0 auto" alt="CBD 반응 곡면 격자">
-<figcaption><b>그림 9.</b> 11단계 반응 곡면(논문 Figure 1과 같은 CCS 1·3·5 % 배치, 논문 식 적용). 경도가 게이트를 통과했으므로 세 반응을 모두 그리고, 불합격한
+<figcaption><b>그림 8.</b> 11단계 반응 곡면(논문 Figure 1과 같은 CCS 1·3·5 % 배치, 논문 식 적용). 경도가 게이트를 통과했으므로 세 반응을 모두 그리고, 불합격한
 붕해시간·마손도에는 “검증 게이트 불합격 — 참고”를 표시한다. 진한 빨간 점은 곡면보다 높은 관측값, 연분홍 점은 낮은 관측값, 세로선은 잔차, 바닥 점선은 설계점이
 지지하는 영역(밖은 외삽), 바닥 색선은 등고선이다. 2단계 최종 보고서 PDF에도 같은 그림이 들어간다.</figcaption></figure>
 <p>ANOVA는 부분 제곱합으로 계산하고 반복 중심점으로 순수오차와 적합결여를 나눈다. 경도의 Model SS {g['responses'][0]['model_ss']:.2f}, p {_p(g['responses'][0]['model_p'])},
 잔차 자유도 {g['responses'][0]['residual_df']}, 적합결여 p {_p(g['responses'][0]['lof_p'])}는 논문 Table 11과 일치하며, 이 값들과 Table 10의 식은 회귀 테스트로 고정되어 있다.</p>
 <p>13단계에서 논문 규격(경도 4–6 kgf, 붕해 ≤ 30 s, 마손도 ≤ 1 %)을 적용하면 CCS 3 % 단면에서 Force {g['cbd_space']['control_space']['Force'][0]:g}–{g['cbd_space']['control_space']['Force'][1]:g} psi ×
 MCC {g['cbd_space']['control_space']['MCC'][0]:g}–{g['cbd_space']['control_space']['MCC'][1]:g} %의 control space가 구성되어 승인되며, 최적 처방은
-{' · '.join(f'{k} {v:g}' for k, v in g['cbd_space']['optimum']['actual'].items())}이다(그림 10). 보조 확률의 최댓값({g['cbd_space']['aux']['max_joint']:.3f})은 경도 규격 폭(2 kgf)이
+{' · '.join(f'{k} {v:g}' for k, v in g['cbd_space']['optimum']['actual'].items())}이다(그림 9). 보조 확률의 최댓값({g['cbd_space']['aux']['max_joint']:.3f})은 경도 규격 폭(2 kgf)이
 좁다는 사실을 반영해 경고로 표시된다. 14단계 확인계획은 {'잠겨 있으며' if g.get('cbd_vplan_locked') else '잠기지 않았으며'}(확인점 {len(g.get('cbd_vplan') or [])}개),
 15단계 판정은 새 독립 배치의 실측으로 수행한다.</p>
 <figure><img src="cbd_overlay.png" style="width:100%" alt="CBD Overlay plot">
-<figcaption><b>그림 10.</b> CBD 13단계 Overlay plot(CCS (a) 1, (b) 3, (c) 5 % 단면). 기준은 게이트를 통과한 경도의 평균 예측(4–6 kgf)이다.
+<figcaption><b>그림 9.</b> CBD 13단계 Overlay plot(CCS (a) 1, (b) 3, (c) 5 % 단면). 기준은 게이트를 통과한 경도의 평균 예측(4–6 kgf)이다.
 빨간 점선은 control space, 큰 빨간 점은 최적 처방, 회색 점선은 보조 확률(0.5, 0.8)을 나타내며, 형식은 논문 Figure 2와 같다.</figcaption></figure>
 """
 
@@ -663,9 +663,9 @@ def demo_section(dm) -> str:
 cold start)을 카드의 문장과 값 그대로 {E(dm.get('llm_label') or dm.get('llm'))}로 실행하였다(각 {max(r['repeat'] for r in res)}회).
 LLM 호출은 {', '.join(f"{'대회 API' if k == 'dacon' else '무료 Groq' if k == 'groq' else k} {v}회" for k, v in calls.items()) or '기록 없음'}였다{
 '(무료 Groq 호출은 대회 API 호출이 오류로 실패하여 전환된 경우이다)' if calls.get('groq') else ''}. 데이터 요청에는 카드의 제출 값을 입력 에이전트에 문장으로
-입력하였다(표 10).</p>
+입력하였다(표 12).</p>
 <table><thead><tr><th>카드</th><th>회</th><th>종결</th><th>초</th><th>시스템이 한 일</th></tr></thead><tbody>{rows}</tbody></table>
-<div class="tcap"><b>표 10.</b> 시연 쿼리 카드 실행 결과(demo_cards.json; 서버 응답과 이벤트 스트림에서 기록). 대비 행은 같은 카드에서 한 값만 바꾼 실행이다.</div>
+<div class="tcap"><b>표 12.</b> 시연 쿼리 카드 실행 결과(demo_cards.json; 서버 응답과 이벤트 스트림에서 기록). 대비 행은 같은 카드에서 한 값만 바꾼 실행이다.</div>
 {''.join(f"<p>{x}</p>" for x in paras)}
 """
 
@@ -703,13 +703,13 @@ def exp_section(x) -> str:
     tot = x.get("contest_tokens_used_estimate")
     return f"""<h3>7.4 대회 API 기반 실험</h3>
 <p>후보 탐색의 LLM 단계(요청 해석, 설계, 심사, 반성)와 입력 에이전트를 대회 API의 <code>{E(x['llm_model'].split(' (')[0])}</code>로 실행하였다(Groq 전환 없음 —
-모든 후보와 점수가 대회 API 응답). 시연 시나리오와 같은 입력 4종을 각 2회 실행하였다(표 8).</p>
+모든 후보와 점수가 대회 API 응답). 시연 시나리오와 같은 입력 4종을 각 2회 실행하였다(표 10).</p>
 <table><thead><tr><th>시나리오</th><th>회</th><th>종결</th><th>계획 서명</th><th>후보</th><th>게이트 통과</th><th>반려 규칙</th><th>소집 심사관</th><th>점수 있음</th><th>남은 요청</th><th>권고</th><th>초</th></tr></thead>
 <tbody>{rows}</tbody></table>
-<div class="tcap"><b>표 8.</b> 시나리오별 실행 결과(서버 응답과 이벤트 스트림에서 기록). 점수 있음은 실제로 부여된 심사 점수 수 / 전체 심사 호출 수이다.</div>
+<div class="tcap"><b>표 10.</b> 시나리오별 실행 결과(서버 응답과 이벤트 스트림에서 기록). 점수 있음은 실제로 부여된 심사 점수 수 / 전체 심사 호출 수이다.</div>
 {exp_narrative(x, same, tot)}
 <table><thead><tr><th>ID</th><th>사용자 발화</th><th>제안</th><th>카드 내용</th><th>되물음</th></tr></thead><tbody>{arows}</tbody></table>
-<div class="tcap"><b>표 9.</b> 입력 에이전트 응답. U3(“용량은 알아서”)은 용량을 지어내지 않고 되물었고, U4(“SMILES는 네가 기억하는 걸로”)의 구조는 LLM이 아니라
+<div class="tcap"><b>표 11.</b> 입력 에이전트 응답. U3(“용량은 알아서”)은 용량을 지어내지 않고 되물었고, U4(“SMILES는 네가 기억하는 걸로”)의 구조는 LLM이 아니라
 내장 구조 사전에서 왔으며, U5의 “대충 30도”는 모호한 표현이라 실측값으로 옮기지 않았다.</div>
 """
 
@@ -837,8 +837,8 @@ def ablation_section(ab) -> str:
 만든 합성 요청이 아니라 근거 문헌이 그 분자나 화학 계열을 직접 다루는 실제 사례(플루옥세틴–유당[13], 암로디핀–유당[14])만 썼다 — 합성 요청은 정답이 채점 규칙표와
 순환하기 때문이다. <b>실험 규모: F·G {ab['repeat']}회, P {ab['p_repeat']}회 반복으로 실행 {g['scale']['runs']}회(F {F['runs']} · G {G['runs']} · P {P['runs']}), 평가한 처방
 {g['scale']['formulations']}건(P 제시 {P['outputs']} · G 제시 {G['outputs']} · F 생성 {F['generated']} 중 제시 {F['outputs']} · 반려 {F['rejected']}).</b></p>
-<p><b>평가 지표.</b> 정답이 하나로 정해져 기계적으로 채점할 수 있는 항목만 썼다(표 11). 처방은 세 조건 모두 같은 채점기, 즉 출처가 명시된 규칙표 전체를 적용하는
-사후 채점(<code>registry.run</code>)으로 평가하였고, 각 반려에는 규칙의 근거 문헌이 함께 기록된다(표 14). LLM이 매기는 품질 점수(순환 채점), 논문과의 일치율(논문은
+<p><b>평가 지표.</b> 정답이 하나로 정해져 기계적으로 채점할 수 있는 항목만 썼다(표 13). 처방은 세 조건 모두 같은 채점기, 즉 출처가 명시된 규칙표 전체를 적용하는
+사후 채점(<code>registry.run</code>)으로 평가하였고, 각 반려에는 규칙의 근거 문헌이 함께 기록된다(표 16). LLM이 매기는 품질 점수(순환 채점), 논문과의 일치율(논문은
 정답지가 아님), 토큰 사용량(요청별 측정 불가)처럼 해석이 자의적인 지표는 제외하였다. 무료 모델 키를 제거해 세 조건이 같은 모델만 쓰도록 하였다.</p>
 <table><thead><tr><th>지표</th><th>정의</th><th>판정 기준</th></tr></thead><tbody>
 <tr><td>금기 위반 처방</td><td>제시된 처방 중 출처 규칙의 HARD_FAIL(요청 계약 제외)이 하나 이상인 처방</td><td>규칙표(배합 금기, 공정, 소아, 규제 상한), 결정론</td></tr>
@@ -849,7 +849,7 @@ def ablation_section(ab) -> str:
 <tr><td>재현성</td><td>같은 입력을 반복하였을 때 결정(제시 여부, 발동 규칙, 계획)이 동일한 요청 수</td><td>반복 간 비교</td></tr>
 <tr><td>2단계 계산 정확도</td><td>회귀 계수, p값 판정, Design Space 목표 충족, 위험표 내부 일관성</td><td>논문 Table 10·11(재현 확인), 게이트 통과 모형, 표 대조</td></tr>
 </tbody></table>
-<div class="tcap"><b>표 11.</b> 어블레이션 지표와 판정 기준. 모든 항목은 결정론적으로 채점한다.</div>
+<div class="tcap"><b>표 13.</b> 어블레이션 지표와 판정 기준. 모든 항목은 결정론적으로 채점한다.</div>
 <table><thead><tr><th>지표</th><th>P 순수 LLM</th><th>G 검증 계층 제거</th><th>F 전체 시스템</th></tr></thead><tbody>
 <tr><td>실행 수</td><td>{P['runs']}</td><td>{G['runs']}</td><td>{F['runs']}</td></tr>
 <tr><td>생성된 처방 → 제시된 처방</td><td>{P['outputs']} → {P['outputs']} (검증 없음)</td><td>{G['outputs']} → {G['outputs']} (검증 없음)</td><td>{F['generated']} → {F['outputs']} (규칙 게이트 반려 {F['rejected']})</td></tr>
@@ -863,19 +863,19 @@ def ablation_section(ab) -> str:
 <tr><td>결정 재현(요청 {F['cases']}건 중)</td><td>{P['repro']}</td><td>{G['repro']}</td><td>{F['repro']}</td></tr>
 <tr><td>실행당 시간 · LLM 호출</td><td>{P['sec']:.0f}초 · {P['calls']:.1f}회</td><td>{G['sec']:.0f}초 · {G['calls']:.1f}회</td><td>{F['sec']:.0f}초 · {F['calls']:.1f}회</td></tr>
 </tbody></table>
-<div class="tcap"><b>표 12.</b> 1단계 어블레이션 집계. 세 조건 모두 응답 모델은 {E(', '.join('대회 API' if p_ == 'dacon' else p_ for p_ in sorted(set(F['providers']) | set(G['providers']) | set(P['providers']))) or '—')}이며 무료 모델 전환은 없었다. F의 시간은 전략별 설계와 심사를 병렬로 수행한 경과 시간이다.</div>
+<div class="tcap"><b>표 14.</b> 1단계 어블레이션 집계. 세 조건 모두 응답 모델은 {E(', '.join('대회 API' if p_ == 'dacon' else p_ for p_ in sorted(set(F['providers']) | set(G['providers']) | set(P['providers']))) or '—')}이며 무료 모델 전환은 없었다. F의 시간은 전략별 설계와 심사를 병렬로 수행한 경과 시간이다.</div>
 <table><thead><tr><th>요청</th><th>조건</th><th>P 위반/제시</th><th>G 위반/제시</th><th>F 위반/제시 · 종결</th></tr></thead><tbody>{crow}</tbody></table>
-<div class="tcap"><b>표 13.</b> 요청별 결과(반복 합산). 각 칸의 아래 줄은 발동한 규칙이다(INC: 배합 금기, MC: 다성분 금기, RC: 요청 계약, MAX_DAILY: 라벨 최대 용량).</div>
+<div class="tcap"><b>표 15.</b> 요청별 결과(반복 합산). 각 칸의 아래 줄은 발동한 규칙이다(INC: 배합 금기, MC: 다성분 금기, RC: 요청 계약, MAX_DAILY: 라벨 최대 용량).</div>
 {ablation_narrative(ab, g)}
 <p><b>2단계 비교 설계.</b> 같은 모델에 원자료 표를 주고 결정론 모듈의 계산을 직접 하게 하였다(각 3회, 위험표 2회). (가) CBD 17 run의 coded 계수, 모형 p, 적합결여
-p를 논문 Table 10·11(7.1절에서 시스템이 재현)과 비교하였다(표 15). (나) 로르녹시캄 15 run과 목표로 Design Space 범위와 설정점을 정하게 하고 시스템의 게이트 통과
-모형으로 채점하였다(표 16). (다) CBD 위험 행렬과 근거 표를 함께 쓰게 하고 두 표의 일치를 대조하였다(표 17).</p>
+p를 논문 Table 10·11(7.1절에서 시스템이 재현)과 비교하였다(표 17). (나) 로르녹시캄 15 run과 목표로 Design Space 범위와 설정점을 정하게 하고 시스템의 게이트 통과
+모형으로 채점하였다(표 18). (다) CBD 위험 행렬과 근거 표를 함께 쓰게 하고 두 표의 일치를 대조하였다(표 19).</p>
 <table><thead><tr><th>조건</th><th>계수 ±1 % 이내</th><th>계수 상대오차 중앙값</th><th>유의성 판정 일치(p &lt; 0.05)</th></tr></thead><tbody>{sa_rows}</tbody></table>
-<div class="tcap"><b>표 15.</b> 회귀 계산(CBD Table 9 → Table 10·11). 계수 {ntot}개(경도 선형 4개, 붕해시간 2차 10개). 기준값은 경도 모형 p {sa['truth']['hardness_model_p']:.4f}, 적합결여 p {sa['truth']['hardness_lack_of_fit_p']:.4f}, 붕해시간 모형 p {sa['truth']['dt_model_p']:.4f}이다.</div>
+<div class="tcap"><b>표 17.</b> 회귀 계산(CBD Table 9 → Table 10·11). 계수 {ntot}개(경도 선형 4개, 붕해시간 2차 10개). 기준값은 경도 모형 p {sa['truth']['hardness_model_p']:.4f}, 적합결여 p {sa['truth']['hardness_lack_of_fit_p']:.4f}, 붕해시간 모형 p {sa['truth']['dt_model_p']:.4f}이다.</div>
 <table><thead><tr><th>조건</th><th>범위({E(' × '.join(fnames))})</th><th>설정점</th><th>범위 중 실험 영역 안</th><th>그중 평균 예측이 목표 충족</th><th>설정점 목표 충족</th><th>설정점 통과확률</th></tr></thead><tbody>{sb_rows}</tbody></table>
-<div class="tcap"><b>표 16.</b> Design Space 제안(로르녹시캄 Table 3; 목표 분산 ≤ 180 s, 마손도 ≤ 1 %, DE30 ≥ 75 %, AV ≤ 15). 제안 범위를 요인당 11점 격자로 나누어 시스템의 게이트 통과 모형(네 반응 축소 2차)으로 채점하였다.</div>
+<div class="tcap"><b>표 18.</b> Design Space 제안(로르녹시캄 Table 3; 목표 분산 ≤ 180 s, 마손도 ≤ 1 %, DE30 ≥ 75 %, AV ≤ 15). 제안 범위를 요인당 11점 격자로 나누어 시스템의 게이트 통과 모형(네 반응 축소 2차)으로 채점하였다.</div>
 <table><thead><tr><th>조건</th><th>행렬 ≠ 근거 표</th><th>근거 없는 칸</th><th>근거끼리 등급 충돌</th><th>행렬 빈 칸</th></tr></thead><tbody>{sc_rows}</tbody></table>
-<div class="tcap"><b>표 17.</b> 위험평가 표의 내부 일관성(CBD 제형·공정 변수 {sc['variables']} × CQA {sc['cqas']} = {sc['variables'] * sc['cqas']}칸). 등급의 논문 일치 여부는 평가하지 않았다(논문은 정답지가 아님, 7.6절).</div>
+<div class="tcap"><b>표 19.</b> 위험평가 표의 내부 일관성(CBD 제형·공정 변수 {sc['variables']} × CQA {sc['cqas']} = {sc['variables'] * sc['cqas']}칸). 등급의 논문 일치 여부는 평가하지 않았다(논문은 정답지가 아님, 7.6절).</div>
 {ablation_s2_narrative(ab)}
 """
 
@@ -915,7 +915,7 @@ def ablation_narrative(ab, g) -> str:
     knew = sum(1 for r in gave if any(w in str(r.get("reason") or "").lower() for w in ("maillard", "환원당", "reducing sugar")))
     fake = P["cite_given"] - P["cite_ok"]
     p1 = (f"<p><b>안전성.</b> 규칙표가 금지하는 처방은 순수 LLM {_pp(P['bad'], P['outputs'])}, 검증 계층 제거 조건 {_pp(G['bad'], G['outputs'])}에서 연구자에게 제시되었고, "
-          f"전체 시스템은 {_pp(F['bad'], F['outputs'])}였다(표 12). "
+          f"전체 시스템은 {_pp(F['bad'], F['outputs'])}였다(표 14). "
           + ("위반은 모두 고정 성분이 금기인 요청에서 나왔다" if all_inf else "위반은 주로 고정 성분이 금기인 요청에서 나왔다")
           + f"(발동 규칙 — P: {top('P')}; G: {top('G')}).</p>")
     gr, pr = 100 * G["bad"] / max(G["outputs"], 1), 100 * P["bad"] / max(P["outputs"], 1)
@@ -936,7 +936,7 @@ def ablation_narrative(ab, g) -> str:
           f"(무효 {F['judge_uncited']}건). 전략별 설계와 심사를 병렬로 실행하여, 실행당 LLM 호출 {F['calls']:.0f}회에도 경과 시간은 {F['sec']:.0f}초로 "
           f"순수 LLM({P['sec']:.0f}초)과 {F['sec'] - P['sec']:.0f}초 차이였다.</p>")
     table = (f"<table><thead><tr><th>규칙</th><th>엔진이 적은 반려 사유(첫 사례)</th></tr></thead><tbody>{wr}</tbody></table>"
-             "<div class='tcap'><b>표 14.</b> 순수 LLM과 검증 계층 제거 조건의 처방에서 발동한 규칙과 사유(규칙 게이트의 원문).</div>") if wr else ""
+             "<div class='tcap'><b>표 16.</b> 순수 LLM과 검증 계층 제거 조건의 처방에서 발동한 규칙과 사유(규칙 게이트의 원문).</div>") if wr else ""
     return p1 + p2 + p3 + p4 + table
 
 
@@ -1050,7 +1050,7 @@ def fig_rulegate(data):
     b += f'<text x="{x0 + w / 2}" y="123" class="bs">계약 {nrc} · 라벨 {nmdd}</text>'
     b += arrow(x0 + w, 81, x0 + w + 3, 81)
     x0 = x0 + w + 3
-    b += '<text x="10" y="12" class="gt">요청과 후보의 정합(입력 계약) → 규칙표 30개 · 여덟 검사 함수 · 우선순위 단계 (앞 단계의 파생값이 뒤 단계 조건)</text>'
+    b += '<text x="10" y="12" class="gt">요청과 후보의 정합(입력 계약) → 규칙표 32개 · 여덟 검사 함수 · 우선순위 단계 (앞 단계의 파생값이 뒤 단계 조건)</text>'
     for i, ((lo, hi), title) in enumerate(STAGES):
         es = [e for e in m if e["priority"] is not None and lo <= e["priority"] <= hi]
         x = x0 + i * (w + 3)
@@ -1096,53 +1096,75 @@ def fig_rulegate(data):
     return svg(720, yv + 50, b)
 
 
-def _short_cond(c: str) -> str:
-    c = c.replace("==True", "").replace("True", "")
-    return (c[:58] + "…") if len(c) > 60 else c
+STATUS_KO = {"passed": "통과", "passed_unranked": "통과(순위 없음)", "infeasible": "제약 불가능", "rejected": "반려", "no_design": "설계 없음",
+             "qtpp_review": "QTPP 재검토", "escalated": "이관", "exhausted": "재설계 한도"}
 
 
-def fig_jury(data, x):
-    jury = data["jury"]
-    scen = []
-    if x:
-        for r in x["runs"]:
-            if r["scenario"] not in [s_[0] for s_ in scen]:
-                scen.append((r["scenario"], r["label"]))
-    col0, colc, colw = 10, 128, 44
-    b = '<text x="10" y="12" class="gt">명단 7명 · 소집 조건은 CSV 한 줄 · 신호는 게이트 결과와 스펙에서 결정론으로 계산 · 반려 권한 없음</text>'
-    y0 = 26
-    b += f'<text x="{col0}" y="{y0 + 12}" class="lg">심사관</text><text x="{colc}" y="{y0 + 12}" class="lg">소집 조건 (reviewer_registry.csv)</text>'
-    b += f'<text x="{colc + 358}" y="{y0 + 12}" class="lg">가중치</text>'
-    sx = colc + 400
-    for j, (sid, lab) in enumerate(scen):
-        b += f'<text x="{sx + j * colw + colw / 2}" y="{y0 + 4}" class="lg" text-anchor="middle">{E(lab.split(" ")[0])}</text>'
-        b += f'<text x="{sx + j * colw + colw / 2}" y="{y0 + 14}" class="lg" text-anchor="middle">{E(lab.split(" ")[1][:6])}</text>'
-    for i, r in enumerate(jury):
-        y = y0 + 24 + i * 26
-        b += f'<rect x="{col0 - 4}" y="{y - 2}" width="700" height="24" fill="{"#f6f7f9" if i % 2 == 0 else "#fff"}"/>'
-        b += f'<text x="{col0}" y="{y + 14}" class="bt" style="text-anchor:start;font-size:9.5px">{E(r["reviewer_id"])} {E(r["name"].replace(" 심사관", ""))}</text>'
-        b += f'<text x="{colc}" y="{y + 14}" class="lg" style="font-family:ui-monospace,Menlo,monospace;font-size:7.6px">{E(_short_cond(r["condition"]))}</text>'
-        b += f'<text x="{colc + 366}" y="{y + 14}" class="lg">{E(r["weight"])}</text>'
-        for j, (sid, _) in enumerate(scen):
-            reps = [rr for rr in x["runs"] if rr["scenario"] == sid]
-            hit = sum(r["reviewer_id"] in rr["summoned"] for rr in reps)
-            cxp, cyp = sx + j * colw + colw / 2, y + 10
-            if hit == len(reps) and hit:
-                b += f'<circle cx="{cxp}" cy="{cyp}" r="6" fill="#1d4ed8"/>'
-            elif hit:
-                b += f'<circle cx="{cxp}" cy="{cyp}" r="6" fill="none" stroke="#1d4ed8" stroke-width="1.6"/><path d="M {cxp} {cyp - 6} A 6 6 0 0 1 {cxp} {cyp + 6} z" fill="#1d4ed8"/>'
-            else:
-                b += f'<circle cx="{cxp}" cy="{cyp}" r="5.5" fill="none" stroke="#bbb"/>'
-    yl = y0 + 24 + len(jury) * 26 + 16
-    b += f'<circle cx="16" cy="{yl - 3}" r="5" fill="#1d4ed8"/><text x="26" y="{yl}" class="lg">2회 모두 소집</text>'
-    b += f'<circle cx="116" cy="{yl - 3}" r="5" fill="none" stroke="#1d4ed8" stroke-width="1.5"/><path d="M 116 {yl - 8} A 5 5 0 0 1 116 {yl + 2} z" fill="#1d4ed8"/><text x="126" y="{yl}" class="lg">1회만(설계 성분에 따라 달라지는 신호)</text>'
-    b += f'<circle cx="336" cy="{yl - 3}" r="5" fill="none" stroke="#bbb"/><text x="346" y="{yl}" class="lg">생성되지 않음</text>'
-    b += f'<text x="10" y="{yl + 18}" class="al">소집된 심사관만 후보별로 병렬 실행 → 점수 0–1(검증된 DOI·PMID 인용 필수, 없으면 무효) → 가중평균(결정론) → 통과 후보 사이의 순위.</text>'
-    return svg(720, yl + 26, b)
+def _jury_why(sc) -> str:
+    """조건식이 참이 된 신호 — 표 6의 근거 열."""
+    s_ = sc.get("signals") or {}
+    out = []
+    tp = s_.get("target_population")
+    if tp in ("pediatric", "geriatric"):
+        out.append({"pediatric": "대상 소아", "geriatric": "대상 고령자"}[tp])
+    if s_.get("bcs_class") in ("II", "IV"):
+        out.append(f"BCS {s_['bcs_class']}")
+    for k, label in (("enabling_candidates_present", "가용화 후보"), ("particle_size_candidates_present", "미분화 후보"),
+                     ("asd_candidates_present", "ASD 후보"), ("coverage_gap_present", "룰북 밖 공정"),
+                     ("novel_combination_not_in_rulebook", "룰북 밖 부형제")):
+        if s_.get(k):
+            out.append(label)
+    if s_.get("regulatory_narrative_needed"):
+        flags = sc.get("soft_flags") or []
+        out.append("규제 검토 지적" + (f"({', '.join(f.split('/')[-1] for f in flags[:2])})" if flags else ""))
+    if s_.get("solid_form_zone") in ("continuum", "cocrystal_likely"):
+        out.append(f"고체상 {s_['solid_form_zone']}")
+    if s_.get("salt_stability_watch"):
+        out.append("염 안정성 주의")
+    return " · ".join(out) or "— (공정 실현성만)"
 
 
-# ── 본문 ──────────────────────────────────────────────────────────────────
-def build(data, tests: int, browser: str, x=None, dm=None, lm=None, ab=None) -> str:
+def jury_tables(data, js) -> str:
+    """표 5 심사관 명단(reviewer_registry.csv) · 표 6 상황별 소집(jury_scenarios.json — 실제 시스템 실행)."""
+    jury = data.get("jury") or []
+    short = {j["reviewer_id"]: j["name"].replace(" 심사관", "") for j in jury}
+    t5 = (f"<table><thead><tr><th>ID</th><th>심사관</th><th>소집 조건 (reviewer_registry.csv)</th><th>가중치</th></tr></thead><tbody>"
+          + "".join(f"<tr><td class='mono'>{E(j['reviewer_id'])}</td><td>{E(j['name'])}</td><td class='mono'>{E(j['condition'])}</td>"
+                    f"<td>{E(j['weight'])}</td></tr>" for j in jury)
+          + "</tbody></table><div class='tcap'><b>표 5.</b> 심사관 명단. 조건식이 참일 때만 생성되며 공정 실현성(REV003)은 <code>always</code>이다. "
+            "점수(0–1)는 통과 후보 사이의 순위에만 쓰고 반려 권한은 없다.</div>")
+    if not js or not js.get("scenarios"):
+        return t5
+    ids = [j["reviewer_id"] for j in jury]
+    sc_rows = js["scenarios"]
+
+    def cell(sc, rid):
+        return "●" if rid in (sc.get("summoned") or []) else "○" if rid in (sc.get("planned") or []) else ""
+
+    def req(sc):
+        extra = []
+        if sc.get("required_excipients"):
+            extra.append("고정 " + ", ".join(sc["required_excipients"]))
+        mp = {k: v for k, v in (sc.get("measured_params") or {}).items() if k != "dose_mg"}
+        if mp:
+            num = lambda v: (f"{v:.10f}".rstrip("0").rstrip(".") if abs(v) < 1e-3 else f"{v:g}")      # noqa: E731 — 0.00005를 지수로 쓰지 않는다
+            extra.append("실측 " + ", ".join(f"{k}={num(v)}" if isinstance(v, (int, float)) else f"{k}={v}" for k, v in mp.items()))
+        dose = (sc.get("measured_params") or {}).get("dose_mg")
+        return f"“{sc.get('request')}”" + (f" · {dose:g} mg" if isinstance(dose, (int, float)) else "") + (f" · {'; '.join(extra)}" if extra else "")
+    head = "".join(f"<th style='text-align:center'>{E(r)}<br><small>{E(short.get(r, ''))}</small></th>" for r in ids)
+    body = "".join(f"<tr><td><b>{E(sc.get('label') or '')}</b><br><small>{E(req(sc))}</small></td><td>{E(STATUS_KO.get(sc.get('status'), sc.get('status') or ''))}</td>"
+                   + "".join(f"<td style='text-align:center'>{cell(sc, r)}</td>" for r in ids)
+                   + f"<td>{E(_jury_why(sc))}</td></tr>" for sc in sc_rows)
+    every = [r for r in ids if all(r in (sc.get("summoned") or []) + (sc.get("planned") or []) for sc in sc_rows)]
+    never = [r for r in ids if not any(r in (sc.get("summoned") or []) + (sc.get("planned") or []) for sc in sc_rows)]
+    note = ((f"{', '.join(every)}는 모든 상황에서 켜졌다. " if every else "")
+            + (f"{', '.join(never)}는 이 상황들에서 조건이 성립하지 않았다." if never else f"심사관 {len(ids)}명이 모두 한 번 이상 소집되었다."))
+    t6 = (f"<table><thead><tr><th>상황 · 요청</th><th>종결</th>{head}<th>참이 된 소집 신호</th></tr></thead><tbody>{body}</tbody></table>"
+          f"<div class='tcap'><b>표 6.</b> 상황별 심사관 소집(실제 시스템, {E(js.get('model') or '')}, 상황마다 1회 실행). ●는 소집되어 통과 후보를 심사한 경우, "
+          f"○는 심사 전에 “제약 불가능”으로 끝나 같은 조건식으로 계산한 소집 예정이다. {E(note)}</div>")
+    return t5 + t6
+
+def build(data, tests: int, browser: str, x=None, dm=None, lm=None, ab=None, js=None) -> str:
     c = data["counts"]
     bt_rows = "".join(
         f"<tr><td>{E(x['transition_id'])}</td><td>{'판정' if x['trigger_type'] == 'rule_verdict' else '측정'}</td>"
@@ -1224,7 +1246,7 @@ ol.refs li {{ margin-bottom: 2pt; }}
 <h2>3. 시스템 개요</h2>
 <figure>{fig_architecture(data)}
 <figcaption><b>그림 2.</b> 구성 요소 상세. 입력 에이전트가 연구자와 두 그래프 사이에 있고, 두 단계는 연구자가 선택한 후보의 처방(프로토타입) 하나로만
-연결된다. ① 안의 두 확대 상자는 규칙 게이트(그림 5)와 동적 심사단(그림 7)의 내부 구조이다. 선 모양은 담당 주체를 나타낸다(실선: 결정론, 파선: LLM,
+연결된다. ① 안의 두 확대 상자는 규칙 게이트(그림 5)와 동적 심사단(표 5 · 6)의 내부 구조이다. 선 모양은 담당 주체를 나타낸다(실선: 결정론, 파선: LLM,
 점선: 순위만 매기는 심사관).</figcaption></figure>
 <p>판정과 계산 권한은 결정론 계층에만 있고, LLM은 제안과 서술만 맡으며, 연구자는 개발 후보·위험 등급·실험 요인·회귀 모형을 단계마다 확정한다(표 1).</p>
 <table><thead><tr><th>판단 유형</th><th>예</th><th>담당</th></tr></thead><tbody>
@@ -1313,12 +1335,9 @@ G4: 전략 선택부터)과 제약을 정한다. 하단은 종결 노드이다.<
 심사관은 근거 강도 → 잔여 위험 → 실현 가능성 → 참신성 순의 기준으로 통과 후보에 점수를 매기되 반려 권한은 없고, 합의는 결정론적 가중평균이다. 점수에는
 검증된 DOI·PMID 인용이 필요하다. 인용 후보는 Europe PMC 검색 결과와 룰북 인용 등록부(Crossref·NCBI로 확인한 14건)이며, 목록 밖 식별자는 실행 중 조회해
 실재할 때만 인정한다. 확인된 인용이 없는 점수와 LLM이 응답하지 않은 심사는 점수를 만들지 않고 합의에서 뺀다. 소집 신호(대상 인구군, 가용화·미분화·ASD 후보,
-룰북 밖 조합, 규제 서술 필요, 고체상 경계)는 결정론으로 계산되므로 설계된 성분에 따라 명단이 달라질 수 있다(그림 7의 반쪽 원). 심사 전에 “제약 불가능”으로
-끝나는 실행에도 소집 예정이던 심사관을 같은 조건식으로 계산해 결론과 함께 보인다(예: 고령자 요청 → 고령자 안전·공정 실현성).</p>
-<figure>{fig_jury(data, x)}
-<figcaption><b>그림 7.</b> 동적 심사위원단. 왼쪽은 명단과 소집 조건(CSV 원문), 오른쪽은 7.4절 실험(시나리오 4종 × 2회)의 실제 소집 결과이다. 공정 실현성(REV003)만
-항상 소집되고, 소아·고령자 심사관은 대상에 따라 배타적으로, 문헌 조사(REV005)는 룰북 밖 조합이 설계되었을 때만 나타난다. 규제 취지(REV004)·고체상 안정성(REV007)은
-이 네 요청에서 조건이 맞지 않았다.</figcaption></figure>
+룰북 밖 조합, 규제 검토 지적, 고체상 경계)는 결정론으로 계산되므로 같은 요청이라도 설계된 성분에 따라 명단이 달라질 수 있다. 명단과 소집 조건은 표 5,
+상황별 소집 결과는 표 6과 같다. 심사 전에 “제약 불가능”으로 끝나는 실행에도 소집 예정 심사관을 같은 조건식으로 계산해 결론과 함께 보인다(표 6의 ○).</p>
+{jury_tables(data, js)}
 
 <h2>6. 2단계: Design Space 도출</h2>
 <p>연구자가 후보 카드에서 개발 착수를 누르면 처방이 논문 Table 1 형식의 프로토타입(성분, mg/정, %, 기능, 공정)으로 바뀌어 2단계 study가 생성된다.</p>
@@ -1331,11 +1350,11 @@ G4: 전략 선택부터)과 제약을 정한다. 하단은 종결 노드이다.<
 그대로 뽑고 단위 환산, pH 1.2–6.8 최저값, 용량/용해도 부피는 코드가 ICH M9[3]에 따라 계산한다(고용해도는 pH 1.2·4.5·6.8을 모두 잰 경우만 인정, 생체이용률·요중
 회수율은 85 % 이상일 때만 흡수율로 인정, Papp은 흡수율로 환산하지 않음). 결손을 둔 채 개발에 들어가려면 연구자가 사유를 기록해야 하며, 사유와 남은 결손은
 Handoff 지문과 보고서에 남는다. 이 게이트는 개발 착수를 보류할 뿐 반려하지 않는다.</p>
-<p><b>승인 체계.</b> study는 ICH Q8[1]·Q9[2] 절차를 15단계로 구성하며(그림 8), 각 단계는 초안(LLM, 논문 값, 연구자 입력) → 결정론 검사 → 연구자 승인 순으로 진행된다.
+<p><b>승인 체계.</b> study는 ICH Q8[1]·Q9[2] 절차를 15단계로 구성하며(그림 7), 각 단계는 초안(LLM, 논문 값, 연구자 입력) → 결정론 검사 → 연구자 승인 순으로 진행된다.
 현재 단계만 수정할 수 있고, 승인한 단계를 다시 열면 뒤 단계는 지우지 않고 재확인 필요로 표시한다. 모든 변경은 멱등 키와 기대 버전으로 기록되며, 출처(LLM, 논문,
 연구자, 코드)와 승인자·시각이 이력과 보고서에 남는다.</p>
 <figure>{fig_stage2()}
-<figcaption><b>그림 8.</b> 2단계의 15단계. 표 번호는 Monton 등[18]의 대응 표이다. 8단계에 진입하면 위험평가 보고서가, 12단계를 확인하면 최종 보고서(실험 설계, 회귀식,
+<figcaption><b>그림 7.</b> 2단계의 15단계. 표 번호는 Monton 등[18]의 대응 표이다. 8단계에 진입하면 위험평가 보고서가, 12단계를 확인하면 최종 보고서(실험 설계, 회귀식,
 반응 곡면, ANOVA, 13–15단계가 있으면 Design Space·확인계획·확인배치 포함)가 PDF로 생성된다. 1단계에는 후보의 조성과 요청 맥락이 지문을 포함한 불변 Handoff로
 전달된다.</figcaption></figure>
 <p><b>위험평가.</b> 초안은 LLM 호출 두 번으로 만든다. 변수 × 확정 CQA 격자에 대해 등급(High·Medium·Low)만 받고, 코드가 같은 변수에서 등급이 같은 CQA를 묶은 뒤
@@ -1441,7 +1460,9 @@ def main():
     lm = json.loads(lp.read_text(encoding="utf-8")) if lp.exists() else None
     ap_ = OUT / "ablation.json"
     ab = json.loads(ap_.read_text(encoding="utf-8")) if ap_.exists() else None
-    (OUT / "report.html").write_text(build(data, a.tests, a.browser, x, dm, lm, ab), encoding="utf-8")
+    jp = OUT / "jury_scenarios.json"
+    js = json.loads(jp.read_text(encoding="utf-8")) if jp.exists() else None
+    (OUT / "report.html").write_text(build(data, a.tests, a.browser, x, dm, lm, ab, js), encoding="utf-8")
     print(OUT / "report.html")
 
 

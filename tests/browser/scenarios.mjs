@@ -41,6 +41,9 @@ const concl = (await p.locator('#agent-log #consensus.infeasible').textContent()
 ck('후보 카드 안에 결론 · 대안(모바일에서도 보임)', /통과하는 처방이 없음/.test(concl) && /대안/.test(concl), concl.slice(0, 120));
 ck('소집 예정 심사관 = 고령자 안전 + 공정 실현성(발표 11쪽)', /고령자 안전 심사관/.test(concl) && /공정 실현성 심사관/.test(concl) && !/소아 안전/.test(concl),
   (concl.match(/소집 예정[^—]*/) || [''])[0]);
+// 심사 전에 끝나도 심사위원단 카드에 소집 예정 심사관 — 공정 실현성(REV003, always)은 늘 켜진다
+const planned = await p.locator('#agent-log #panel-jury .jury-card.planned').evaluateAll((cs) => cs.map((c) => c.dataset.reviewer));
+ck('제약 불가능 실행에도 심사위원단 카드(소집 예정, REV003 포함)', planned.includes('REV003') && planned.includes('REV006'), planned.join(','));
 
 // ── 시연 ③ VX-770 cold start ─────────────────────────────────────────
 console.log('\n[시연 ③ · 개발코드 VX-770 — 구조식만 있는 신규물질]');

@@ -60,6 +60,8 @@ python3 scripts/report/demo_cards.py <url> dacon 2 [card1,card3…]   # 시연 �
 python3 scripts/report/stage2_llm.py http://localhost:<port> dacon   # 2단계 LLM 초안 vs 논문 → docs/report/stage2_llm.json(보고서 7.6)
 # 어블레이션(보고서 7.7): 순수 LLM · 검증 계층 제거 · 전체 시스템 — 컨테이너 안에서 in-process, 대회 키만(Groq 폴백 없음 = 같은 모델끼리)
 docker run --rm --env-file <DACON_API_KEY만 든 파일> -e FORMULA1_LLM_PROVIDER=dacon -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1:test python scripts/report/ablation.py 2 all s1,s2
+# 상황별 심사관 소집(보고서 표 6): 요청 6건을 실제 그래프로 1회씩 — 소집 · 소집 예정 · 참이 된 신호. 일부만 다시: 끝에 상황 id(콤마)
+docker run --rm --env-file <DACON_API_KEY만 든 파일> -e FORMULA1_LLM_PROVIDER=dacon -e PYTHONPATH=/app -v "$PWD":/app -w /app formula1:test python scripts/report/jury_scenarios.py [pediatric,novel]
 CHROME=<chrome> node scripts/report/surfaces_png.mjs http://localhost:<port>/ docs/report/cbd_surfaces.png   # 그림 8 — 2단계 11단계 화면 그대로
 python3 scripts/report/build_report.py --tests <pytest 통과 수> --browser "<브라우저 스위트 요약>"
 "<Chrome>" --headless=new --no-pdf-header-footer --virtual-time-budget=15000 --print-to-pdf=docs/report/Formula1_report.pdf "file://$PWD/docs/report/report.html"
@@ -592,6 +594,11 @@ read about it. Keep them in sync with the graph — they are the demo.
   - `structural_flags_smarts.csv` is still `validation_status=UNTESTED` even though `scripts/verify_smarts.py` now passes 9/9. FLG002 over-detects guanidine and non-aromatic ring NH as secondary amines.
   - `rulebook_config.csv` has 6 join_key/blocking discrepancies documented in the 개발자 가이드 §9.7. The engine uses `config/rulebook_manifest.yaml` instead, so they're documentation-only.
   - `packaging_compatibility_rules.csv` names prohibited packaging in Korean prose ("고투습 포장"); `config/packaging_categories.yaml` bridges identifiers to those categories. New packaging goes in that YAML, not the CSV.
+  - **`pediatric_safety_rules.csv` population rows are applied to every pediatric request** (found 2026-10-01): the manifest `row_filter` of
+    `pediatric_safety_mg/_g` ignores `age_group`, so rows meant for HFI/PKU/galactose-intolerance/celiac/allergy patients or neonates
+    (PED024 sorbitol, PED001 aspartame, PED026 lactose, PED005 benzoates …) reject general pediatric formulations (a sorbitol chewable ended
+    `infeasible`). Not changed yet — the fix (apply condition rows only when the request names that population, age bands by target age) is a
+    rule-semantics decision for the user / pharmacy team.
   - **`incompatibility_1to1.csv` covers 2° amines for lactose monohydrate only.** INC002 is `secondary_amine`+EXC001, but INC003/INC004 (anhydrous / spray-dried lactose) are `primary_amine` only — so fluoxetine + **무수유당** passes the gate today while fluoxetine + 유당수화물 is rejected, and the mechanism doesn't care about the grade (the Wirth 1998 and Narang 2012 sources are about the amine class). Found while fixing the 2026-08-06 silent pass; **not** patched here because rule rows are the pharmacy team's call. Ask them whether INC003/INC004 should gain `secondary_amine` rows. Generic "유당" still rejects — it head-matches EXC001 — so the gap only shows when a user names the anhydrous grade explicitly.
 
 ## Stage 2 — Design Space derivation (2026-09-28) — the half after the candidate list
@@ -675,7 +682,8 @@ cards, grayscale tokens from `styles.css`, black pill primary buttons. No sideba
   cards as **frozen clones** (ids stripped, controls disabled).
 - Sequencing hooks: `f1:proposal` → inputs card; `f1:runstart` → chem card; `f1:run` + `F1Discovery.pending()`/`status()` → drq or cands
   (a concluded run — infeasible/no_design/qtpp_review — shows cands immediately); `#drq-submit/#drq-skip` clicks or `f1:drqdone` → cands
-  (`f1:drqdone` arrives *after* the recompute's `f1:run`, so it places the cands itself). **At run end the 심사위원단 card (`#panel-jury`,
+  (`f1:drqdone` arrives *after* the recompute's `f1:run`, so it places the cands itself). An infeasible run (no candidate to judge) still shows
+  the jury card with the `planned_judges` marked 소집 예정 — REV003 (`always`) is always there. **At run end the 심사위원단 card (`#panel-jury`,
   `renderJury`: one card per summoned reviewer — condition · weight · per-candidate score, rationale, citations) is placed before the drq
   card** (user, 2026-10-01). After any later measurement submission (`f1:recomputing` → `f1:recomputed`) the live cands card (and the
   jury card if regenerated, and the evidence card) is **moved to the bottom of the thread**, the old one frozen in place — the recompute
@@ -746,8 +754,12 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
   The report describes the **finished system only** (user, 2026-09-30): no fix history, defect lists or "in review" wording — the old §7.5
   (demo-defect verification, devfix_results.json) was removed; `devfix_check.py` stays as a tool. The report opens with **핵심 요약**:
   `fig_overview()` = presentation pp.5–6 merged (input agent → Stage I ①–⑤ + red reflect loop → evidence gate → Stage II ①–⑤ → QbD PDF,
-  data band) plus a one-glance table; figures/tables are numbered in order of appearance (fig 1–11, table 1–17); 표 3 lists the rulebook CSVs by stage/role
-  (`figdata.rule_tables` — kinds and row counts only, no rows).
+  data band) plus a one-glance table; figures/tables are numbered in order of appearance (fig 1–10, table 1–19); 표 3 lists the rulebook CSVs by stage/role
+  (`figdata.rule_tables` — kinds and row counts only, no rows). The jury is two tables (user, 2026-10-01 — the old figure 7 mixed the roster
+  with stale demo summaries): 표 5 roster/conditions/weights, 표 6 summons per situation from `docs/report/jury_scenarios.json`
+  (`scripts/report/jury_scenarios.py`: six real runs chosen so every reviewer fires at least once — adult · pediatric chewable + pinned sucrose
+  (PED028 → REV004) · geriatric salt · pinned excipient unknown to the master (→ REV005) · high-Tm ASD (REV002/REV007) · pinned contraindication
+  (infeasible → ○ planned); REV003 is in every row).
   §7.7 is the **ablation** (`scripts/report/ablation.py` → `docs/report/ablation.json`, run in-process in a container with only the
   contest key so all three conditions use the same model): P pure LLM (one structured call) / G system minus verification layer
   (planner + generator, no gate/contract/reflect/infeasible) / F full graph, graded by the same `registry.run`; stage 2 = pure LLM

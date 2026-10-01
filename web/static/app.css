@@ -277,3 +277,4 @@ table.desc tfoot td { padding-top: 6px; }
 .ev-waive.flash { outline: 2px solid var(--ink-1); outline-offset: 2px; }
 .card .ev-waive { margin-top: 10px; }
 .card .ev-waive .dev-start { margin-top: 2px; }
+.jury-card.planned { opacity: .9; }

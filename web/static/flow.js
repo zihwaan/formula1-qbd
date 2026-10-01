@@ -119,7 +119,7 @@
     const pending = D.pending();
     // 제약 불가능·설계 없음·목표 재검토로 끝나면 결론(후보 카드)을 먼저 — 데이터 요청으로 결론을 가리지 않는다
     const concluded = ["infeasible", "no_design", "qtpp_review", "error", "exhausted", "escalated"].includes(D.status && D.status());
-    if (concluded) { showCands(); return; }
+    if (concluded) { showJury(); showCands(); return; }     // 제약 불가능이면 소집 예정 심사관(심사 전 종료)부터
     showJury();
     if (!run.drqShown && pending > 0 && !run.candsShown) {
       run.drqShown = true;

@@ -36,6 +36,7 @@ const candidates = new Map();   // candidate_id → {recipe, verdicts[], judges[
 let winnerId = null;            // 합의가 고른 권고 후보
 const waiverText = new Map();    // candidate_id → 연구자가 고친 승인 사유(다시 그려도 남긴다)
 let summonedList = [];          // summon 노드가 소집한 심사관(조건식이 참인 사람만) — 심사위원단 카드
+let plannedJudges = [];         // 심사 전에 '제약 불가능'으로 끝난 실행 — 같은 조건식으로 계산한 소집 예정 명단(REV003 등)
 const scoreOf = new Map();      // candidate_id → 합의의 가중 점수
 let pendingRequests = [];       // v3 — 아직 안 풀린 데이터 요청(narrows_strategy)
 
@@ -288,7 +289,7 @@ function handle(kind, ev) {
 
     case "warning":
       addTrace(ev.seq, ev.node, p.message || (p.reason + (p.fallback ? " → 규칙 기반 처리(LLM 미사용)" : "")), "warn");
-      if (ev.node === "infeasible") renderInfeasible(p);
+      if (ev.node === "infeasible") { renderInfeasible(p); plannedJudges = p.planned_judges || []; renderJury(); }
       if (p.fallback) degraded.add(ev.node);
       if (p.no_candidate) unavailable.designs += 1;
       break;
@@ -391,6 +392,16 @@ function evidenceBox(id) {
 function renderJury() {
   const body = $("jury-body");
   if (!body) return;
+  if (!summonedList.length && plannedJudges.length) {
+    // 통과 후보가 없어 심사할 대상이 없다 — 소집 조건은 그대로이므로 누가 심사했을지를 보인다(LLM 호출 없음)
+    body.innerHTML = `<p class="jury-sum">반려 원인이 고정 조건이라 심사 전에 종료했습니다. 같은 소집 조건식으로 계산하면 아래 ${plannedJudges.length}명이
+        소집됩니다 — 제약을 풀고 다시 설계하면 이 심사관들이 통과 후보를 심사합니다.</p>
+      <div class="jury-grid">${plannedJudges.map((s) => `<div class="jury-card planned" data-reviewer="${esc(s.reviewer_id)}">
+        <div class="jury-head"><b>${esc(s.persona)}</b> <span class="tag">${esc(s.reviewer_id)} · 소집 예정</span></div>
+        <div class="jury-cond">소집 조건 <code>${esc(s.summon_condition)}</code></div>
+        <ul class="jury-list"><li><span class="jury-wait">통과 후보 없음 — 심사하지 않음</span></li></ul></div>`).join("")}</div>`;
+    return;
+  }
   if (!summonedList.length) { body.innerHTML = ""; return; }
   const passedIds = [...candidates.entries()].filter(([, e]) => e.gate && e.gate.passed)
     .sort(([a], [b]) => (rankOf.get(a) ?? 999) - (rankOf.get(b) ?? 999)).map(([cid]) => cid);
@@ -902,7 +913,7 @@ function startRunWith(p) {
 window.F1Discovery = { startRunWith, submitMeasurements: (m, g, src) => submitMeasurements(m, g || "user_statement", src || "agent"),
   develop: (cid, opts) => startDevelopment(cid, null, false, opts && opts.approve ? "auto" : null),
   runId: () => runId, running: () => running, pending: () => pendingRequests.length, status: () => lastStatus,
-  jurySize: () => summonedList.length,
+  jurySize: () => summonedList.length || plannedJudges.length,
   // 개발 착수 선택지 — 룰북을 통과한 후보만, 순위순
   passedIds: () => [...candidates.entries()].filter(([, e]) => e.gate && e.gate.passed)
     .sort(([a], [b]) => (rankOf.get(a) ?? 999) - (rankOf.get(b) ?? 999)).map(([id]) => id),
@@ -919,7 +930,7 @@ window.F1Discovery = { startRunWith, submitMeasurements: (m, g, src) => submitMe
 function resetView() {
   candidates.clear(); tokenBuffers.clear(); degraded.clear();
   unavailable.designs = 0; unavailable.judges = 0;
-  winnerId = null; pendingRequests = []; rankOf.clear(); evidence = {}; summonedList = []; scoreOf.clear(); waiverText.clear();
+  winnerId = null; pendingRequests = []; rankOf.clear(); evidence = {}; summonedList = []; plannedJudges = []; scoreOf.clear(); waiverText.clear();
   if ($("jury-body")) $("jury-body").innerHTML = "";
   resetNarration();
   $("trace").innerHTML = ""; $("cands").innerHTML = "";

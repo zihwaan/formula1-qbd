@@ -1,0 +1,294 @@
+{
+ "llm": "dacon",
+ "model": "gpt-5.6-sol",
+ "at": "2026-10-01T05:50:09",
+ "scenarios": [
+  {
+   "id": "adult",
+   "label": "성인 일반 정제",
+   "request": "성인용 메트포르민 정제를 설계해줘",
+   "required_excipients": null,
+   "measured_params": {
+    "dose_mg": 500
+   },
+   "status": "passed",
+   "strategies": [
+    "CONV_DC",
+    "CONV_DG",
+    "CONV_WG"
+   ],
+   "summoned": [
+    "REV003"
+   ],
+   "planned": [],
+   "signals": {
+    "target_population": "adult",
+    "bcs_class": null,
+    "enabling_candidates_present": false,
+    "particle_size_candidates_present": false,
+    "asd_candidates_present": false,
+    "coverage_gap_present": false,
+    "novel_combination_not_in_rulebook": false,
+    "regulatory_narrative_needed": false,
+    "solid_form_zone": "undetermined",
+    "salt_stability_watch": null
+   },
+   "soft_flags": [],
+   "scores": {
+    "REV003": [
+     0.62,
+     0.54,
+     0.56
+    ]
+   },
+   "seconds": 56.4
+  },
+  {
+   "id": "pediatric",
+   "label": "소아 츄어블정 · 백당 고정",
+   "request": "소아용 아세트아미노펜 츄어블정을 설계해줘. 백당(수크로스)은 반드시 넣어줘",
+   "required_excipients": [
+    "Sucrose"
+   ],
+   "measured_params": {
+    "dose_mg": 160
+   },
+   "status": "passed",
+   "strategies": [
+    "CONV_DC",
+    "CONV_DG",
+    "CONV_WG"
+   ],
+   "summoned": [
+    "REV001",
+    "REV003",
+    "REV004",
+    "REV005"
+   ],
+   "planned": [],
+   "signals": {
+    "target_population": "pediatric",
+    "bcs_class": null,
+    "enabling_candidates_present": false,
+    "particle_size_candidates_present": false,
+    "asd_candidates_present": false,
+    "coverage_gap_present": false,
+    "novel_combination_not_in_rulebook": true,
+    "regulatory_narrative_needed": true,
+    "solid_form_zone": "undetermined",
+    "salt_stability_watch": null
+   },
+   "soft_flags": [
+    "pediatric_safety_mg/PED028"
+   ],
+   "scores": {
+    "REV001": [
+     0.42,
+     0.43,
+     0.42
+    ],
+    "REV003": [
+     0.61,
+     0.63,
+     0.62
+    ],
+    "REV004": [
+     0.42,
+     0.43,
+     0.39
+    ],
+    "REV005": [
+     0.4,
+     0.34,
+     0.38
+    ]
+   },
+   "seconds": 52.0
+  },
+  {
+   "id": "geriatric",
+   "label": "고령자 · 염 형태(베실산염)",
+   "request": "고령자용 암로디핀 2.5 mg 정제를 설계해 줘.",
+   "required_excipients": null,
+   "measured_params": {
+    "dose_mg": 2.5
+   },
+   "status": "passed",
+   "strategies": [
+    "CONV_DC",
+    "CONV_DG",
+    "CONV_WG"
+   ],
+   "summoned": [
+    "REV003",
+    "REV006"
+   ],
+   "planned": [],
+   "signals": {
+    "target_population": "geriatric",
+    "bcs_class": null,
+    "enabling_candidates_present": false,
+    "particle_size_candidates_present": false,
+    "asd_candidates_present": false,
+    "coverage_gap_present": false,
+    "novel_combination_not_in_rulebook": false,
+    "regulatory_narrative_needed": false,
+    "solid_form_zone": "undetermined",
+    "salt_stability_watch": null
+   },
+   "soft_flags": [],
+   "scores": {
+    "REV003": [
+     0.68,
+     0.66,
+     0.57
+    ],
+    "REV006": [
+     0.54,
+     0.61,
+     0.62
+    ]
+   },
+   "seconds": 53.1
+  },
+  {
+   "id": "novel",
+   "label": "룰북 밖 부형제 고정",
+   "request": "성인용 이부프로펜 정제를 설계해줘. 마그네슘 알루미노메타실리케이트(Neusilin US2)는 반드시 넣어줘",
+   "required_excipients": [
+    "Magnesium aluminometasilicate"
+   ],
+   "measured_params": {
+    "dose_mg": 200
+   },
+   "status": "passed",
+   "strategies": [
+    "CONV_DC",
+    "CONV_DG",
+    "CONV_WG"
+   ],
+   "summoned": [
+    "REV003",
+    "REV005"
+   ],
+   "planned": [],
+   "signals": {
+    "target_population": "adult",
+    "bcs_class": null,
+    "enabling_candidates_present": false,
+    "particle_size_candidates_present": false,
+    "asd_candidates_present": false,
+    "coverage_gap_present": false,
+    "novel_combination_not_in_rulebook": true,
+    "regulatory_narrative_needed": false,
+    "solid_form_zone": "undetermined",
+    "salt_stability_watch": null
+   },
+   "soft_flags": [],
+   "scores": {
+    "REV003": [
+     0.62,
+     0.64,
+     0.58
+    ],
+    "REV005": [
+     0.42,
+     0.38,
+     0.36
+    ]
+   },
+   "seconds": 46.6
+  },
+  {
+   "id": "asd",
+   "label": "고융점 난용성 신약(실측 Tm · 용해도)",
+   "request": "신규 후보물질 VX-770의 성인용 경구 정제 제형 전략을 세워 줘. 1회 150 mg이고, 구조식만 있고 실측 자료는 거의 없어.",
+   "required_excipients": null,
+   "measured_params": {
+    "dose_mg": 150,
+    "tm_c": 317,
+    "solubility_mg_per_ml": 5e-05
+   },
+   "status": "passed",
+   "strategies": [
+    "ASD_SDD",
+    "CONV_DC",
+    "MICRO"
+   ],
+   "summoned": [
+    "REV002",
+    "REV003",
+    "REV007"
+   ],
+   "planned": [],
+   "signals": {
+    "target_population": "adult",
+    "bcs_class": null,
+    "enabling_candidates_present": true,
+    "particle_size_candidates_present": true,
+    "asd_candidates_present": true,
+    "coverage_gap_present": false,
+    "novel_combination_not_in_rulebook": false,
+    "regulatory_narrative_needed": false,
+    "solid_form_zone": "undetermined",
+    "salt_stability_watch": null
+   },
+   "soft_flags": [],
+   "scores": {
+    "REV002": [
+     0.41,
+     0.36,
+     0.41
+    ],
+    "REV003": [
+     0.58,
+     0.42,
+     0.62
+    ],
+    "REV007": [
+     0.34,
+     0.51,
+     0.66
+    ]
+   },
+   "seconds": 62.4
+  },
+  {
+   "id": "infeasible",
+   "label": "금기 성분 고정(제약 불가능)",
+   "request": "소아용 플루옥세틴 정제를 설계해줘",
+   "required_excipients": [
+    "Lactose monohydrate"
+   ],
+   "measured_params": {
+    "dose_mg": 10
+   },
+   "status": "infeasible",
+   "strategies": [
+    "CONV_DC",
+    "CONV_DG",
+    "CONV_WG"
+   ],
+   "summoned": [],
+   "planned": [
+    "REV001",
+    "REV003"
+   ],
+   "signals": {
+    "target_population": "pediatric",
+    "bcs_class": null,
+    "enabling_candidates_present": false,
+    "particle_size_candidates_present": false,
+    "asd_candidates_present": false,
+    "coverage_gap_present": false,
+    "novel_combination_not_in_rulebook": false,
+    "regulatory_narrative_needed": false,
+    "solid_form_zone": "undetermined",
+    "salt_stability_watch": null
+   },
+   "soft_flags": [],
+   "scores": {},
+   "seconds": 36.7
+  }
+ ]
+}
