@@ -180,8 +180,11 @@
         ? "phase_gates부터 다시 계산 → 계획 → 통과 후보 규칙 게이트 → 근거 결손 재판정 (LLM 호출 없음, 전략 집합이 바뀔 때만 재설계)"
         : "이 값에 의존하는 판정만 — 설계를 처음부터 다시 돌리지 않음"]);
     } else if (p.kind === "develop_candidate") {
-      r.push(["후보", p.candidate_id]);
-      const g = window.F1Discovery && window.F1Discovery.gapsOf ? window.F1Discovery.gapsOf(p.candidate_id) : null;
+      const D = window.F1Discovery;
+      const info = D && D.candInfo ? D.candInfo(p.candidate_id) : null;
+      r.push(["후보", p.candidate_id + (info && info.rank ? ` (#${info.rank}${info.score !== undefined && info.score !== null ? ` · 가중 점수 ${info.score}` : ""})` : "")]);
+      if (p.recommended && p.recommended !== p.candidate_id) r.push(["선택", `에이전트 추천(${p.recommended}) 대신 연구자가 고른 후보`]);
+      const g = D && D.gapsOf ? D.gapsOf(p.candidate_id) : null;
       if (g && g.open > 0) {
         r.push(["근거 결손", `${g.open}건 — ${g.labels.join(" · ")}`]);
         r.push(["승인 사유", g.reason]);
@@ -199,10 +202,12 @@
     if (p.run_id) c.dataset.run = p.run_id;   // 다른 설계가 시작되면 이 카드는 잠긴다
     p._cid = `c${Math.random().toString(36).slice(2, 9)}`;
     c.dataset.card = p._cid;
+    const dl = () => rows(p).map(([k, v, url]) => `<dt>${esc(k)}</dt><dd>${url
+        ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(v)}</a>` : esc(v)}</dd>`).join("");
     c.innerHTML = `<div class="ad-card-head"><span class="ad-kind">${esc(KIND_LABEL[p.kind] || p.kind)}</span>
-        <b>${esc(p.title || "")}</b></div>
-      <dl>${rows(p).map(([k, v, url]) => `<dt>${esc(k)}</dt><dd>${url
-        ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(v)}</a>` : esc(v)}</dd>`).join("")}</dl>
+        <b class="ad-title">${esc(p.title || "")}</b></div>
+      ${p.kind === "develop_candidate" ? `<label class="ad-pick">승인할 후보 하나 <select class="ad-cand" aria-label="승인할 후보(에이전트 추천에서 바꿀 수 있음)"></select></label>` : ""}
+      <dl>${dl()}</dl>
       ${p.ready ? "" : `<p class="ad-missing">빠진 정보(${esc((p.missing || []).join(", "))})를 알려 주시면 실행할 수 있습니다.</p>`}
       ${p.kind === "submit_measurements" ? `<label class="ad-grade">근거 등급
         <select class="ad-grade-sel">${[["user_statement", "사용자 진술"], ["self_measured", "자체 실측"], ["literature", "문헌"]]
@@ -217,7 +222,34 @@
       const r = c.querySelector(".ad-result");
       r.hidden = false; r.className = `ad-result ${kind}`; r.textContent = text;
     };
-    const lock = () => c.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+    const lock = () => c.querySelectorAll("button, select").forEach((b) => { b.disabled = true; });
+    // 개발 착수 — 1순위로 시작하되 통과 후보 전체에서 골라 승인한다(후보를 바꾸면 순위 · 결손 · 승인 사유도 그 후보로)
+    const pick = c.querySelector(".ad-cand");
+    if (pick) {
+      p.recommended = p.recommended || p.candidate_id;   // 에이전트가 처음 추천한 후보(보통 1순위)
+      const fill = () => {
+        const D = window.F1Discovery;
+        const live = D && D.passedIds ? D.passedIds() : [];
+        const ids = (live.length ? live : (p.options || [])).slice();
+        if (!ids.includes(p.candidate_id) && ids.length) p.candidate_id = ids[0];
+        pick.innerHTML = ids.map((id) => {
+          const info = D && D.candInfo ? D.candInfo(id) : null;
+          const g = D && D.gapsOf ? D.gapsOf(id) : null;
+          const tail = [info && info.rank ? `#${info.rank}` : "", info && info.score !== undefined && info.score !== null ? `점수 ${info.score}` : "",
+                        g && g.open > 0 ? `결손 ${g.open}건` : g ? "근거 충족" : ""].filter(Boolean).join(" · ");
+          return `<option value="${esc(id)}"${id === p.candidate_id ? " selected" : ""}>${esc(id)}${tail ? ` (${esc(tail)})` : ""}${id === p.recommended ? " · 에이전트 추천" : ""}</option>`;
+        }).join("");
+      };
+      const redraw = () => {
+        p.title = `${p.candidate_id}로 개발 착수`;
+        c.querySelector(".ad-title").textContent = p.title;
+        c.querySelector("dl").innerHTML = dl();
+      };
+      fill();
+      redraw();
+      pick.onchange = () => { p.candidate_id = pick.value; redraw(); };
+      pick.onfocus = () => { const v = p.candidate_id; fill(); if (p.candidate_id !== v) redraw(); };   // 재설계로 후보가 바뀌었으면 새 목록
+    }
     c.querySelector(".ad-dismiss").onclick = () => c.remove();
     const fill = c.querySelector(".ad-fill");
     if (fill) fill.onclick = () => { fillForm(p); result("직접 입력 폼에 채웠습니다 — 확인 후 [설계 실행]을 누르세요."); };
@@ -263,6 +295,10 @@
       }
       if (p.kind === "develop_candidate") {
         if (D.runId() !== p.run_id) { result("이 카드는 이전 설계의 후보입니다 — 지금 설계의 후보로 다시 요청해 주세요.", "warn"); return false; }
+        if (D.passedIds && D.passedIds().length && !D.passedIds().includes(p.candidate_id)) {
+          result("후보가 다시 설계되어 이 후보는 더 이상 없습니다 — 목록에서 새 후보를 골라 주세요.", "warn");
+          return false;
+        }
         // 후보 카드의 버튼과 같은 길 — 결손이 남았으면 카드에 보인 사유로 승인(사람이 [실행]을 눌러 승인한 것)
         const gap = D.gapsOf ? D.gapsOf(p.candidate_id) : null;
         const r = await D.develop(p.candidate_id, { approve: true });

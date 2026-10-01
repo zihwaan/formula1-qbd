@@ -100,3 +100,5 @@
 .ad-grade { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 11.5px; color: var(--ink-2); }
 .ad-grade select { font: inherit; font-size: 11.5px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--border);
   background: var(--page); color: var(--ink-1); }
+.ad-pick { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px; font-size: 12px; color: var(--ink-2); }
+.ad-pick select { font: inherit; font-size: 12px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); color: var(--ink-1); min-width: 0; max-width: 100%; }

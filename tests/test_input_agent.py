@@ -215,3 +215,20 @@ def test_done_items_are_read_from_words_but_not_from_negations():
     assert ia.rule_parse("강제분해는 아직 안 했어", ctx, CATALOG).measurements == {}
     nudge = ia.nudge(ctx)
     assert "근거 결손 3건" in nudge["reply"] and "pH" in nudge["reply"]
+
+
+def test_develop_choices_are_passed_candidates_in_rank_order():
+    """개발 착수는 1순위만이 아니라 통과 후보 전체에서 골라 승인한다(사용자 2026-10-01). 합의의 ranked에는 반려 후보도 있으므로
+    선택지는 eligible인 후보만, 순위순."""
+    run = {"run_id": "r1", "status": "passed", "winner": "cand-0-B", "candidates": ["cand-0-A", "cand-0-B", "cand-0-C"],
+           "ranked": [{"candidate_id": "cand-0-C", "rank": None, "eligible": False},
+                      {"candidate_id": "cand-0-A", "rank": 2, "eligible": True},
+                      {"candidate_id": "cand-0-B", "rank": 1, "eligible": True}], "request_groups": []}
+    ctx = ia.snapshot("discovery", run, None, CATALOG)
+    assert ctx["run"]["passed"] == ["cand-0-B", "cand-0-A"]
+    p = ia.nudge(ctx)["proposals"][0]
+    assert p["candidate_id"] == "cand-0-B" and p["options"] == ["cand-0-B", "cand-0-A"]
+    out = ia.AgentOutput(reply="", intent="develop_candidate", candidate_id="cand-0-A")
+    assert _respond(out, "2위 후보로 개발 착수", ctx=ctx)["proposals"][0]["options"] == ["cand-0-B", "cand-0-A"]
+    out = ia.AgentOutput(reply="", intent="develop_candidate", candidate_id="cand-0-C")
+    assert _respond(out, "cand-0-C로 개발", ctx=ctx)["proposals"] == []          # 반려 후보는 착수 불가

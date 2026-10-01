@@ -97,10 +97,24 @@ check('개발 착수 카드', txt.includes('개발 착수'), txt.replace(/\s+/g,
 if (txt.includes('개발 착수') && await card.locator('.ad-run').isEnabled()) {
   // 근거 결손이 남은 후보면 카드에 결손과 승인 사유가 보이고, [실행] = 그 사유로 연구자 승인 → 바로 2단계(사용자 2026-10-01)
   if (/승인 사유/.test(txt)) check('결손 후보 → 카드에 결손 · 승인 사유가 보임', /근거 결손/.test(txt) && /선행 근거/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 160));
+  // 1순위만이 아니라 통과 후보 전체에서 골라 승인 — 2순위를 고르면 그 후보로 2단계가 열린다
+  const opts = await card.locator('.ad-cand option').evaluateAll((os) => os.map((o) => o.value));
+  const passedIds = await page.locator('#agent-log #panel-cands .card.pass').evaluateAll((cs) => cs.map((c) => c.dataset.cand));
+  check('개발 착수 카드에 통과 후보 전체가 선택지로', opts.length === passedIds.length && passedIds.every((id) => opts.includes(id)), opts.join(','));
+  let picked = opts[0];
+  if (opts.length > 1) {
+    picked = opts[1];
+    await card.locator('.ad-cand').selectOption(picked);
+    check('단일 선택 — 추천 후보 표시, 다른 후보를 고르면 “연구자가 고른 후보”', await card.locator('.ad-cand').evaluate((s) => !s.multiple)
+      && /에이전트 추천/.test(await card.locator('.ad-cand option').first().textContent()) && /연구자가 고른 후보/.test(await card.innerText()));
+    check('후보를 바꾸면 카드 제목·행이 그 후보로', (await card.locator('.ad-title').textContent()).includes(picked) && (await card.innerText()).includes(picked), picked);
+  }
   await card.locator('.ad-run').click();
   await page.waitForSelector('#s2 .s2-step.current[data-step="prototype"]', { timeout: 20000 }).catch(() => {});
   check('2단계 프로토타입 카드가 대화에 열림', await page.locator('#s2 .s2-step.current[data-step="prototype"]').count() === 1);
   check('프로토타입 = 후보 처방(API 행 포함)', await page.locator('#s2 [data-edit] input[data-k="role"][value="api"]').count() === 1);
+  const ho = (await page.locator('#s2 .s2-handoff').textContent().catch(() => '')).replace(/\s+/g, ' ');
+  check('고른 후보로 2단계가 열림(Handoff 후보)', ho.includes(picked), (ho.match(/후보[^·]{0,40}/) || [''])[0]);
 }
 
 // 7) 휴대폰 — 바닥 시트, 가로 넘침 없음

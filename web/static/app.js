@@ -903,6 +903,10 @@ window.F1Discovery = { startRunWith, submitMeasurements: (m, g, src) => submitMe
   develop: (cid, opts) => startDevelopment(cid, null, false, opts && opts.approve ? "auto" : null),
   runId: () => runId, running: () => running, pending: () => pendingRequests.length, status: () => lastStatus,
   jurySize: () => summonedList.length,
+  // 개발 착수 선택지 — 룰북을 통과한 후보만, 순위순
+  passedIds: () => [...candidates.entries()].filter(([, e]) => e.gate && e.gate.passed)
+    .sort(([a], [b]) => (rankOf.get(a) ?? 999) - (rankOf.get(b) ?? 999)).map(([id]) => id),
+  candInfo: (cid) => ({ rank: rankOf.get(cid) || null, score: scoreOf.has(cid) ? scoreOf.get(cid) : null }),
   gapsOf: (cid) => {
     const ev = evidence[cid];
     if (!ev) return null;
@@ -1313,7 +1317,11 @@ async function submitMeasurements(measurements, grade = "self_measured", source 
     }
     // 재계산(phase_gates → plan → gate → 재설계면 summon → judge → consensus)도 트레이스·그래프·카드에 같은 처리기로 남긴다
     // (SSE는 run.end에서 닫혔다). 후보를 다시 만든 뒤에 재생해야 새 후보에 심사 점수가 붙는다.
-    (out.trace || []).forEach((ev) => { try { handle(ev.kind, ev); } catch (e) { /* 보조 */ } });
+    recomputeN += 1;
+    replayTag = `재계산 ${recomputeN}`;
+    try {
+      (out.trace || []).forEach((ev) => { try { handle(ev.kind, ev); } catch (e) { /* 보조 */ } });
+    } finally { replayTag = null; }
     renderJury();
     const sent = draft !== "form" ? draft : source;
     if (sent === "evidence" || sent === "agent_evidence") {
@@ -1346,7 +1354,11 @@ async function submitMeasurements(measurements, grade = "self_measured", source 
 let narrationCount = 0;
 const narrationSeen = new Set();
 
+let replayTag = null;            // 측정값 재계산의 트레이스를 다시 그리는 동안 "재계산 N" — 같은 해설도 재계산마다 새로
+let recomputeN = 0;
+let lastPlanSig = "";            // 계획 서명(처음 설계 · 재계산) — 해설에 이전 → 새 서명을 보인다
 function narrate(key, { layer, kind, title, body, once = true }) {
+  if (replayTag) { key = `${key}#${replayTag}`; title = `${replayTag} · ${title}`; }
   if (once) {
     if (narrationSeen.has(key)) return;
     narrationSeen.add(key);
@@ -1371,6 +1383,8 @@ function narrate(key, { layer, kind, title, body, once = true }) {
 function resetNarration() {
   narrationCount = 0;
   narrationSeen.clear();
+  recomputeN = 0;
+  lastPlanSig = "";
   $("narration").innerHTML =
     '<div class="empty">시나리오를 누르거나 설계를 실행하면 단계별 해설이 여기에 흐릅니다.</div>';
 }
@@ -1424,7 +1438,20 @@ function narrateEvent(kind, ev, p) {
             <span class="nr-why">왜 중요한가: 계산값(RDKit) → 예측값(ESOL·GSE) → 실측값 중 있는 것까지만 씁니다.
             모르는 값은 기본값으로 채우지 않고 비워 두며, 판정이 안 갈리면 좁히지 않고 넓힙니다.</span>`,
         });
+      } else if (ev.node === "plan" && !p.scores && p.plan_signature !== undefined) {
+        // 측정값 재계산의 계획 — 점수 표 대신 이전 → 새 서명과 재설계 여부
+        const prev = lastPlanSig;
+        lastPlanSig = p.plan_signature || lastPlanSig;
+        narrate("plan", {
+          layer: "P2 · 계획 결정론", kind: "det",
+          title: p.regenerated ? "새 실측값으로 계획이 바뀌었다 — 후보를 다시 설계한다" : "새 실측값으로 계획을 다시 세웠다 — 전략 집합은 그대로",
+          body: `전략 ${(p.strategies || []).map((x) => `<code>${esc(x)}</code>`).join(" · ") || "없음"}<br>
+            계획 서명 ${prev && prev !== p.plan_signature ? `<code>${esc(prev)}</code> → ` : ""}<b><code>${esc(p.plan_signature || "-")}</code></b>
+            <span class="nr-why">왜 중요한가: 그래프를 처음부터 다시 돌리지 않고 페이즈 게이트부터 결정론으로 다시 계산했습니다.
+            ${p.regenerated ? "전략 집합이 바뀌었으므로 새 전략의 후보만 다시 설계하고, 그 후보를 같은 규칙으로 다시 심사합니다." : "전략 집합이 같으므로 LLM을 부르지 않고 판정과 신뢰도만 고쳤습니다."}</span>`,
+        });
       } else if (ev.node === "plan") {
+        lastPlanSig = p.plan_signature || lastPlanSig;
         narrate("plan", {
           layer: "P2 · 계획 결정론", kind: "det",
           title: p.strategies && p.strategies.length ? "전략을 채점해 상위 3개만 설계한다" : "남은 전략이 없다",

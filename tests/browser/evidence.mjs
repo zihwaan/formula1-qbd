@@ -88,6 +88,9 @@ if (idx < 0 || !its.some((i) => i.id === 'EVR005')) {
   let rows = await p.locator('#trace .ev').evaluateAll((es, n) => es.slice(n).map((e) => e.textContent.replace(/\s+/g, ' ')), before);
   ck('재계산이 트레이스에 phase_gates부터 남음', rows.some((t) => /phase_gates/.test(t)) && rows.some((t) => /gate/.test(t)), rows.slice(0, 3).join(' | ').slice(0, 120));
   ck('흡수율만으로는 BCS 근거가 닫히지 않음(용해도 부피 필요)', (await items()).some((i) => i.id === 'EVR005'));
+  const narr1 = (await p.locator('#narration').textContent().catch(() => '')).replace(/\s+/g, ' ');
+  ck('“지금 무슨 일이” 해설에 재계산 과정(페이즈 게이트 · 계획)', /재계산 1 · /.test(narr1) && /재계산 1 · 새 실측값으로 계획/.test(narr1),
+    (narr1.match(/재계산 1 · [^.]{0,40}/g) || []).slice(0, 3).join(' | '));
   ck('재계산 뒤 후보 처방 카드가 대화 맨 아래에 다시(지난 카드는 기록으로)', await p.evaluate(() => {
     const live = document.querySelector('#agent-log #panel-cands'), old = document.querySelector('#agent-log .cands-card.frozen');
     const ev = document.querySelector('#agent-log #panel-evidence');
@@ -124,6 +127,9 @@ if (idx < 0 || !its.some((i) => i.id === 'EVR005')) {
       [...new Set(tr)].filter((x) => /summon|judge|consensus/.test(x)).join(' '));
     const newIds = await p.locator('#agent-log #panel-cands .card.pass').evaluateAll((cs) => cs.map((c) => c.dataset.cand));
     const juryIds = await p.locator('#agent-log #panel-jury .jury-list code').evaluateAll((cs) => [...new Set(cs.map((c) => c.textContent))]);
+    const narr2 = (await p.locator('#narration').textContent().catch(() => '')).replace(/\s+/g, ' ');
+    ck('해설에 계획 변경 → 재설계 → 새 심사관 소집이 보임', /계획이 바뀌었다/.test(narr2) && /재계산 2 · 심사관 \d+명이 지금 만들어졌다/.test(narr2),
+      (narr2.match(/재계산 2 · [^.]{0,40}/g) || []).slice(0, 4).join(' | '));
     ck('새 후보 카드에 심사관 점수 · 심사위원단 카드도 새 후보로', await p.locator('#agent-log #panel-cands .card.pass .judge-note').count() > 0
       && newIds.every((id) => juryIds.includes(id)), `${newIds.join(',')} / ${juryIds.join(',')}`);
   }

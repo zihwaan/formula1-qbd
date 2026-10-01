@@ -352,12 +352,14 @@ def snapshot(tab: str, run: Optional[Dict[str, Any]], study: Optional[Dict[str, 
     (tab·study는 호환용 인자 — 2단계는 화면의 단계 카드가 진행한다.)"""
     ctx: Dict[str, Any] = {"tab": "discovery"}
     if run:
-        ranked = {r.get("candidate_id"): r for r in run.get("ranked", [])}
+        # 합의의 ranked에는 반려된 후보도 있다(eligible=False) — 개발 착수 선택지는 통과 후보만, 순위순으로
+        rows = sorted(run.get("ranked", []), key=lambda r: (r.get("rank") or 999))
+        passed = [r.get("candidate_id") for r in rows if r.get("eligible", True)]
         ctx["run"] = {
             "run_id": run.get("run_id"), "status": run.get("status"), "winner": run.get("winner"),
-            "candidates": [{"candidate_id": c, "passed": c in ranked or c == run.get("winner")}
+            "candidates": [{"candidate_id": c, "passed": c in passed or c == run.get("winner")}
                            for c in run.get("candidates", [])],
-            "passed": list(ranked) or ([run["winner"]] if run.get("winner") else []),
+            "passed": passed or ([run["winner"]] if run.get("winner") else []),
             "request_groups": [{k: g.get(k) for k in ("measurement_id", "name", "tier", "sample_mg",
                                                         "result_keys", "triggers", "reasons")}
                                for g in run.get("request_groups", [])],
@@ -553,7 +555,8 @@ def build_response(out: AgentOutput, source: str, message: str, history: List[Di
     elif out.intent == "develop_candidate" and run:
         if out.candidate_id in (run.get("passed") or []):
             proposals.append({"kind": "develop_candidate", "ready": True, "run_id": run.get("run_id"),
-                              "candidate_id": out.candidate_id, "title": f"{out.candidate_id}로 개발 착수"})
+                              "candidate_id": out.candidate_id, "options": list(run.get("passed") or []),
+                              "title": f"{out.candidate_id}로 개발 착수"})
         else:
             notes.append("룰북을 통과한 후보만 2단계로 넘길 수 있습니다.")
 
@@ -629,8 +632,11 @@ def nudge(ctx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         text = explain(ctx)
         if run.get("status") in ("passed", "passed_unranked") and run.get("passed"):
             cid = run.get("winner") or run["passed"][0]
+            # 1순위로 시작하되 통과 후보 전체를 선택지로 — 연구자가 골라 승인한다(1위 자동 진입 없음)
             proposals.append({"kind": "develop_candidate", "ready": True, "run_id": run.get("run_id"),
-                              "candidate_id": cid, "title": f"{cid}로 개발 착수"})
+                              "candidate_id": cid, "options": list(run["passed"]), "title": f"{cid}로 개발 착수"})
+            if len(run["passed"]) > 1:
+                text += f" 통과 후보 {len(run['passed'])}개 중 원하는 후보를 개발 착수 카드에서 골라 승인할 수 있습니다."
         if "dose_mg" in (run.get("missing_inputs") or []):
             text += " 1회 투여 용량이 없어 후보의 API 함량을 검사하지 못했습니다 — 용량(mg)을 알려 주시면 그 용량으로 다시 설계합니다."
         if run.get("request_groups"):

@@ -47,7 +47,7 @@ The UI is one ChatGPT-style conversation — read "Chat UI" below before touchin
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 252 tests — run this first when changing the core
+.venv/bin/pytest                                  # 253 tests — run this first when changing the core
 python scripts/audit_conditions.py                # every CSV/manifest condition names a variable something actually sets (exit 1 on a dead name)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
@@ -611,8 +611,10 @@ UI `web/static/stage2.{js,css}`.
   → space(Overlay plot · control space) → vplan(lock) → verify(2×2). Entry only from a gate-passed candidate (`[이 후보로 개발 착수]` / agent
   `develop_candidate`, both through `app.js startDevelopment` → evidence gate → when gaps remain the candidate card itself shows a waiver box,
   **pre-filled** with what is missing (`waiverDefault` — gap labels + test ids, no numbers; editable, kept in `waiverText`) and
-  [사유 기록 · 승인하고 2단계로] — one click per candidate (user, 2026-10-01: "예전처럼 각각 승인하면 2단계로"). The agent's develop card shows the
-  gaps + reason and its [실행] approves with that reason (`F1Discovery.develop(cid, {approve: true})` → reason `"auto"`); before this it only
+  [사유 기록 · 승인하고 2단계로] — one click per candidate (user, 2026-10-01: "예전처럼 각각 승인하면 2단계로"). The agent's develop card starts on the #1 candidate but
+  carries a **candidate picker over every passed candidate** (`options` from the server, refreshed from `F1Discovery.passedIds()`; user
+  2026-10-01: "1순위만이 아니라 나머지도 골라 승인") — rank · score · gaps per option; switching redraws the gaps/reason rows. Its [실행] approves the picked candidate
+  with that reason (`F1Discovery.develop(cid, {approve: true})` → reason `"auto"`); before this it only
   pointed at a waiver box elsewhere and "실행 눌러도 2단계로 못 넘어간다". Never POST without a reason when gaps remain (that looped 409s). After a measurement submission that **regenerates** candidates, `POST /measurements` returns `results`
   and the UI replaces the old cards (old `cand-0-*` no longer exist server-side → "개발 착수" used to 404)) or the CBD demo
   (`source: cbd_paper`, enables "논문 값으로 채우기" + "참고 · 논문의 판단"). **Papers are reference, not ground truth** (user, 2026-09-28):
