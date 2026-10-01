@@ -97,7 +97,7 @@ check('개발 착수 카드', txt.includes('개발 착수'), txt.replace(/\s+/g,
 if (txt.includes('개발 착수') && await card.locator('.ad-run').isEnabled()) {
   await card.locator('.ad-run').click();
   // 근거 결손 게이트 — 결손이 남은 후보면 후보 카드에 사유 칸이 열린다(사유는 사람이 적는다)
-  const waive = page.locator('#agent-log #panel-cands .ev-waive:not([hidden])').first();
+  const waive = page.locator('#agent-log #panel-evidence .ev-waive').first();
   if (await waive.waitFor({ timeout: 8000 }).then(() => true).catch(() => false)) {
     check('결손 후보 → 에이전트 결과가 사유 칸을 안내', /사유/.test(await card.innerText()));
     await waive.locator('textarea').fill('선행 확인시험은 DoE 1차 배치와 병행 — 에이전트 회귀 테스트');

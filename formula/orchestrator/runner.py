@@ -263,6 +263,7 @@ class Run:
                     "pending_requests": self.final["pending_narrow"], "summary": self.summary()}
         self.final["strategies"] = [p.strategy_code for p in planned]
         rejudged: List[Dict[str, Any]] = []
+        summoned, judge_events = None, []
         if new_signature == old_signature:
             # 전략 집합 불변 — 기존 통과 후보를 새 실측값으로 규칙 게이트에 다시 넣고(결정론, LLM 호출 없음) confidence를 다시 매긴다.
             # 새 값이 판정을 바꿀 수 있다(예: 실측 용해도·흡수율 → BCS 등급 확정 → 가용화 규칙).
@@ -325,7 +326,11 @@ class Run:
             self.final["candidates"] = new_candidates
             self.final["results"] = new_results
             from formula.agents import consensus as consensus_mod
-            summary = consensus_mod.build_consensus(new_results, [], self.base_dir)
+            # 새 후보도 그래프와 같은 규칙으로 심사한다(소집 조건식 → 후보 × 심사관 병렬 → 합의) — 순위 없는 후보로 남기지 않는다
+            summoned, verdicts, judge_events = self._judge_round(spec, new_results, planned)
+            self.final["summoned_now"] = summoned
+            self.final["judge_verdicts"] = verdicts
+            summary = consensus_mod.build_consensus(new_results, verdicts, self.base_dir)
             winner_result = next((r for r in new_results if r["candidate_id"] == summary.get("winner")), None)
             if winner_result is not None:
                 summary["confidence"] = winner_result["recipe"].confidence
@@ -339,9 +344,49 @@ class Run:
             regenerated = True
 
         return {"regenerated": regenerated, "plan_signature": new_signature, "rejudged": rejudged,
+                "summoned": summoned if regenerated else None, "judge_events": judge_events if regenerated else [],
                 "phase_signals": self.final.get("reassess_signals", []),
                 "backtrack": [d.as_dict() for d in decisions],
                 "pending_requests": self.final["pending_narrow"], "summary": self.summary()}
+
+    def _judge_round(self, spec, results: List[Dict[str, Any]], planned) -> tuple:
+        """재설계된 후보 심사 — 그래프의 summon → judge → consensus와 같은 규칙.
+
+        소집은 조건식(결정론)으로, 심사는 후보 × 심사관을 병렬로 돌린다. 이벤트는 임시 버스에 모았다가
+        재계산 트레이스에 summon → judge 순서로 싣는다(SSE는 run.end에서 닫혔다). (소집 명단, 판정, 이벤트)
+        """
+        import contextvars
+        from concurrent.futures import ThreadPoolExecutor
+
+        from formula.agents import judge as judge_mod
+        from formula.contracts import EventKind
+        from formula.orchestrator.graph import summon_scope
+
+        passed = [r for r in results if r.get("passed")]
+        if not passed:
+            return [], [], []
+        state = {"phase_derived": self.final.get("phase_derived") or {},
+                 "planned": [{"strategy": p.strategy_code, "family": p.family, "coverage": p.rulebook_coverage} for p in planned]}
+        judges = self.registry.active_judges(spec, summon_scope(self.registry, state, passed))
+        summoned = [{"reviewer_id": j.reviewer_id, "persona": j.persona, "weight": j.weight,
+                     "summon_condition": j.summon_condition} for j in judges]
+        tasks = [(j, r) for r in passed for j in judges]
+        if not tasks:
+            return summoned, [], []
+        bus = EventBus(self.run_id)
+        bus.blind = dict(self.bus.blind)          # 블라인드 실행이면 심사 입출력도 같은 가림표로
+        verdicts = []
+        with bus:
+            with ThreadPoolExecutor(max_workers=min(6, len(tasks))) as pool:
+                futures = [pool.submit(contextvars.copy_context().run, judge_mod.evaluate, j, spec, r["recipe"],
+                                       r["verdicts"], self.base_dir) for j, r in tasks]
+                for f in futures:
+                    try:
+                        verdicts.append(f.result())
+                    except Exception:      # noqa: BLE001 — 심사 하나가 실패해도 점수를 만들지 않을 뿐 재계산은 끝낸다
+                        verdicts.append(None)
+        events = [e for e in bus.history if e.kind in (EventKind.JUDGE_SUMMONED, EventKind.JUDGE_VERDICT)]
+        return summoned, [v for v in verdicts if v is not None], events
 
     # ── 실험 전 루프 (확인시험 → 근거 재평가 → 연구자 승인) ──────────────
     def assessment(self, candidate_id: str) -> Optional[EvidenceAssessment]:

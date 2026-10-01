@@ -146,6 +146,35 @@ def _required_conflict(state: Dict[str, Any], failures: List[Any]) -> bool:
     return any(p.split()[0].lower() in haystack for p in pinned)
 
 
+def summon_scope(registry: RulebookRegistry, state: Dict[str, Any], pool: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """심사관 소집 조건을 평가할 파생 state — 심사 대상(pool)의 게이트 결과 + 전략 신호.
+    그래프의 summon 노드와 측정값 재계산(후보 재설계 뒤 심사)이 같은 함수를 쓴다."""
+    derived = dict(pool[0]["derived"]) if pool else {}
+
+    # 명단의 소집 조건 중 두 개(`regulatory_narrative_needed`,
+    # `novel_combination_not_in_rulebook`)는 어느 계층도 산출하지 않아서
+    # REV004·REV005가 **구조적으로 소집될 수 없었다.** 게이트 결과와 부형제 마스터에서
+    # 실제로 계산해 넣는다 — 조건을 없애는 게 아니라 근거를 만들어 주는 방향.
+    derived.update(_summon_signals(registry, pool))
+    # 전략·페이즈 게이트에서 오는 소집 신호 — 가용화/미분화/ASD 후보, 룰북 커버리지 공백,
+    # 고체상 구간(염·공결정 경계), 염 안정성 주의. 이게 없으면 REV002·REV005·REV007이
+    # 조건식에서 참조하는 이름이 비어 영영 소집되지 않는다.
+    phase = state.get("phase_derived") or {}
+    families = {p["strategy"]: p for p in (state.get("planned") or [])}
+    strategies = {getattr(r["recipe"], "strategy", "") for r in pool}
+    fam = {s_: (families.get(s_) or {}).get("family", "") for s_ in strategies}
+    derived.setdefault("solid_form_zone", phase.get("solid_form_zone"))
+    derived.setdefault("salt_stability_watch", phase.get("salt_stability_watch"))
+    derived["enabling_candidates_present"] = any(f == "ENABLING" for f in fam.values())
+    derived["particle_size_candidates_present"] = any(f == "PARTICLE_SIZE" for f in fam.values())
+    derived["asd_candidates_present"] = any(s_.startswith("ASD_") for s_ in strategies)
+    # 전략이 요구하는 공정 규칙표가 룰북에 없으면(ASD·HME·CD 등) 커버리지 공백
+    known = {e.id for e in registry.entries}
+    derived["coverage_gap_present"] = any(
+        c and c not in known for s_ in strategies for c in (families.get(s_) or {}).get("coverage", []))
+    return derived
+
+
 def build_graph(base_dir: Path, registry: RulebookRegistry,
                 evidence_gate: Optional[EvidenceGate] = None,
                 evidence_store: Optional[Dict[str, Any]] = None):
@@ -449,31 +478,7 @@ def build_graph(base_dir: Path, registry: RulebookRegistry,
 
     # ── P5 · 심사관 동적 소집 ──────────────────────────────────────────
     def _summon_scope(state: FormulationState, pool: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """심사관 소집 조건을 평가할 파생 state — 심사 대상(pool)의 게이트 결과 + 전략 신호."""
-        derived = dict(pool[0]["derived"]) if pool else {}
-
-        # 명단의 소집 조건 중 두 개(`regulatory_narrative_needed`,
-        # `novel_combination_not_in_rulebook`)는 어느 계층도 산출하지 않아서
-        # REV004·REV005가 **구조적으로 소집될 수 없었다.** 게이트 결과와 부형제 마스터에서
-        # 실제로 계산해 넣는다 — 조건을 없애는 게 아니라 근거를 만들어 주는 방향.
-        derived.update(_summon_signals(registry, pool))
-        # 전략·페이즈 게이트에서 오는 소집 신호 — 가용화/미분화/ASD 후보, 룰북 커버리지 공백,
-        # 고체상 구간(염·공결정 경계), 염 안정성 주의. 이게 없으면 REV002·REV005·REV007이
-        # 조건식에서 참조하는 이름이 비어 영영 소집되지 않는다.
-        phase = state.get("phase_derived") or {}
-        families = {p["strategy"]: p for p in (state.get("planned") or [])}
-        strategies = {getattr(r["recipe"], "strategy", "") for r in pool}
-        fam = {s_: (families.get(s_) or {}).get("family", "") for s_ in strategies}
-        derived.setdefault("solid_form_zone", phase.get("solid_form_zone"))
-        derived.setdefault("salt_stability_watch", phase.get("salt_stability_watch"))
-        derived["enabling_candidates_present"] = any(f == "ENABLING" for f in fam.values())
-        derived["particle_size_candidates_present"] = any(f == "PARTICLE_SIZE" for f in fam.values())
-        derived["asd_candidates_present"] = any(s_.startswith("ASD_") for s_ in strategies)
-        # 전략이 요구하는 공정 규칙표가 룰북에 없으면(ASD·HME·CD 등) 커버리지 공백
-        known = {e.id for e in registry.entries}
-        derived["coverage_gap_present"] = any(
-            c and c not in known for s_ in strategies for c in (families.get(s_) or {}).get("coverage", []))
-        return derived
+        return summon_scope(registry, state, pool)
 
     def node_summon(state: FormulationState) -> Dict[str, Any]:
         emit("summon", EventKind.NODE_ENTER)

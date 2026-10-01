@@ -34,6 +34,8 @@ let runId = null;
 let source = null;
 const candidates = new Map();   // candidate_id → {recipe, verdicts[], judges[], gate}
 let winnerId = null;            // 합의가 고른 권고 후보
+let summonedList = [];          // summon 노드가 소집한 심사관(조건식이 참인 사람만) — 심사위원단 카드
+const scoreOf = new Map();      // candidate_id → 합의의 가중 점수
 let pendingRequests = [];       // v3 — 아직 안 풀린 데이터 요청(narrows_strategy)
 
 /* ── 고정 그래프 레이아웃 ────────────────────────────────────────────
@@ -179,7 +181,7 @@ function handle(kind, ev) {
       const base = ev.node.split(":")[0];
       setNode(base === "generator" ? "generate" : base, "done");
       if (p.strategies) addTrace(ev.seq, ev.node, `전략 선정: ${p.strategies.join(", ")}`);
-      else if (p.summoned) addTrace(ev.seq, ev.node, `심사관 ${p.summoned.length}명 소집`);
+      else if (p.summoned) { summonedList = p.summoned; addTrace(ev.seq, ev.node, `심사관 ${p.summoned.length}명 소집`); renderJury(); }
       break;
     }
 
@@ -248,6 +250,7 @@ function handle(kind, ev) {
         addTrace(ev.seq, ev.node, `점수 ${p.score} — ${p.rationale.slice(0, 80)}`);
       }
       renderCandidates();
+      renderJury();
       break;
     }
 
@@ -383,6 +386,32 @@ function evidenceBox(id) {
     ${open ? `<button type="button" class="linkish ev-jump">근거 결손 게이트 카드에서 입력 ↓</button>` : ""}</div>`;
 }
 
+// 심사위원단 카드 — 소집된 심사관마다 카드 하나: 소집 조건 · 가중치 · 후보별 점수와 근거(검증된 인용). 반려 권한은 없고 순위에만 쓴다.
+function renderJury() {
+  const body = $("jury-body");
+  if (!body) return;
+  if (!summonedList.length) { body.innerHTML = ""; return; }
+  const passedIds = [...candidates.entries()].filter(([, e]) => e.gate && e.gate.passed)
+    .sort(([a], [b]) => (rankOf.get(a) ?? 999) - (rankOf.get(b) ?? 999)).map(([cid]) => cid);
+  const row = (s, cid) => {
+    const j = (candidates.get(cid).judges || []).find((x) => x.reviewer_id === s.reviewer_id);
+    if (!j) return `<li><code>${esc(cid)}</code> <span class="jury-wait">심사 중…</span></li>`;
+    if (j.score === null || j.score === undefined) {
+      return `<li><code>${esc(cid)}</code> <span class="stand-in-tag">${j.source === "uncited" ? "검증된 인용 없음 — 점수 무효" : "점수 없음 — LLM 응답 없음"}</span></li>`;
+    }
+    return `<li title="눌러서 근거 전체 보기"><code>${esc(cid)}</code> <b class="jury-score">${esc(j.score)}</b>
+      <span class="jury-why">${esc(j.rationale || "")}</span>
+      ${(j.citations || []).length ? `<div class="cites">${j.citations.map(citeLink).join(" · ")}</div>` : ""}</li>`;
+  };
+  body.innerHTML = `<p class="jury-sum">소집 조건식이 참인 심사관 ${summonedList.length}명이 통과 후보 ${passedIds.length}개를 각각 심사합니다. 점수(0–1)는 가중평균으로 순위만 정하고,
+      점수에는 Crossref·NCBI로 확인된 DOI·PMID 인용이 있어야 합니다.</p>
+    <div class="jury-grid">${summonedList.map((s) => `<div class="jury-card" data-reviewer="${esc(s.reviewer_id)}">
+      <div class="jury-head"><b>${esc(s.persona)}</b> <span class="tag">${esc(s.reviewer_id)} · 가중치 ${esc(s.weight)}</span></div>
+      <div class="jury-cond">소집 조건 <code>${esc(s.summon_condition)}</code></div>
+      <ul class="jury-list">${passedIds.map((cid) => row(s, cid)).join("") || "<li>심사할 통과 후보 없음</li>"}</ul></div>`).join("")}</div>`;
+  body.querySelectorAll(".jury-list li").forEach((li) => { li.onclick = (e) => { if (!e.target.closest("a")) li.classList.toggle("open"); }; });
+}
+
 // 근거 결손 게이트 카드 — 통과 후보들의 열린 선행 근거를 요구 항목별로 묶는다(항목마다 해당 후보를 표시).
 // 값은 한 번 넣으면 /measurements(source evidence)로 가서 phase_gates부터 다시 계산한다.
 let evgSubmitted = false;
@@ -391,6 +420,9 @@ function renderEvidenceCard() {
   if (!body) return;
   const keep = {};                     // 다시 그려도 입력 중인 값은 남긴다(제출한 직후만 비운다)
   if (!evgSubmitted) body.querySelectorAll("[data-key]").forEach((el) => { keep[el.dataset.key] = el.type === "checkbox" ? el.checked : el.value; });
+  const oldW = body.querySelector(".ev-waive");
+  const keepW = oldW ? { cid: oldW.querySelector(".ev-waive-cand").value, text: oldW.querySelector("textarea").value,
+                         edited: oldW.querySelector("textarea").dataset.auto === "0" } : null;
   evgSubmitted = false;
   const ids = Object.keys(evidence);
   if (!ids.length) { body.innerHTML = `<p class="ev-why">룰북을 통과한 후보가 없어 따질 근거가 없습니다.</p>`; return; }
@@ -429,6 +461,8 @@ function renderEvidenceCard() {
       ${g.status === "missing" && (g.inputs || []).length ? `<div class="ev-form">${g.inputs.map(field).join("")}
         <button type="button" class="ev-talk" data-label="${esc(g.label)}">말로 입력</button></div>` : ""}</div>`;
   const open = [...items.values()];
+  const holdIds = ids.filter((cid) => ((evidence[cid].blocking || []).length - (evidence[cid].failed || []).length) > 0)
+    .sort((a, b) => (rankOf.get(a) ?? 999) - (rankOf.get(b) ?? 999));
   const summary = `통과 후보 ${ids.length}개 — ${hold ? `<b class="ev-hold">보류 ${hold}</b>` : ""}${hold && ids.length - hold - bad ? " · " : ""}${ids.length - hold - bad
     ? `<b class="ev-ok">충족 ${ids.length - hold - bad}</b>` : ""}${bad ? ` · <b class="ev-bad">부적합 ${bad}</b>` : ""}`;
   body.innerHTML = `<p class="evg-sum">${summary}${open.length ? ` · 선행 근거 결손 ${open.length}항목` : ""}</p>
@@ -441,7 +475,15 @@ function renderEvidenceCard() {
     </div>`
     : `<p class="evg-done"><b class="ev-ok">모든 통과 후보의 선행 근거가 충족되었습니다</b> — 후보 카드에서 개발 착수로 넘어가면 됩니다.</p>`}
     ${par.size ? `<p class="ev-why">병행(배치와 함께): ${[...par.values()].map((g) => `${esc(g.label)} <code>${esc(g.test_id)}</code>`).join(" · ")}</p>` : ""}
+    ${holdIds.length ? `<div class="ev-waive">
+      <b>결손을 둔 채 개발 착수</b>
+      <p class="ev-why">값이 아직 없어도 연구자 판단으로 진행할 수 있습니다. 후보를 고르고 사유를 확인하면(고쳐 쓸 수 있음) 사유와 남은 결손이 Handoff 지문과
+        2단계 보고서에 남고 바로 2단계로 넘어갑니다.</p>
+      <label class="drq-grade">후보 <select class="ev-waive-cand">${holdIds.map((c) => `<option value="${esc(c)}">${esc(c)}${rankOf.get(c) ? ` (#${esc(rankOf.get(c))})` : ""}</option>`).join("")}</select></label>
+      <textarea rows="3" aria-label="근거 결손을 둔 채 진행하는 사유" data-auto="1"></textarea>
+      <button type="button" class="ev-waive-go">사유 기록 · 개발 착수 →</button><span class="ev-waive-msg" role="status"></span></div>` : ""}
     <p class="ev-why">요청 시험은 확인시험 마스터(66종)의 실제 행에서만 고른다 — 판정은 결정론, LLM 없음.</p>`;
+  wireWaiver(body, keepW);
   body.querySelectorAll("[data-key]").forEach((el) => {
     const v = keep[el.dataset.key];
     if (v === undefined) return;
@@ -472,16 +514,35 @@ function renderEvidenceCard() {
   };
 }
 
+// 결손을 둔 채 개발 착수 — 근거 결손 게이트 카드 안의 사유 칸(후보 선택 · 기본 문장은 무엇이 비었는지만, 수치 없음)
+function wireWaiver(body, keepW) {
+  const w = body.querySelector(".ev-waive");
+  if (!w) return;
+  const sel = w.querySelector(".ev-waive-cand"), ta = w.querySelector("textarea");
+  const msg = w.querySelector(".ev-waive-msg"), go = w.querySelector(".ev-waive-go");
+  if (keepW && [...sel.options].some((o) => o.value === keepW.cid)) sel.value = keepW.cid;
+  if (keepW && keepW.edited) { ta.value = keepW.text; ta.dataset.auto = "0"; } else ta.value = waiverDefault(sel.value);
+  sel.onchange = () => { if (ta.dataset.auto !== "0") ta.value = waiverDefault(sel.value); msg.textContent = ""; };
+  ta.oninput = () => { ta.dataset.auto = "0"; };
+  const submit = async () => {
+    const reason = ta.value.trim();
+    if (!reason) { msg.textContent = "사유를 적어 주세요 — 근거 결손을 둔 채 진행한 이유가 2단계 기록에 남습니다."; ta.focus(); return; }
+    msg.textContent = "2단계를 여는 중…";
+    go.disabled = true;
+    try { await window.F1Stage2.startFromCandidate(runId, sel.value, reason); msg.textContent = "2단계를 열었습니다 — 아래로 이어집니다."; }
+    catch (e) { msg.textContent = e.message || "2단계를 열지 못했습니다."; }
+    finally { go.disabled = false; }
+  };
+  go.onclick = submit;
+  ta.onkeydown = (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } };
+}
+
 function devButton(id) {
   const ev = evidence[id] || {};
   const failed = (ev.failed || []).length, open = (ev.blocking || []).length - failed;
   if (failed) return `<button type="button" class="dev-start" disabled title="확인시험 부적합 — 재설계가 필요합니다">개발 불가(근거 부적합)</button>`;
   return `<button type="button" class="dev-start${open ? " hold" : ""}" data-cand="${esc(id)}"
-    title="이 처방을 프로토타입으로 받아 2단계(QTPP → 위험평가 → DoE → 회귀·ANOVA → Design Space)를 시작합니다">${open ? "결손을 기록하고 개발 착수 →" : "이 후보로 개발 착수 →"}</button>
-    ${open ? `<div class="ev-waive" hidden><p class="ev-why">선행 근거 ${open}건이 비어 있습니다 — 아래 사유를 확인하고(고칠 수 있음) <b>사유 기록 · 개발 착수</b>를 누르면
-      사유와 남은 결손이 2단계 기록·보고서에 남고 바로 2단계로 넘어갑니다. 측정값이 있으면 근거 결손 게이트 카드에 넣으면 됩니다.</p>
-      <textarea rows="3" aria-label="근거 결손을 둔 채 진행하는 사유"></textarea>
-      <button type="button" class="ev-waive-go">사유 기록 · 개발 착수 →</button><span class="ev-waive-msg" role="status"></span></div>` : ""}`;
+    title="이 처방을 프로토타입으로 받아 2단계(QTPP → 위험평가 → DoE → 회귀·ANOVA → Design Space)를 시작합니다">${open ? "결손을 기록하고 개발 착수 →" : "이 후보로 개발 착수 →"}</button>`;
 }
 // 결손 사유 기본 문구 — 무엇이 비었는지와 언제 확인할지만 적는다(수치를 만들지 않는다). 연구자가 고쳐 쓸 수 있다.
 function waiverDefault(cid) {
@@ -489,35 +550,23 @@ function waiverDefault(cid) {
   const gaps = ((ev.protocol || {}).before_protocol || []).filter((g) => g.status === "missing").map((g) => `${g.label}(${g.test_id})`);
   return `선행 근거 결과 없이 진행: ${gaps.join(", ") || "결손 항목"} — 개발 초기 배치와 병행해 확인하기로 함(연구자 판단).`;
 }
-const cardOf = (cid) => [...$("cands").querySelectorAll(".card")].find((c) => c.dataset.cand === cid) || null;
 // 결과: "started"(2단계 열림) | "waiver"(결손 — 카드에 사유 칸을 열었음) | "error". 후보 카드 버튼과 입력 에이전트가 같은 길을 쓴다.
-async function startDevelopment(cid, card, retried) {
+async function startDevelopment(cid, _card, retried) {
   if (!evidence[cid] && runId && !running) await loadEvidence();     // 판정을 읽기 전에 눌렀으면 먼저 읽는다
-  if (!card || !card.isConnected) card = cardOf(cid);                // loadEvidence가 카드를 다시 그린다
-  if (!card && candidates.has(cid)) { renderCandidates(); card = cardOf(cid); }
   const ev = evidence[cid] || {};
   const open = ((ev.blocking || []).length - (ev.failed || []).length) > 0;
-  if (open && !card) {          // 사유 칸을 열 카드가 없다 — 사유 없이 서버로 보내 409를 반복하지 않는다
-    notice(`후보 ${cid}의 카드가 화면에 없습니다 — 후보 카드의 [결손을 기록하고 개발 착수]로 진행해 주세요.`, "warn");
-    return "error";
-  }
-  if (open) {                   // 결손이 남았으면 사유를 받는다 — 연구자 결정으로 Handoff와 보고서에 남는다
-    const w = card.querySelector(".ev-waive");
-    const ta = w.querySelector("textarea"), msg = w.querySelector(".ev-waive-msg"), go = w.querySelector(".ev-waive-go");
-    if (w.hidden) { w.hidden = false; if (!ta.value.trim()) ta.value = waiverDefault(cid); }
-    w.scrollIntoView({ block: "center", behavior: "smooth" });   // 카드가 한 화면보다 길다 — 사유 칸 자체를 가운데로
-    go.focus({ preventScroll: true });
-    const submit = async () => {
-      const reason = ta.value.trim();
-      if (!reason) { msg.textContent = "사유를 적어 주세요 — 근거 결손을 둔 채 진행한 이유가 2단계 기록에 남습니다."; ta.focus(); return; }
-      msg.textContent = "2단계를 여는 중…";
-      go.disabled = true;
-      try { await window.F1Stage2.startFromCandidate(runId, cid, reason); msg.textContent = "2단계를 열었습니다 — 아래로 이어집니다."; }
-      catch (e) { msg.textContent = e.message || "2단계를 열지 못했습니다."; }
-      finally { go.disabled = false; }
-    };
-    go.onclick = submit;
-    ta.onkeydown = (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } };
+  if (open) {                   // 결손이 남았으면 사유를 받는다 — 근거 결손 게이트 카드의 사유 칸(후보를 골라 둔다)
+    const w = $("evg-body") && $("evg-body").querySelector(".ev-waive");
+    if (!w || w.closest("#stash")) {
+      notice(`후보 ${cid}의 근거 결손 게이트 카드가 화면에 없습니다 — 후보 카드 아래 근거 결손 게이트 카드에서 진행해 주세요.`, "warn");
+      return "error";
+    }
+    const sel = w.querySelector(".ev-waive-cand");
+    if ([...sel.options].some((o) => o.value === cid)) { sel.value = cid; sel.dispatchEvent(new Event("change")); }
+    w.scrollIntoView({ block: "center", behavior: "smooth" });
+    w.querySelector(".ev-waive-go").focus({ preventScroll: true });
+    w.classList.add("flash");
+    setTimeout(() => w.classList.remove("flash"), 1400);
     return "waiver";
   }
   try {
@@ -568,6 +617,13 @@ function renderCandidates() {
             ${(j.citations || []).length ? `<div class="cites">${j.citations.map(citeLink).join(" · ")}</div>` : ""}
             ${String(j.rationale || "").length > 140 || (j.citations || []).length > 2 ? `<button type="button" class="linkish jn-more">더 보기</button>` : ""}</div>`).join("");
     const readiness = gate && gate.passed ? evidenceBox(id) : "";
+    // 어떤 심사관이 소집되어 몇 점을 줬는지 한 줄로 — 아래 소견에 점수별 근거(인용 포함)가 이어진다
+    const juryLine = gate && gate.passed
+      ? (entry.judges.length
+        ? `<div class="jury-line"><b>소집 심사관 ${entry.judges.length}명</b> · ${entry.judges.map((j) => `${esc(j.persona)} ${j.score === null || j.score === undefined ? "—" : esc(j.score)}`).join(" · ")}${
+            scoreOf.has(id) ? ` → 가중 점수 <b>${esc(scoreOf.get(id))}</b>${rankOf.get(id) ? ` (#${esc(rankOf.get(id))})` : ""}` : ""}</div>`
+        : summonedList.length ? `<div class="jury-line">심사 중 — 소집 심사관 ${summonedList.length}명(${summonedList.map((s) => esc(s.persona)).join(" · ")})</div>` : "")
+      : "";
     // v3 — confidence는 pending_refinements가 비어 있는지로 정확히 정해진다(불변식 I-10).
     // LLM이 이 값을 직접 쓰지 않는다 — drq_refine이 매긴 값을 그대로 보여줄 뿐이다.
     // 게이트 판정이 먼저다 — 반려된 후보에는 신뢰도 배지를 붙이지 않는다(반려 + grounded는 모순으로 읽힌다)
@@ -585,7 +641,7 @@ function renderCandidates() {
       <div class="ing">${ings}</div>
       ${(entry.recipe.process_steps || []).length ? `<div class="ing">공정: ${entry.recipe.process_steps.map(esc).join(" → ")}</div>` : ""}
       ${readiness}${refinements}
-      <div class="chips">${chips}</div>${judges}
+      <div class="chips">${chips}</div>${juryLine}${judges}
       ${gate && gate.passed ? devButton(id) : ""}`;
     card.querySelectorAll(".chip").forEach((chip) => {
       chip.onclick = () => showRule(chip.dataset.rule);
@@ -626,7 +682,11 @@ function renderConsensus(p) {
   el.classList.remove("infeasible");
   $("cands").after(el);
   rankOf.clear();
-  (p.ranked || []).forEach((r) => { if (r.rank) rankOf.set(r.candidate_id, r.rank); });
+  scoreOf.clear();
+  (p.ranked || []).forEach((r) => {
+    if (r.rank) rankOf.set(r.candidate_id, r.rank);
+    if (r.weighted_score !== undefined && r.weighted_score !== null) scoreOf.set(r.candidate_id, r.weighted_score);
+  });
   const ranked = [...(p.ranked || [])].sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
   renderCandidates();
   const rows = ranked.map((r) =>
@@ -846,12 +906,14 @@ function startRunWith(p) {
 }
 window.F1Discovery = { startRunWith, submitMeasurements: (m, g, src) => submitMeasurements(m, g || "user_statement", src || "agent"),
   develop: (cid) => startDevelopment(cid, null),
-  runId: () => runId, running: () => running, pending: () => pendingRequests.length, status: () => lastStatus };
+  runId: () => runId, running: () => running, pending: () => pendingRequests.length, status: () => lastStatus,
+  jurySize: () => summonedList.length };
 
 function resetView() {
   candidates.clear(); tokenBuffers.clear(); degraded.clear();
   unavailable.designs = 0; unavailable.judges = 0;
-  winnerId = null; pendingRequests = []; rankOf.clear(); evidence = {};
+  winnerId = null; pendingRequests = []; rankOf.clear(); evidence = {}; summonedList = []; scoreOf.clear();
+  if ($("jury-body")) $("jury-body").innerHTML = "";
   resetNarration();
   $("trace").innerHTML = ""; $("cands").innerHTML = "";
   $("consensus").hidden = true;
@@ -1169,6 +1231,7 @@ function fmtAssigned(a) {
 async function submitMeasurements(measurements, grade = "self_measured", source = "form", attachments = {}, draft = "form") {
   const btn = $("drq-submit");
   if (btn) { btn.disabled = true; btn.textContent = "재계산 중…"; }
+  document.dispatchEvent(new CustomEvent("f1:recomputing"));
   try {
     const res = await fetch(api(`/api/runs/${runId}/measurements`), {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -1179,8 +1242,6 @@ async function submitMeasurements(measurements, grade = "self_measured", source 
       throw new Error(detail.detail || `재계산 요청이 실패했습니다 (${res.status})`);
     }
     const out = await res.json();
-    // 실행 뒤 재계산(phase_gates → plan → gate)도 트레이스·그래프에 같은 처리기로 남긴다(SSE는 run.end에서 닫혔다)
-    (out.trace || []).forEach((ev) => { try { handle(ev.kind, ev); } catch (e) { /* 보조 */ } });
     const beforeCount = pendingRequests.length;
     const afterCount = (out.pending_requests || []).length;
     const bt = (out.backtrack || []).map((d) => `${d.transition_id}(${Object.entries(d.patch || {}).map(([k, v]) => `${k}=${v.join(",")}`).join(" ")})`);
@@ -1246,6 +1307,10 @@ async function submitMeasurements(measurements, grade = "self_measured", source 
       (summary.ranked || []).forEach((x) => { if (x.rank) rankOf.set(x.candidate_id, x.rank); });
       renderCandidates();
     }
+    // 재계산(phase_gates → plan → gate → 재설계면 summon → judge → consensus)도 트레이스·그래프·카드에 같은 처리기로 남긴다
+    // (SSE는 run.end에서 닫혔다). 후보를 다시 만든 뒤에 재생해야 새 후보에 심사 점수가 붙는다.
+    (out.trace || []).forEach((ev) => { try { handle(ev.kind, ev); } catch (e) { /* 보조 */ } });
+    renderJury();
     const sent = draft !== "form" ? draft : source;
     if (sent === "evidence" || sent === "agent_evidence") {
       // 근거 결손 게이트 입력(카드 폼 · 말로 입력) — 재계산 뒤 근거를 다시 읽고 무엇이 바뀌었는지 남긴다
@@ -1259,6 +1324,7 @@ async function submitMeasurements(measurements, grade = "self_measured", source 
           같은 규칙으로 다시 판정하고, 그 결과로 근거 충족 여부가 정해집니다.</span>` });
     }
     announceRun();
+    document.dispatchEvent(new CustomEvent("f1:recomputed", { detail: { source: sent, regenerated: !!out.regenerated } }));
     return out;
   } catch (err) {
     notice(err.message, "error", true);

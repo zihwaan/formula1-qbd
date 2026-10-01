@@ -72,7 +72,7 @@ await p.waitForTimeout(1500);
 const dev = p.locator('#agent-log #panel-cands .dev-start:not([disabled])').first();
 if (await dev.count()) {
   await dev.click();
-  const w = p.locator('#agent-log #panel-cands .ev-waive:not([hidden])').first();
+  const w = p.locator('#agent-log #panel-evidence .ev-waive').first();
   if (await w.waitFor({ timeout: 5000 }).then(() => true).catch(() => false)) await w.locator('.ev-waive-go').click();
   await p.waitForSelector('#s2 .s2-step.current[data-step="prototype"]', { timeout: 60000 }).catch(() => {});
   ck('측정값 제출 뒤 후보로 2단계 진입', await p.locator('#s2 .s2-step.current[data-step="prototype"]').count() === 1);

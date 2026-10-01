@@ -2,7 +2,7 @@
 
    설계 실행 카드(에이전트 제안) ─ 밑에 '실험 데이터값을 입력하시겠습니까?' + 실험 데이터 입력 카드
    [설계 실행] ─ API 물리화학 카드(가로)
-   설계 종료 ─ 데이터 요청이 있으면 데이터 요청 카드 → [값 제출] 또는 [전부 건너뛰기] 뒤에 후보 처방 카드
+   설계 종료 ─ 심사위원단 카드(소집된 심사관마다 점수·근거) → 데이터 요청이 있으면 데이터 요청 카드 → [값 제출] 또는 [전부 건너뛰기] 뒤에 후보 처방 카드
               데이터 요청이 없으면 바로 후보 처방 카드 → 통과 후보가 있으면 근거 결손 게이트 카드(값은 여기서 한 번에)
    카드는 app.js가 채우는 살아 있는 요소를 옮겨 놓는다(아이디 그대로). 새 설계가 시작되면 앞 설계의 카드는
    그 자리에 사본(읽기 전용)으로 남기고 살아 있는 카드는 새 자리로 옮긴다.
@@ -68,8 +68,8 @@
         <small>실측은 추정보다 우선 · 비운 칸은 “모른다”로 보고 갈리는 지점에서만 데이터 요청</small>`);
     } else if (manualRun && window.F1Agent) window.F1Agent.say("user", `직접 입력 — ${d.request || "설계 실행"}`);
     manualRun = false;
-    ["drq", "panel-cands", "panel-evidence"].forEach((id) => { const n = $(id); if (n && !n.closest("#stash")) { freeze(n); $("stash").append(n); } });
-    run = { id: d.runId, drqShown: false, candsShown: false, wantCands: false, evReady: false, evShown: false };
+    ["panel-jury", "drq", "panel-cands", "panel-evidence"].forEach((id) => { const n = $(id); if (n && !n.closest("#stash")) { freeze(n); $("stash").append(n); } });
+    run = { id: d.runId, drqShown: false, candsShown: false, wantCands: false, evReady: false, evShown: false, juryShown: false };
     $("chem-empty").hidden = false;
     $("chem-body").hidden = true;
     const chemRow = place($("panel-chem"), "API 물리화학 — 구조에서 계산한 값과 경고", "wide");
@@ -86,6 +86,16 @@
     requestAnimationFrame(() => row.scrollIntoView({ block: "start", behavior: "smooth" }));
     showEvidence();
     document.dispatchEvent(new CustomEvent("f1:flowready", { detail: { runId: run.id, phase: "cands" } }));
+  }
+
+  // 심사위원단 카드 — 설계가 끝나면 데이터 요청·후보 카드보다 먼저(소집된 심사관이 있을 때만)
+  function showJury() {
+    const D = window.F1Discovery;
+    if (!run || run.juryShown || !D || !D.jurySize || !D.jurySize()) return;
+    run.juryShown = true;
+    const p = $("panel-jury");
+    p.hidden = false;
+    place(p, "심사위원단 — 소집된 심사관과 후보별 점수·근거", "wide");
   }
 
   // 근거 결손 게이트 카드 — 통과 후보가 있을 때 후보 카드 다음에 한 번 놓는다(재계산하면 그 자리에서 다시 그려진다)
@@ -110,6 +120,7 @@
     // 제약 불가능·설계 없음·목표 재검토로 끝나면 결론(후보 카드)을 먼저 — 데이터 요청으로 결론을 가리지 않는다
     const concluded = ["infeasible", "no_design", "qtpp_review", "error", "exhausted", "escalated"].includes(D.status && D.status());
     if (concluded) { showCands(); return; }
+    showJury();
     if (!run.drqShown && pending > 0 && !run.candsShown) {
       run.drqShown = true;
       $("drq").hidden = false;
@@ -126,6 +137,20 @@
     const b = e.target.closest && e.target.closest("#drq-submit, #drq-skip");
     if (b && run) run.wantCands = true;
   }, true);
+  // 후보 카드가 이미 대화에 있을 때 측정값을 다시 넣으면(근거 결손 게이트 · 말로 입력) — 다시 판정한 결과를 대화 맨 아래로 옮긴다.
+  // 지난 카드는 그 자리에 읽기 전용 기록으로 남는다. 재설계면 새 심사위원단부터.
+  document.addEventListener("f1:recomputing", () => { if (run) run.recomputeFromShown = run.candsShown; });
+  document.addEventListener("f1:recomputed", (e) => {
+    if (!run || !run.recomputeFromShown) return;
+    run.recomputeFromShown = false;
+    const regen = !!(e.detail && e.detail.regenerated);
+    let first = null;
+    if (regen && run.juryShown) first = place($("panel-jury"), "심사위원단 — 다시 설계된 후보의 심사", "wide");
+    const row = place($("panel-cands"), regen ? "후보 처방 — 전략이 바뀌어 다시 설계하고 다시 판정한 결과" : "후보 처방 — 측정값으로 다시 판정한 결과", "wide");
+    if (run.evShown) place($("panel-evidence"), "근거 결손 게이트 — 다시 판정한 결과", "wide");
+    const top = first || row;
+    requestAnimationFrame(() => top.scrollIntoView({ block: "start", behavior: "smooth" }));
+  });
   // 입력 에이전트로 제출한 경우 — 재계산 알림(f1:run)이 이 이벤트보다 먼저 오므로 여기서 바로 후보 카드를 놓는다
   document.addEventListener("f1:drqdone", () => { if (run) { run.wantCands = true; showCands(); } });
 

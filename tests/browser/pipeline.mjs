@@ -55,7 +55,7 @@ console.log('\n[2단계] 개발 착수 → 1–7단계(LLM 초안) → 8 종합 
 const evHead = (await page.locator('#agent-log #panel-cands .ev-box .ev-head').first().textContent().catch(() => '')).replace(/\s+/g, ' ');
 check('후보 카드에 근거 결손 게이트 판정(발표 ⑤)', /근거 (결손|충족|부적합)/.test(evHead), evHead.slice(0, 90));
 await page.locator('#agent-log #panel-cands .dev-start').first().click();
-const waive = page.locator('#agent-log #panel-cands .ev-waive:not([hidden])').first();
+const waive = page.locator('#agent-log #panel-evidence .ev-waive').first();
 if (await waive.waitFor({ timeout: 5000 }).then(() => true).catch(() => false)) {
   const pre = await waive.locator('textarea').inputValue();
   check('결손 사유가 미리 채워짐(무엇이 비었는지 · 고칠 수 있음)', /선행 근거/.test(pre) && /T_[A-Z_]+/.test(pre), pre.slice(0, 80));

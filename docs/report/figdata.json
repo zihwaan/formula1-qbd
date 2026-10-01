@@ -240,6 +240,366 @@
    "polarity": "fail_when"
   }
  ],
+ "rule_tables": {
+  "manifest": [
+   {
+    "id": "excipient_master",
+    "file": "database/00_master/excipient_master.csv",
+    "priority": 0,
+    "eval_type": "reference",
+    "strategy": null,
+    "rows": 100
+   },
+   {
+    "id": "rdkit_descriptors",
+    "file": "database/00_master/rdkit_descriptor_definitions.csv",
+    "priority": 0,
+    "eval_type": "reference",
+    "strategy": null,
+    "rows": 10
+   },
+   {
+    "id": "structural_flags",
+    "file": "database/00_master/structural_flags_smarts.csv",
+    "priority": 0,
+    "eval_type": "reference",
+    "strategy": null,
+    "rows": 5
+   },
+   {
+    "id": "physchem_estimation",
+    "file": "database/00_master/physchem_estimation_rules.csv",
+    "priority": 0,
+    "eval_type": "reference",
+    "strategy": null,
+    "rows": 5
+   },
+   {
+    "id": "api_physchem_descriptors",
+    "file": "database/reference/api_physchem_thresholds.csv",
+    "priority": 5,
+    "eval_type": "quantitative",
+    "strategy": "threshold",
+    "rows": 62
+   },
+   {
+    "id": "powder_flow_scale",
+    "file": "database/01_route_decision/powder_flow_scale.csv",
+    "priority": 10,
+    "eval_type": "quantitative",
+    "strategy": "band_lookup",
+    "rows": 21
+   },
+   {
+    "id": "route_decision_tree",
+    "file": "database/01_route_decision/route_decision_tree.csv",
+    "priority": 11,
+    "eval_type": "quantitative",
+    "strategy": "decision_tree",
+    "rows": 10
+   },
+   {
+    "id": "incompatibility_1to1",
+    "file": "database/02_incompatibility/incompatibility_1to1.csv",
+    "priority": 20,
+    "eval_type": "quantitative",
+    "strategy": "pairwise_membership",
+    "rows": 15
+   },
+   {
+    "id": "pediatric_safety_mg",
+    "file": "database/05_regulatory/pediatric_safety_rules.csv",
+    "priority": 21,
+    "eval_type": "quantitative",
+    "strategy": "threshold",
+    "rows": 46
+   },
+   {
+    "id": "pediatric_safety_g",
+    "file": "database/05_regulatory/pediatric_safety_rules.csv",
+    "priority": 21,
+    "eval_type": "quantitative",
+    "strategy": "threshold",
+    "rows": 46
+   },
+   {
+    "id": "coloring_flavoring_pediatric",
+    "file": "database/05_regulatory/coloring_flavoring_pediatric_rules.csv",
+    "priority": 22,
+    "eval_type": "quantitative",
+    "strategy": "subset_forbidden",
+    "rows": 10
+   },
+   {
+    "id": "incompatibility_multi",
+    "file": "database/02_incompatibility/incompatibility_multicomponent.csv",
+    "priority": 30,
+    "eval_type": "quantitative",
+    "strategy": "subset_forbidden",
+    "rows": 6
+   },
+   {
+    "id": "direct_compression",
+    "file": "database/03_process/direct_compression_rules.csv",
+    "priority": 40,
+    "eval_type": "quantitative",
+    "strategy": "threshold",
+    "rows": 10
+   },
+   {
+    "id": "dry_granulation",
+    "file": "database/03_process/dry_granulation_rules.csv",
+    "priority": 41,
+    "eval_type": "quantitative",
+    "strategy": "threshold",
+    "rows": 6
+   },
+   {
+    "id": "wet_granulation_aqueous",
+    "file": "database/03_process/wet_granulation_aqueous_rules.csv",
+    "priority": 42,
+    "eval_type": "quantitative",
+    "strategy": "threshold",
+    "rows": 6
+   },
+   {
+    "id": "wet_granulation_nonaqueous",
+    "file": "database/03_process/wet_granulation_nonaqueous_rules.csv",
+    "priority": 43,
+    "eval_type": "quantitative",
+    "strategy": "threshold",
+    "rows": 5
+   },
+   {
+    "id": "capsule_filling",
+    "file": "database/03_process/capsule_filling_rules.csv",
+    "priority": 44,
+    "eval_type": "quantitative",
+    "strategy": "threshold",
+    "rows": 6
+   },
+   {
+    "id": "excipient_functional_ratio",
+    "file": "database/03_process/excipient_functional_ratio_rules.csv",
+    "priority": 45,
+    "eval_type": "quantitative",
+    "strategy": "range",
+    "rows": 12
+   },
+   {
+    "id": "coating_strategy",
+    "file": "database/03_process/coating_rules.csv",
+    "priority": 50,
+    "eval_type": "qualitative",
+    "strategy": null,
+    "rows": 6
+   },
+   {
+    "id": "residual_solvent",
+    "file": "database/03_process/residual_solvent_ich_q3c_rules.csv",
+    "priority": 51,
+    "eval_type": "quantitative",
+    "strategy": "threshold",
+    "rows": 8
+   },
+   {
+    "id": "bcs_classification",
+    "file": "database/04_biopharmaceutics/bcs_classification_criteria.csv",
+    "priority": 60,
+    "eval_type": "quantitative",
+    "strategy": "band_lookup",
+    "rows": 10
+   },
+   {
+    "id": "bcs_strategy",
+    "file": "database/04_biopharmaceutics/bcs_strategy_rules.csv",
+    "priority": 61,
+    "eval_type": "quantitative",
+    "strategy": "categorical_requirement",
+    "rows": 4
+   },
+   {
+    "id": "dissolution_biowaiver",
+    "file": "database/04_biopharmaceutics/dissolution_biowaiver_ichm9.csv",
+    "priority": 62,
+    "eval_type": "qualitative",
+    "strategy": null,
+    "rows": 3
+   },
+   {
+    "id": "dissolution_acceptance",
+    "file": "database/04_biopharmaceutics/dissolution_acceptance_usp711.csv",
+    "priority": 63,
+    "eval_type": "reference",
+    "strategy": null,
+    "rows": 6
+   },
+   {
+    "id": "dissolution_apparatus",
+    "file": "database/04_biopharmaceutics/dissolution_apparatus_usp711.csv",
+    "priority": 64,
+    "eval_type": "reference",
+    "strategy": null,
+    "rows": 4
+   },
+   {
+    "id": "packaging_compatibility",
+    "file": "database/05_regulatory/packaging_compatibility_rules.csv",
+    "priority": 70,
+    "eval_type": "quantitative",
+    "strategy": "conditional_prohibition",
+    "rows": 5
+   },
+   {
+    "id": "analytical_method",
+    "file": "database/04_biopharmaceutics/analytical_method_rules.csv",
+    "priority": 71,
+    "eval_type": "reference",
+    "strategy": null,
+    "rows": 13
+   },
+   {
+    "id": "stability_significant_change",
+    "file": "database/05_regulatory/stability_significant_change_ichq1a.csv",
+    "priority": 72,
+    "eval_type": "reference",
+    "strategy": null,
+    "rows": 7
+   },
+   {
+    "id": "stability_storage_conditions",
+    "file": "database/05_regulatory/stability_storage_conditions_ichq1a.csv",
+    "priority": 73,
+    "eval_type": "reference",
+    "strategy": null,
+    "rows": 11
+   }
+  ],
+  "groups": [
+   {
+    "role": "페이즈 게이트 · 계획",
+    "files": [
+     {
+      "file": "database/04_biopharmaceutics/gate_3a_biopharm_class.csv",
+      "rows": 14
+     },
+     {
+      "file": "database/04_biopharmaceutics/gate_3b_solid_form.csv",
+      "rows": 7
+     },
+     {
+      "file": "database/04_biopharmaceutics/gate_4_enabling_strategy.csv",
+      "rows": 11
+     },
+     {
+      "file": "database/04_biopharmaceutics/gate_4b_asd_process.csv",
+      "rows": 3
+     },
+     {
+      "file": "database/00_master/derived_quantities.csv",
+      "rows": 23
+     },
+     {
+      "file": "database/06_config/strategy_families.csv",
+      "rows": 8
+     },
+     {
+      "file": "database/04_biopharmaceutics/literature_bcs.csv",
+      "rows": 1
+     }
+    ]
+   },
+   {
+    "role": "데이터 요청",
+    "files": [
+     {
+      "file": "database/reference/data_request_triggers.csv",
+      "rows": 16
+     },
+     {
+      "file": "database/reference/measurement_catalog.csv",
+      "rows": 20
+     },
+     {
+      "file": "database/reference/measurement_output_fields.csv",
+      "rows": 47
+     }
+    ]
+   },
+   {
+    "role": "입력 계약 · 환산",
+    "files": [
+     {
+      "file": "database/06_config/request_contract_rules.csv",
+      "rows": 4
+     },
+     {
+      "file": "database/05_regulatory/max_daily_dose.csv",
+      "rows": 7
+     },
+     {
+      "file": "database/06_config/salt_counterions.csv",
+      "rows": 6
+     },
+     {
+      "file": "database/06_config/excipient_role_map.csv",
+      "rows": 2
+     }
+    ]
+   },
+   {
+    "role": "되돌림 · 심사",
+    "files": [
+     {
+      "file": "database/06_config/backtrack_transitions.csv",
+      "rows": 16
+     },
+     {
+      "file": "database/06_config/reviewer_registry.csv",
+      "rows": 7
+     },
+     {
+      "file": "database/06_config/severity_scoring_config.csv",
+      "rows": 10
+     },
+     {
+      "file": "database/reference/citation_registry.csv",
+      "rows": 14
+     }
+    ]
+   },
+   {
+    "role": "근거 결손 게이트",
+    "files": [
+     {
+      "file": "database/reference/evidence_requirements.csv",
+      "rows": 16
+     },
+     {
+      "file": "database/reference/confirmation_test_master.csv",
+      "rows": 66
+     }
+    ]
+   },
+   {
+    "role": "구조 · 물성 · 부형제 마스터",
+    "files": [
+     {
+      "file": "database/00_master/structural_flags_registry.csv",
+      "rows": 82
+     },
+     {
+      "file": "database/reference/excipient_master_iid.csv",
+      "rows": 1796
+     },
+     {
+      "file": "database/reference/rule_input_dictionary.csv",
+      "rows": 155
+     }
+    ]
+   }
+  ]
+ },
  "jury": [
   {
    "reviewer_id": "REV001",
@@ -2239,7 +2599,7 @@
    "events": 24,
    "decisions": 23,
    "risk_pdf_kb": 78,
-   "final_pdf_kb": 262
+   "final_pdf_kb": 261
   },
   "check_codes": {
    "blocking": [

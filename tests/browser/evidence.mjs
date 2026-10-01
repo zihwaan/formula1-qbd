@@ -21,11 +21,24 @@ await p.goto(URL, { waitUntil: 'networkidle' });
 console.log('\n[시연 ① → 후보 카드 → 근거 결손 게이트 카드]');
 await p.locator('.scenario', { hasText: '로르녹시캄' }).click();
 await p.waitForFunction(() => document.getElementById('run').textContent.trim() === '설계 실행', null, { timeout: 600000 });
+// 설계가 끝나면 데이터 요청보다 먼저 심사위원단 카드 — 소집된 심사관마다 카드 하나(후보별 점수 · 근거)
+await p.waitForSelector('#agent-log #panel-jury:not([hidden]) .jury-card', { timeout: 60000 });
+const juryN = await p.locator('#agent-log #panel-jury .jury-card').count();
+ck('심사위원단 카드 — 소집된 심사관마다 하나', juryN >= 1, `${juryN}명`);
+ck('심사위원단 카드가 데이터 요청 카드보다 먼저', await p.evaluate(() => {
+  const j = document.querySelector('#agent-log #panel-jury'), d = document.querySelector('#agent-log #drq');
+  return !d || !!(j.compareDocumentPosition(d) & Node.DOCUMENT_POSITION_FOLLOWING);
+}));
+const juryScores = await p.locator('#agent-log #panel-jury .jury-score').count();
+if (process.env.SHOTS) await p.locator('#agent-log #panel-jury').screenshot({ path: `${process.env.SHOTS}/jury_1440.png` });
+ck('심사관 카드마다 후보별 점수와 근거', juryScores > 0 && await p.locator('#agent-log #panel-jury .jury-why').count() === juryScores, `점수 ${juryScores}건`);
 if (await p.locator('#agent-log #drq:not([hidden])').count()) await p.click('#drq-skip');
 await p.waitForSelector('#agent-log #panel-cands .card.pass .ev-box', { timeout: 120000 });
 const passed = p.locator('#agent-log #panel-cands .card.pass');
 ck('통과 후보마다 근거 상태 한 줄', await passed.count() === await p.locator('#agent-log #panel-cands .card.pass .ev-box').count(), `${await passed.count()}장`);
 ck('반려 후보에는 근거 상태 없음', await p.locator('#agent-log #panel-cands .card.fail .ev-box').count() === 0);
+ck('후보 카드마다 소집 심사관 · 점수 요약', await passed.count() === await p.locator('#agent-log #panel-cands .card.pass .jury-line').count()
+  && /소집 심사관/.test(await p.locator('#agent-log #panel-cands .card.pass .jury-line').first().textContent()));
 ck('후보 카드에는 입력 칸이 없다(값은 게이트 카드 하나에서)', await p.locator('#agent-log #panel-cands [data-key], #agent-log #panel-cands .ev-send').count() === 0);
 
 const evg = p.locator('#agent-log #panel-evidence');
@@ -43,7 +56,7 @@ ck('요구 항목은 한 번씩(후보마다 반복하지 않음)', new Set(its.
 if (process.env.SHOTS) { await evg.scrollIntoViewIfNeeded(); await evg.screenshot({ path: `${process.env.SHOTS}/evg_1440.png` });
   await p.locator('#agent-log #panel-cands .card.pass').first().screenshot({ path: `${process.env.SHOTS}/cand_1440.png` }); }
 ck('적합/부적합 선택 칸 없음 · 등급 선택과 제출 버튼은 하나', await evg.locator('.ev-out, .ev-note').count() === 0
-  && await evg.locator('select').count() === 1 && await evg.locator('.ev-send').count() === 1);
+  && await evg.locator('select.ev-grade').count() === 1 && await evg.locator('.ev-send').count() === 1);
 
 const idx = await passed.evaluateAll((cs) => cs.findIndex((c) => c.querySelector('.ev-box.hold')));
 if (idx < 0 || !its.some((i) => i.id === 'EVR005')) {
@@ -54,6 +67,14 @@ if (idx < 0 || !its.some((i) => i.id === 'EVR005')) {
   await hold.locator('.ev-jump').click();
   await p.waitForTimeout(700);
   ck('후보 카드의 “입력 카드로” → 게이트 카드로 이동', await evg.evaluate((e) => { const r = e.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }));
+  // 결손을 둔 채 개발 착수 — 사유 칸은 게이트 카드 안에 늘 보인다(후보 선택 · 무엇이 비었는지 적힌 기본 사유)
+  const w = evg.locator('.ev-waive');
+  ck('게이트 카드에 사유 칸(후보 선택 · 기본 사유 · 착수 버튼)', await w.isVisible() && /선행 근거/.test(await w.locator('textarea').inputValue())
+    && await w.locator('.ev-waive-go').count() === 1, (await w.locator('textarea').inputValue().catch(() => '')).slice(0, 60));
+  const holdId = await hold.getAttribute('data-cand');
+  await hold.locator('.dev-start').click();
+  await p.waitForTimeout(500);
+  ck('후보 카드의 “결손을 기록하고 개발 착수” → 게이트 카드 사유 칸에 그 후보가 골라짐', await w.locator('.ev-waive-cand').inputValue() === holdId, holdId);
 
   // ① 카드 폼 — 흡수율만(용해도 부피가 없어 BCS 근거는 아직 결손)
   const fa = evg.locator('[data-key="fraction_absorbed"]');
@@ -68,6 +89,11 @@ if (idx < 0 || !its.some((i) => i.id === 'EVR005')) {
   let rows = await p.locator('#trace .ev').evaluateAll((es, n) => es.slice(n).map((e) => e.textContent.replace(/\s+/g, ' ')), before);
   ck('재계산이 트레이스에 phase_gates부터 남음', rows.some((t) => /phase_gates/.test(t)) && rows.some((t) => /gate/.test(t)), rows.slice(0, 3).join(' | ').slice(0, 120));
   ck('흡수율만으로는 BCS 근거가 닫히지 않음(용해도 부피 필요)', (await items()).some((i) => i.id === 'EVR005'));
+  ck('재계산 뒤 후보 처방 카드가 대화 맨 아래에 다시(지난 카드는 기록으로)', await p.evaluate(() => {
+    const live = document.querySelector('#agent-log #panel-cands'), old = document.querySelector('#agent-log .cands-card.frozen');
+    const ev = document.querySelector('#agent-log #panel-evidence');
+    return !!old && !!(old.compareDocumentPosition(live) & Node.DOCUMENT_POSITION_FOLLOWING) && !!(live.compareDocumentPosition(ev) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }));
   ck('제출한 칸은 비워짐', (await evg.locator('[data-key="fraction_absorbed"]').inputValue().catch(() => '')) === '');
 
   // ② 입력 에이전트에 말로 — pH별 용해도를 관측으로 읽고, 환산·pH 최저값·용량/용해도 부피는 서버 코드가 계산한다
@@ -94,6 +120,13 @@ if (idx < 0 || !its.some((i) => i.id === 'EVR005')) {
   if (outJ.regenerated) {
     await p.waitForSelector('#agent-log #panel-cands .card.pass .ev-box', { timeout: 120000 });
     ck('실측 BCS로 전략 집합이 바뀌어 재설계 → 같은 게이트 카드가 새 후보로 다시 그려짐', await evg.count() === 1, outJ.plan_signature);
+    const tr = (outJ.trace || []).map((e) => `${e.node.split(':')[0]}/${e.kind}`);
+    ck('재설계된 후보도 심사 — 트레이스에 summon → judge → consensus', tr.includes('summon/node.exit') && tr.includes('judge/judge.verdict') && tr.includes('consensus/consensus'),
+      [...new Set(tr)].filter((x) => /summon|judge|consensus/.test(x)).join(' '));
+    const newIds = await p.locator('#agent-log #panel-cands .card.pass').evaluateAll((cs) => cs.map((c) => c.dataset.cand));
+    const juryIds = await p.locator('#agent-log #panel-jury .jury-list code').evaluateAll((cs) => [...new Set(cs.map((c) => c.textContent))]);
+    ck('새 후보 카드에 심사관 점수 · 심사위원단 카드도 새 후보로', await p.locator('#agent-log #panel-cands .card.pass .judge-note').count() > 0
+      && newIds.every((id) => juryIds.includes(id)), `${newIds.join(',')} / ${juryIds.join(',')}`);
   }
   ck('BCS 근거(EVR005)가 모든 후보에서 닫힘', !(await items()).some((i) => i.id === 'EVR005'));
   const narr = await p.locator('#narration').textContent().catch(() => '');

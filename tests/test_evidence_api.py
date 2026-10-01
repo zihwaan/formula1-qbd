@@ -170,3 +170,34 @@ def test_agent_takes_evidence_values_in_words(app_with_final, monkeypatch):
     assert r.json()["trace"][0]["payload"]["source"] == "agent_evidence"
     blocking = client.get(f"/api/runs/{run.run_id}/evidence").json()["candidates"]["cand-0-WG"]["blocking"]
     assert "EVR004" not in blocking and "EVR005" not in blocking
+
+
+def test_regenerated_candidates_are_judged(app_with_final, monkeypatch):
+    """측정값으로 전략 집합이 바뀌어 후보를 다시 설계하면, 새 후보도 그래프와 같은 규칙으로 심사관을 소집해 심사하고 합의한다
+    (사용자 2026-10-01: 재설계 후보가 순위 없이 남으면 후보 카드에 심사관·점수·근거가 없다). 심사 이벤트는 재계산 트레이스에 실린다."""
+    server, client, run = app_with_final
+    run.final["spec"].measured_params["dose_mg"] = 200
+    run.final["plan_signature"] = "OLD"
+    from formula.agents import generator, judge
+    from formula.contracts import EventKind, JudgeVerdict
+    from formula.orchestrator.events import emit
+    from formula.planner import strategy_planner
+    recipe = run.final["results"][0]["recipe"]
+    monkeypatch.setattr(strategy_planner, "signature", lambda planned: "NEW")
+    monkeypatch.setattr(generator, "generate", lambda spec, code, base, cid, *a, **k: recipe.model_copy(update={"candidate_id": cid, "strategy": code}))
+
+    def fake_evaluate(j, spec, rec, verdicts, base_dir):
+        v = JudgeVerdict(rulebook_id=rec.candidate_id, reviewer_id=j.reviewer_id, persona=j.persona, score=0.7, passed=True,
+                         weight=j.weight, rationale="근거 문장", citations=["10.1021/js9702067"])
+        emit(f"judge:{j.reviewer_id}", EventKind.JUDGE_VERDICT, source="llm", **v.model_dump())
+        return v
+    monkeypatch.setattr(judge, "evaluate", fake_evaluate)
+    r = client.post(f"/api/runs/{run.run_id}/measurements", json={"measurements": {"tm_c": 150}, "source": "evidence"})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["regenerated"] and out["summoned"], out.get("summoned")
+    steps = [(e["node"].split(":")[0], e["kind"]) for e in out["trace"]]
+    assert ("summon", "node.exit") in steps and ("judge", "judge.verdict") in steps and ("consensus", "consensus") in steps
+    assert steps.index(("gate", "node.exit")) < steps.index(("summon", "node.exit")) < steps.index(("consensus", "consensus"))
+    assert run.final["status"] == "passed" and run.final["consensus"]["winner"]
+    assert "judge_events" not in out

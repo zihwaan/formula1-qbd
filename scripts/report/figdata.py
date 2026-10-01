@@ -53,6 +53,37 @@ import yaml
 manifest = [{"id": e["id"], "priority": e.get("trigger_priority"), "eval_type": e.get("eval_type"),
              "strategy": e.get("strategy"), "provides": e.get("provides"), "polarity": e.get("polarity") or "fail_when"}
             for e in yaml.safe_load((ROOT / "config" / "rulebook_manifest.yaml").read_text(encoding="utf-8"))]
+# 보고서 표 3 — 규칙표(CSV) 구성: 규칙 게이트 manifest 항목(파일 · 단계 · 판정 방식 · 검사 함수 · 행 수)과 역할별 데이터 표.
+# 행 내용은 싣지 않고 종류와 규모만. 코드가 실제로 읽는 표만 적는다(문서용 rulebook_config·phase_registry 제외).
+def _nrows(path):
+    p = ROOT / path
+    return len(rows(path)) if p.exists() else None
+
+
+rule_manifest = [{"id": e["id"], "file": e.get("file", ""), "priority": e.get("trigger_priority"), "eval_type": e.get("eval_type"),
+                  "strategy": e.get("strategy"), "rows": _nrows(e["file"]) if e.get("file") else None}
+                 for e in yaml.safe_load((ROOT / "config" / "rulebook_manifest.yaml").read_text(encoding="utf-8"))]
+RULE_GROUPS = [
+    ("페이즈 게이트 · 계획", ["database/04_biopharmaceutics/gate_3a_biopharm_class.csv", "database/04_biopharmaceutics/gate_3b_solid_form.csv",
+                         "database/04_biopharmaceutics/gate_4_enabling_strategy.csv", "database/04_biopharmaceutics/gate_4b_asd_process.csv",
+                         "database/00_master/derived_quantities.csv", "database/06_config/strategy_families.csv",
+                         "database/04_biopharmaceutics/literature_bcs.csv"]),
+    ("데이터 요청", ["database/reference/data_request_triggers.csv", "database/reference/measurement_catalog.csv",
+                "database/reference/measurement_output_fields.csv"]),
+    ("입력 계약 · 환산", ["database/06_config/request_contract_rules.csv", "database/05_regulatory/max_daily_dose.csv",
+                     "database/06_config/salt_counterions.csv", "database/06_config/excipient_role_map.csv"]),
+    ("되돌림 · 심사", ["database/06_config/backtrack_transitions.csv", "database/06_config/reviewer_registry.csv",
+                   "database/06_config/severity_scoring_config.csv", "database/reference/citation_registry.csv"]),
+    ("근거 결손 게이트", ["database/reference/evidence_requirements.csv", "database/reference/confirmation_test_master.csv"]),
+    ("구조 · 물성 · 부형제 마스터", ["database/00_master/structural_flags_registry.csv", "database/00_master/structural_flags_smarts.csv",
+                            "database/00_master/rdkit_descriptor_definitions.csv", "database/00_master/physchem_estimation_rules.csv",
+                            "database/reference/api_physchem_thresholds.csv", "database/00_master/excipient_master.csv",
+                            "database/reference/excipient_master_iid.csv", "database/reference/rule_input_dictionary.csv"]),
+]
+rule_tables = {"manifest": rule_manifest,
+               "groups": [{"role": role, "files": [{"file": f, "rows": _nrows(f)} for f in files
+                                                   if (ROOT / f).exists() and f not in {e["file"] for e in rule_manifest}]}
+                          for role, files in RULE_GROUPS]}
 jury = [{"reviewer_id": r["reviewer_id"], "name": r["reviewer_name_kr"], "condition": r["summon_condition"],
          "weight": r["base_weight"]} for r in rows("database/06_config/reviewer_registry.csv")]
 
@@ -181,7 +212,7 @@ def stage2_block() -> dict:
             "check_codes": {"blocking": codes, "warning": warns}}
 
 
-out = {"manifest": manifest, "jury": jury, "counts": counts, "backtrack": bt,
+out = {"manifest": manifest, "rule_tables": rule_tables, "jury": jury, "counts": counts, "backtrack": bt,
        "strategies": strategies, "reviewers": reviewers, "stage2": stage2_block()}
 
 

@@ -256,3 +256,22 @@ table.desc tfoot td { padding-top: 6px; }
 .ev-waive .ev-waive-go { justify-self: start; padding: 8px 16px; font-size: 12.5px; }
 .ev-waive-msg { font-size: 11.5px; color: var(--ink-2); }
 .ev-waive-msg:empty { display: none; }
+
+/* 심사위원단 카드 — 심사관은 점선(범주: 심사관 = dotted, 결정론 = 실선, LLM = 파선) */
+.jury .jury-sum { margin: 0 0 8px; font-size: 11.5px; color: var(--ink-2); line-height: 1.55; }
+.jury-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
+.jury-card { border: 1px dotted var(--ink-muted); border-radius: var(--radius-s); padding: 9px 11px; background: var(--page); font-size: 11.5px; min-width: 0; }
+.jury-head b { font-size: 12.5px; color: var(--ink-1); }
+.jury-cond { margin-top: 3px; color: var(--ink-muted); font-size: 10.5px; overflow-wrap: anywhere; }
+.jury-cond code { font-size: 10px; }
+.jury-list { list-style: none; margin: 7px 0 0; padding: 0; display: grid; gap: 7px; }
+.jury-list li { cursor: pointer; line-height: 1.5; }
+.jury-list li code { font-size: 10px; }
+.jury-score { font-variant-numeric: tabular-nums; margin: 0 2px; }
+.jury-why { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--ink-2); }
+.jury-list li.open .jury-why { display: block; -webkit-line-clamp: unset; }
+.jury-wait { color: var(--ink-muted); }
+.jury-line { margin-top: 6px; font-size: 11px; color: var(--ink-2); line-height: 1.5; }
+.ev-waive b { font-size: 12px; }
+.ev-waive select { font: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--page); color: var(--ink-1); }
+.ev-waive.flash { outline: 2px solid var(--ink-1); outline-offset: 2px; }

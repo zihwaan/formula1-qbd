@@ -450,11 +450,13 @@ async def submit_measurements(run_id: str, payload: MeasurementsRequest) -> Dict
     out["results"] = [{"candidate_id": r["candidate_id"], "recipe": r["recipe"].model_dump(mode="json"), "passed": bool(r.get("passed")),
                        "verdicts": [{"rule_id": v.rule_id, "status": getattr(v.status, "value", v.status)} for v in r.get("verdicts") or []]}
                       for r in (execution.final or {}).get("results") or []]
-    out["trace"] = _reassess_trace(execution, payload, out)
+    judge_events = out.pop("judge_events", None) or []
+    out["trace"] = _reassess_trace(execution, payload, out, judge_events)
     return out
 
 
-def _reassess_trace(execution: Run, payload: "MeasurementsRequest", out: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _reassess_trace(execution: Run, payload: "MeasurementsRequest", out: Dict[str, Any],
+                    judge_events: Optional[List[TraceEvent]] = None) -> List[Dict[str, Any]]:
     """실행이 끝난 뒤의 재계산도 트레이스에 남긴다 — phase_gates부터 다시 돈 과정을 run 이력(재생)과 화면에 같은 이벤트로.
     SSE는 run.end에서 닫혔으므로 응답에 이벤트를 함께 실어 화면이 같은 처리기(handle)로 그린다."""
     evs: List[TraceEvent] = []
@@ -479,6 +481,16 @@ def _reassess_trace(execution: Run, payload: "MeasurementsRequest", out: Dict[st
         for r in rows:
             pub("gate", EventKind.VERDICT, **r)
         pub("gate", EventKind.NODE_EXIT)
+    if out.get("regenerated") and out.get("summoned") is not None:
+        # 새 후보의 심사 — 그래프와 같은 summon → judge → consensus(화면이 같은 처리기로 심사관 카드와 순위를 그린다)
+        pub("summon", EventKind.NODE_ENTER)
+        pub("summon", EventKind.NODE_EXIT, summoned=out["summoned"])
+        for e in judge_events or []:
+            pub(e.node, e.kind, **e.payload)
+        cons = (execution.final or {}).get("consensus") or {}
+        if cons:
+            pub("consensus", EventKind.CONSENSUS, **cons)
+            pub("consensus", EventKind.NODE_EXIT, winner=cons.get("winner"))
     return [e.model_dump(mode="json") for e in evs]
 
 

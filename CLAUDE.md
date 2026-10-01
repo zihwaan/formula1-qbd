@@ -47,7 +47,7 @@ The UI is one ChatGPT-style conversation — read "Chat UI" below before touchin
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-.venv/bin/pytest                                  # 251 tests — run this first when changing the core
+.venv/bin/pytest                                  # 252 tests — run this first when changing the core
 python scripts/audit_conditions.py                # every CSV/manifest condition names a variable something actually sets (exit 1 on a dead name)
 .venv/bin/python scripts/demo.py                  # golden scenario: reject → reflect → pass
 .venv/bin/python scripts/verify_smarts.py         # SMARTS truth-table report (exit 1 on mismatch)
@@ -364,7 +364,9 @@ literally per that spec, with everything it supersedes commented out rather than
   phase-gate context, re-plans strategies, and compares the new `plan_signature` (sorted, joined
   strategy codes) against the previous round's. Same signature → refresh confidence tags only, zero
   LLM calls. Different signature → regenerate candidates from `generator.generate()` for the new
-  strategy set and rebuild consensus. Verified live end-to-end against the pod image (real ibuprofen
+  strategy set, **judge them like the graph does** (`Run._judge_round`: `graph.summon_scope` → `registry.active_judges` →
+  candidate × reviewer `judge.evaluate` in a thread pool under a temporary bus; user 2026-10-01 — regenerated candidates used to stay
+  unranked with no reviewer on the card) and rebuild consensus; the summon → judge → consensus events ride in the recompute `trace`. Verified live end-to-end against the pod image (real ibuprofen
   run, real Groq calls): submitting `tm_c`/`crystalline_form_id`/`water_content_percent` dropped
   `pending_requests` from 3 to 1 with `regenerated: false` — the plan signature (`ASD_SDD|MICRO`)
   didn't change, so only the confidence tags were refreshed.
@@ -669,7 +671,13 @@ cards, grayscale tokens from `styles.css`, black pill primary buttons. No sideba
   cards as **frozen clones** (ids stripped, controls disabled).
 - Sequencing hooks: `f1:proposal` → inputs card; `f1:runstart` → chem card; `f1:run` + `F1Discovery.pending()`/`status()` → drq or cands
   (a concluded run — infeasible/no_design/qtpp_review — shows cands immediately); `#drq-submit/#drq-skip` clicks or `f1:drqdone` → cands
-  (`f1:drqdone` arrives *after* the recompute's `f1:run`, so it places the cands itself); `f1:evidence` (from `loadEvidence`, ≥ 1 passed
+  (`f1:drqdone` arrives *after* the recompute's `f1:run`, so it places the cands itself). **At run end the 심사위원단 card (`#panel-jury`,
+  `renderJury`: one card per summoned reviewer — condition · weight · per-candidate score, rationale, citations) is placed before the drq
+  card** (user, 2026-10-01). After any later measurement submission (`f1:recomputing` → `f1:recomputed`) the live cands card (and the
+  jury card if regenerated, and the evidence card) is **moved to the bottom of the thread**, the old one frozen in place — the recompute
+  used to update cards scrolled out of view, which read as "후보 처방이 안 뜬다". The waiver (사유) box lives in the evidence card,
+  always visible while gaps remain (`wireWaiver`; candidate select + default reason); a candidate's hold button scrolls there and selects
+  it. Candidate cards carry a `.jury-line` (summoned reviewers, scores, weighted score/rank). `f1:evidence` (from `loadEvidence`, ≥ 1 passed
   candidate) → the 근거 결손 게이트 card right after the cands (once per run; re-rendered in place after every recompute); `f1:flowready` → agent nudge.
   A drq card already in the thread never disappears — `renderDataRequests` leaves a "남은 요청 없음" line instead of hiding it.
 - Right column is open by default above 1180 px (pref in `localStorage f1:drawer`), fixed overlay below, full screen ≤ 760 px.
@@ -735,7 +743,8 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
   The report describes the **finished system only** (user, 2026-09-30): no fix history, defect lists or "in review" wording — the old §7.5
   (demo-defect verification, devfix_results.json) was removed; `devfix_check.py` stays as a tool. The report opens with **핵심 요약**:
   `fig_overview()` = presentation pp.5–6 merged (input agent → Stage I ①–⑤ + red reflect loop → evidence gate → Stage II ①–⑤ → QbD PDF,
-  data band) plus a one-glance table; figures/tables are numbered in order of appearance (fig 1–11, table 1–16).
+  data band) plus a one-glance table; figures/tables are numbered in order of appearance (fig 1–11, table 1–17); 표 3 lists the rulebook CSVs by stage/role
+  (`figdata.rule_tables` — kinds and row counts only, no rows).
   §7.7 is the **ablation** (`scripts/report/ablation.py` → `docs/report/ablation.json`, run in-process in a container with only the
   contest key so all three conditions use the same model): P pure LLM (one structured call) / G system minus verification layer
   (planner + generator, no gate/contract/reflect/infeasible) / F full graph, graded by the same `registry.run`; stage 2 = pure LLM
