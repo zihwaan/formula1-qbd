@@ -1071,7 +1071,7 @@ def fig_rulegate(data):
     b += f'<text x="{x0 + w / 2}" y="123" class="bs">계약 {nrc} · 라벨 {nmdd}</text>'
     b += arrow(x0 + w, 81, x0 + w + 3, 81)
     x0 = x0 + w + 3
-    b += '<text x="10" y="12" class="gt">요청과 후보의 정합(입력 계약) → 규칙표 33개 · 여덟 검사 함수 · 우선순위 단계 (앞 단계의 파생값이 뒤 단계 조건)</text>'
+    b += f'<text x="10" y="12" class="gt">요청과 후보의 정합(입력 계약) → 규칙표 {len(m)}개 · 여덟 검사 함수 · 우선순위 단계 (앞 단계의 파생값이 뒤 단계 조건)</text>'
     for i, ((lo, hi), title) in enumerate(STAGES):
         es = [e for e in m if e["priority"] is not None and lo <= e["priority"] <= hi]
         x = x0 + i * (w + 3)
