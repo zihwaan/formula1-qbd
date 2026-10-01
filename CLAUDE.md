@@ -757,9 +757,9 @@ exhausted | no_design}`, and `plan → qtpp_review` when no strategy survives.
   The report describes the **finished system only** (user, 2026-09-30): no fix history, defect lists or "in review" wording — the old §7.5
   (demo-defect verification, devfix_results.json) was removed; `devfix_check.py` stays as a tool. The report opens with **핵심 요약**:
   `fig_overview()` = presentation pp.5–6 merged (input agent → Stage I ①–⑤ + red reflect loop → evidence gate → Stage II ①–⑤ → QbD PDF,
-  data band) plus a one-glance table; figures/tables are numbered in order of appearance (fig 1–10, table 1–19); 표 3 lists the rulebook CSVs by stage/role
+  data band) plus a one-glance table; figures/tables are numbered in order of appearance (fig 1–10, table 1–20; 표 5 = measurement tiers read straight from measurement_catalog.csv); 표 3 lists the rulebook CSVs by stage/role
   (`figdata.rule_tables` — kinds and row counts only, no rows). The jury is two tables (user, 2026-10-01 — the old figure 7 mixed the roster
-  with stale demo summaries): 표 5 roster/conditions/weights, 표 6 summons per situation from `docs/report/jury_scenarios.json`
+  with stale demo summaries): 표 6 roster/conditions/weights, 표 7 summons per situation from `docs/report/jury_scenarios.json`
   (`scripts/report/jury_scenarios.py`: six real runs chosen so every reviewer fires at least once — adult · pediatric chewable + pinned sucrose
   (PED028 → REV004) · geriatric salt · pinned excipient unknown to the master (→ REV005) · high-Tm ASD (REV002/REV007) · pinned contraindication
   (infeasible → ○ planned); REV003 is in every row).
