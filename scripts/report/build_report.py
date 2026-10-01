@@ -1027,7 +1027,7 @@ def rulebook_table(data) -> str:
         trs += (f"<tr><td>{E(g['role'])}</td><td class='mono'>{'<br>'.join(_fr(name, x) for x in g['files'])}</td>"
                 f"<td>{E(GROUP_NOTE.get(g['role'], ''))}</td></tr>")
     nfiles = len({e["file"] for e in man if e.get("file")}) + sum(len(g["files"]) for g in rt.get("groups") or [])
-    return f"""<table class="rbt"><thead><tr><th>구분</th><th>CSV (행 수)</th><th>검사 방식 · 내용</th></tr></thead><tbody>{trs}</tbody></table>
+    return f"""<table class="rbt split"><thead><tr><th>구분</th><th>CSV (행 수)</th><th>검사 방식 · 내용</th></tr></thead><tbody>{trs}</tbody></table>
 <div class="tcap"><b>표 3.</b> 규칙표(CSV) 구성 — {nfiles}개 표. 위는 규칙 게이트가 manifest로 연결하는 {len(man)}개 항목을 우선순위 단계별로 묶은 것이고(같은 CSV를 행 필터로
 나눈 항목은 한 줄), 아래는 그 밖의 결정론 계층이 읽는 표이다. 행 수는 저장소 기준이며, 규칙 추가는 CSV 행과 manifest 한 줄로 이루어진다.</div>"""
 
@@ -1196,6 +1196,9 @@ figure {{ margin: 10pt 0 12pt; break-inside: avoid; }}
 figcaption {{ font-family: "Noto Sans KR"; font-size: 8.6pt; color: #333; margin-top: 4pt; }}
 figcaption b {{ color: #000; }}
 table {{ width: 100%; border-collapse: collapse; font-size: 8.4pt; margin: 6pt 0 10pt; break-inside: avoid; font-family: "Noto Sans KR"; }}
+table.split {{ break-inside: auto; }}            /* 긴 표(되돌림 전이표 · 규칙표 목록)는 행 단위로 쪽을 나눈다 — 통째로 넘기면 앞 쪽이 비었다 */
+table.split tr {{ break-inside: avoid; }}
+table.split thead {{ display: table-header-group; }}
 th, td {{ border-top: .5pt solid #bbb; padding: 3pt 4pt; vertical-align: top; text-align: left; }}
 thead th {{ border-top: 1.2pt solid #111; border-bottom: .8pt solid #111; }}
 tbody tr:last-child td {{ border-bottom: 1.2pt solid #111; }}
@@ -1315,7 +1318,7 @@ G4: 전략 선택부터)과 제약을 정한다. 하단은 종결 노드이다.<
 <p>한 라운드의 여러 반려는 가장 깊은 복귀 지점으로 합치고 제약은 모두 누적한다. 같은 지점으로 3회 돌아가도 해소되지 않으면 상위 단계로 올려 그 전략을 제외하고,
 전체 5회를 넘으면 연구자에게 이관한다. 반려 사유가 사용자가 고정한 성분이면 되돌리지 않고 즉시 “제약 불가능”과 대체 성분을 제시한다. 측정 결과가 전략의
 전제를 부정하면(예: ASD 비혼화) 그 측정을 요구하는 전략에만 제외를 적용한다(표 2).</p>
-<table><thead><tr><th>ID</th><th>계기</th><th>복귀</th><th>제약</th><th>지시</th></tr></thead><tbody>{bt_rows}</tbody></table>
+<table class="split"><thead><tr><th>ID</th><th>계기</th><th>복귀</th><th>제약</th><th>지시</th></tr></thead><tbody>{bt_rows}</tbody></table>
 <div class="tcap"><b>표 4.</b> 되돌림 전이표(<code>backtrack_transitions.csv</code>, {c['backtrack_transitions']}행).</div>
 
 <h3>5.5 실험 요청과 신뢰도</h3>
