@@ -609,9 +609,11 @@ UI `web/static/stage2.{js,css}`.
   both name inputs use the placeholder "요인 이름" (user wording); CSV import; demo action `use_paper` fills a whole cited table in any study —
   `formula/stage2/paper_designs.py`: Monton 2026 Table 9 (stage-2 deck slide 9) and Almotairi 2022 Table 3 (presentation p.10), same-API table first, citation kept in `design.paper` and the report) → regression(T10, selector + validation gate) → surface(Fig 1) → anova(T11, final PDF)
   → space(Overlay plot · control space) → vplan(lock) → verify(2×2). Entry only from a gate-passed candidate (`[이 후보로 개발 착수]` / agent
-  `develop_candidate`, both through `app.js startDevelopment` → evidence gate → waiver box when gaps remain, **pre-filled** with what is missing
-  (`waiverDefault` — gap labels + test ids, no numbers; editable) so a demo gets through in two clicks. Without a card to open the box it never
-  POSTs without a waiver (that looped 409s). After a measurement submission that **regenerates** candidates, `POST /measurements` returns `results`
+  `develop_candidate`, both through `app.js startDevelopment` → evidence gate → when gaps remain the candidate card itself shows a waiver box,
+  **pre-filled** with what is missing (`waiverDefault` — gap labels + test ids, no numbers; editable, kept in `waiverText`) and
+  [사유 기록 · 승인하고 2단계로] — one click per candidate (user, 2026-10-01: "예전처럼 각각 승인하면 2단계로"). The agent's develop card shows the
+  gaps + reason and its [실행] approves with that reason (`F1Discovery.develop(cid, {approve: true})` → reason `"auto"`); before this it only
+  pointed at a waiver box elsewhere and "실행 눌러도 2단계로 못 넘어간다". Never POST without a reason when gaps remain (that looped 409s). After a measurement submission that **regenerates** candidates, `POST /measurements` returns `results`
   and the UI replaces the old cards (old `cand-0-*` no longer exist server-side → "개발 착수" used to 404)) or the CBD demo
   (`source: cbd_paper`, enables "논문 값으로 채우기" + "참고 · 논문의 판단"). **Papers are reference, not ground truth** (user, 2026-09-28):
   judgement cells that differ from the paper are review points, not errors; only computed values (matrix-from-justification, regression/ANOVA,
@@ -675,9 +677,8 @@ cards, grayscale tokens from `styles.css`, black pill primary buttons. No sideba
   `renderJury`: one card per summoned reviewer — condition · weight · per-candidate score, rationale, citations) is placed before the drq
   card** (user, 2026-10-01). After any later measurement submission (`f1:recomputing` → `f1:recomputed`) the live cands card (and the
   jury card if regenerated, and the evidence card) is **moved to the bottom of the thread**, the old one frozen in place — the recompute
-  used to update cards scrolled out of view, which read as "후보 처방이 안 뜬다". The waiver (사유) box lives in the evidence card,
-  always visible while gaps remain (`wireWaiver`; candidate select + default reason); a candidate's hold button scrolls there and selects
-  it. Candidate cards carry a `.jury-line` (summoned reviewers, scores, weighted score/rank). `f1:evidence` (from `loadEvidence`, ≥ 1 passed
+  used to update cards scrolled out of view, which read as "후보 처방이 안 뜬다". The waiver (사유) box is per candidate (inside each hold
+  candidate card); the evidence card only points to it. Candidate cards carry a `.jury-line` (summoned reviewers, scores, weighted score/rank). `f1:evidence` (from `loadEvidence`, ≥ 1 passed
   candidate) → the 근거 결손 게이트 card right after the cands (once per run; re-rendered in place after every recompute); `f1:flowready` → agent nudge.
   A drq card already in the thread never disappears — `renderDataRequests` leaves a "남은 요청 없음" line instead of hiding it.
 - Right column is open by default above 1180 px (pref in `localStorage f1:drawer`), fixed overlay below, full screen ≤ 760 px.

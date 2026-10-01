@@ -54,16 +54,19 @@ check('후보 카드에 개발 착수 버튼', true);
 console.log('\n[2단계] 개발 착수 → 1–7단계(LLM 초안) → 8 종합 정리');
 const evHead = (await page.locator('#agent-log #panel-cands .ev-box .ev-head').first().textContent().catch(() => '')).replace(/\s+/g, ' ');
 check('후보 카드에 근거 결손 게이트 판정(발표 ⑤)', /근거 (결손|충족|부적합)/.test(evHead), evHead.slice(0, 90));
-await page.locator('#agent-log #panel-cands .dev-start').first().click();
-const waive = page.locator('#agent-log #panel-evidence .ev-waive').first();
-if (await waive.waitFor({ timeout: 5000 }).then(() => true).catch(() => false)) {
+// 후보 카드마다 승인 칸 — 결손이 남은 후보는 카드 안의 사유를 확인하고 [사유 기록 · 승인하고 2단계로] 한 번
+const firstCard = page.locator('#agent-log #panel-cands .card.pass').first();
+const waive = firstCard.locator('.ev-waive');
+if (await waive.count()) {
   const pre = await waive.locator('textarea').inputValue();
-  check('결손 사유가 미리 채워짐(무엇이 비었는지 · 고칠 수 있음)', /선행 근거/.test(pre) && /T_[A-Z_]+/.test(pre), pre.slice(0, 80));
+  check('결손 사유가 후보 카드에 미리 채워짐(무엇이 비었는지 · 고칠 수 있음)', /선행 근거/.test(pre) && /T_[A-Z_]+/.test(pre), pre.slice(0, 80));
   await waive.locator('textarea').fill('');
   await waive.locator('.ev-waive-go').click();
-  check('사유를 비우면 착수 안 됨(칸 안에 안내)', /사유를 적어/.test(await waive.locator('.ev-waive-msg').textContent()));
-  await waive.locator('textarea').fill(pre);
-  await waive.locator('.ev-waive-go').click();                       // 미리 채운 사유 그대로 — 한 번 누르면 2단계
+  check('사유를 비우면 착수 안 됨(칸 안에 안내)', /사유를 적어/.test(await firstCard.locator('.ev-waive-msg').textContent()));
+  await firstCard.locator('.ev-waive textarea').fill(pre);
+  await firstCard.locator('.ev-waive-go').click();                   // 미리 채운 사유 그대로 — 한 번 누르면 2단계
+} else {
+  await firstCard.locator('.dev-start').click();
 }
 await page.waitForSelector('#s2 .s2-step.current[data-step="prototype"]', { timeout: 60000 });
 check('불변 Handoff(요청 맥락 · fingerprint) 표시', await page.locator('#s2 .s2-handoff code').count() >= 1);

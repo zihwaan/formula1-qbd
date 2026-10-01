@@ -63,18 +63,17 @@ if (idx < 0 || !its.some((i) => i.id === 'EVR005')) {
   ck('BCS 근거(EVR005) 결손 후보가 있음(없으면 이 실행에선 입력 경로를 확인할 수 없음)', false);
 } else {
   const hold = passed.nth(idx);
-  ck('결손 후보의 버튼 = “결손을 기록하고 개발 착수”(점선)', /결손을 기록하고/.test(await hold.locator('.dev-start').textContent()) && await hold.locator('.dev-start.hold').count() === 1);
+  ck('결손 후보 카드에 승인 칸(기본 사유 · “사유 기록 · 승인하고 2단계로”, 점선)', /승인하고 2단계로/.test(await hold.locator('.dev-start').textContent())
+    && await hold.locator('.dev-start.hold').count() === 1 && /선행 근거/.test(await hold.locator('.ev-waive textarea').inputValue()));
   await hold.locator('.ev-jump').click();
   await p.waitForTimeout(700);
   ck('후보 카드의 “입력 카드로” → 게이트 카드로 이동', await evg.evaluate((e) => { const r = e.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }));
-  // 결손을 둔 채 개발 착수 — 사유 칸은 게이트 카드 안에 늘 보인다(후보 선택 · 무엇이 비었는지 적힌 기본 사유)
-  const w = evg.locator('.ev-waive');
-  ck('게이트 카드에 사유 칸(후보 선택 · 기본 사유 · 착수 버튼)', await w.isVisible() && /선행 근거/.test(await w.locator('textarea').inputValue())
-    && await w.locator('.ev-waive-go').count() === 1, (await w.locator('textarea').inputValue().catch(() => '')).slice(0, 60));
+  // 승인은 후보마다(후보 카드의 승인 칸) — 게이트 카드에는 안내만
+  ck('게이트 카드는 후보 카드의 승인 칸을 안내(사유 칸 중복 없음)', await evg.locator('.ev-waive').count() === 0 && /승인하고 2단계로/.test(await evg.textContent()));
   const holdId = await hold.getAttribute('data-cand');
-  await hold.locator('.dev-start').click();
-  await p.waitForTimeout(500);
-  ck('후보 카드의 “결손을 기록하고 개발 착수” → 게이트 카드 사유 칸에 그 후보가 골라짐', await w.locator('.ev-waive-cand').inputValue() === holdId, holdId);
+  await hold.locator('.ev-waive textarea').fill('');
+  await hold.locator('.ev-waive-go').click();
+  ck('사유를 비우면 승인 안 됨(칸 안에 안내)', /사유를 적어/.test(await hold.locator('.ev-waive-msg').textContent()), holdId);
 
   // ① 카드 폼 — 흡수율만(용해도 부피가 없어 BCS 근거는 아직 결손)
   const fa = evg.locator('[data-key="fraction_absorbed"]');

@@ -71,9 +71,7 @@ ck('재생성된 후보로 카드가 바뀜', !regen || ids.every((i) => i.start
 await p.waitForTimeout(1500);
 const dev = p.locator('#agent-log #panel-cands .dev-start:not([disabled])').first();
 if (await dev.count()) {
-  await dev.click();
-  const w = p.locator('#agent-log #panel-evidence .ev-waive').first();
-  if (await w.waitFor({ timeout: 5000 }).then(() => true).catch(() => false)) await w.locator('.ev-waive-go').click();
+  await dev.click();          // 결손이 남은 후보는 이 버튼이 카드 안 승인 칸의 [사유 기록 · 승인하고 2단계로](기본 사유) — 한 번에 2단계
   await p.waitForSelector('#s2 .s2-step.current[data-step="prototype"]', { timeout: 60000 }).catch(() => {});
   ck('측정값 제출 뒤 후보로 2단계 진입', await p.locator('#s2 .s2-step.current[data-step="prototype"]').count() === 1);
 }

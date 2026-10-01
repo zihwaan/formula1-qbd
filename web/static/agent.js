@@ -181,7 +181,14 @@
         : "이 값에 의존하는 판정만 — 설계를 처음부터 다시 돌리지 않음"]);
     } else if (p.kind === "develop_candidate") {
       r.push(["후보", p.candidate_id]);
-      r.push(["다음", "이 처방을 프로토타입으로 받아 2단계(QTPP → 위험평가 → DoE → 회귀·ANOVA → Design Space)를 시작합니다"]);
+      const g = window.F1Discovery && window.F1Discovery.gapsOf ? window.F1Discovery.gapsOf(p.candidate_id) : null;
+      if (g && g.open > 0) {
+        r.push(["근거 결손", `${g.open}건 — ${g.labels.join(" · ")}`]);
+        r.push(["승인 사유", g.reason]);
+        r.push(["다음", "[실행]을 누르면 위 사유로 연구자 승인을 기록하고 2단계로 넘어갑니다(사유는 후보 카드의 승인 칸에서 고칠 수 있음)"]);
+      } else {
+        r.push(["다음", "이 처방을 프로토타입으로 받아 2단계(QTPP → 위험평가 → DoE → 회귀·ANOVA → Design Space)를 시작합니다"]);
+      }
     }
     return r;
   }
@@ -256,13 +263,16 @@
       }
       if (p.kind === "develop_candidate") {
         if (D.runId() !== p.run_id) { result("이 카드는 이전 설계의 후보입니다 — 지금 설계의 후보로 다시 요청해 주세요.", "warn"); return false; }
-        const r = await D.develop(p.candidate_id);   // 후보 카드의 '이 후보로 개발 착수'와 같은 길(근거 결손 게이트 포함)
+        // 후보 카드의 버튼과 같은 길 — 결손이 남았으면 카드에 보인 사유로 승인(사람이 [실행]을 눌러 승인한 것)
+        const gap = D.gapsOf ? D.gapsOf(p.candidate_id) : null;
+        const r = await D.develop(p.candidate_id, { approve: true });
         if (r === "waiver") {
           result("근거 결손이 남은 후보입니다 — 근거 결손 게이트 카드의 사유 칸에 이 후보를 골라 두었습니다. 사유를 확인하고 [사유 기록 · 개발 착수]를 누르거나, 측정값을 넣어(카드 또는 여기 대화) 다시 판정하세요.", "warn");
           return true;
         }
         if (r !== "started") { result("2단계로 넘기지 못했습니다 — 알림을 확인해 주세요.", "warn"); return false; }
-        result("2단계로 넘겼습니다 — 아래에 프로토타입 카드가 열렸습니다.", "ok");
+        result(gap && gap.open > 0 ? "승인 사유를 기록하고 2단계로 넘겼습니다 — 아래에 프로토타입 카드가 열렸습니다."
+          : "2단계로 넘겼습니다 — 아래에 프로토타입 카드가 열렸습니다.", "ok");
         return true;
       }
     } catch (e) {

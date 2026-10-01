@@ -34,6 +34,7 @@ let runId = null;
 let source = null;
 const candidates = new Map();   // candidate_id → {recipe, verdicts[], judges[], gate}
 let winnerId = null;            // 합의가 고른 권고 후보
+const waiverText = new Map();    // candidate_id → 연구자가 고친 승인 사유(다시 그려도 남긴다)
 let summonedList = [];          // summon 노드가 소집한 심사관(조건식이 참인 사람만) — 심사위원단 카드
 const scoreOf = new Map();      // candidate_id → 합의의 가중 점수
 let pendingRequests = [];       // v3 — 아직 안 풀린 데이터 요청(narrows_strategy)
@@ -420,9 +421,6 @@ function renderEvidenceCard() {
   if (!body) return;
   const keep = {};                     // 다시 그려도 입력 중인 값은 남긴다(제출한 직후만 비운다)
   if (!evgSubmitted) body.querySelectorAll("[data-key]").forEach((el) => { keep[el.dataset.key] = el.type === "checkbox" ? el.checked : el.value; });
-  const oldW = body.querySelector(".ev-waive");
-  const keepW = oldW ? { cid: oldW.querySelector(".ev-waive-cand").value, text: oldW.querySelector("textarea").value,
-                         edited: oldW.querySelector("textarea").dataset.auto === "0" } : null;
   evgSubmitted = false;
   const ids = Object.keys(evidence);
   if (!ids.length) { body.innerHTML = `<p class="ev-why">룰북을 통과한 후보가 없어 따질 근거가 없습니다.</p>`; return; }
@@ -475,15 +473,10 @@ function renderEvidenceCard() {
     </div>`
     : `<p class="evg-done"><b class="ev-ok">모든 통과 후보의 선행 근거가 충족되었습니다</b> — 후보 카드에서 개발 착수로 넘어가면 됩니다.</p>`}
     ${par.size ? `<p class="ev-why">병행(배치와 함께): ${[...par.values()].map((g) => `${esc(g.label)} <code>${esc(g.test_id)}</code>`).join(" · ")}</p>` : ""}
-    ${holdIds.length ? `<div class="ev-waive">
-      <b>결손을 둔 채 개발 착수</b>
-      <p class="ev-why">값이 아직 없어도 연구자 판단으로 진행할 수 있습니다. 후보를 고르고 사유를 확인하면(고쳐 쓸 수 있음) 사유와 남은 결손이 Handoff 지문과
-        2단계 보고서에 남고 바로 2단계로 넘어갑니다.</p>
-      <label class="drq-grade">후보 <select class="ev-waive-cand">${holdIds.map((c) => `<option value="${esc(c)}">${esc(c)}${rankOf.get(c) ? ` (#${esc(rankOf.get(c))})` : ""}</option>`).join("")}</select></label>
-      <textarea rows="3" aria-label="근거 결손을 둔 채 진행하는 사유" data-auto="1"></textarea>
-      <button type="button" class="ev-waive-go">사유 기록 · 개발 착수 →</button><span class="ev-waive-msg" role="status"></span></div>` : ""}
+    ${holdIds.length ? `<p class="ev-why"><b>값 없이 진행하려면</b> 후보 카드마다 있는 [사유 기록 · 승인하고 2단계로]를 누르세요 — 사유는 후보별로 Handoff에 남습니다
+      (결손 후보: ${holdIds.map((c) => `<code>${esc(c)}</code>`).join(" ")}).</p>` : ""}
     <p class="ev-why">요청 시험은 확인시험 마스터(66종)의 실제 행에서만 고른다 — 판정은 결정론, LLM 없음.</p>`;
-  wireWaiver(body, keepW);
+
   body.querySelectorAll("[data-key]").forEach((el) => {
     const v = keep[el.dataset.key];
     if (v === undefined) return;
@@ -514,35 +507,22 @@ function renderEvidenceCard() {
   };
 }
 
-// 결손을 둔 채 개발 착수 — 근거 결손 게이트 카드 안의 사유 칸(후보 선택 · 기본 문장은 무엇이 비었는지만, 수치 없음)
-function wireWaiver(body, keepW) {
-  const w = body.querySelector(".ev-waive");
-  if (!w) return;
-  const sel = w.querySelector(".ev-waive-cand"), ta = w.querySelector("textarea");
-  const msg = w.querySelector(".ev-waive-msg"), go = w.querySelector(".ev-waive-go");
-  if (keepW && [...sel.options].some((o) => o.value === keepW.cid)) sel.value = keepW.cid;
-  if (keepW && keepW.edited) { ta.value = keepW.text; ta.dataset.auto = "0"; } else ta.value = waiverDefault(sel.value);
-  sel.onchange = () => { if (ta.dataset.auto !== "0") ta.value = waiverDefault(sel.value); msg.textContent = ""; };
-  ta.oninput = () => { ta.dataset.auto = "0"; };
-  const submit = async () => {
-    const reason = ta.value.trim();
-    if (!reason) { msg.textContent = "사유를 적어 주세요 — 근거 결손을 둔 채 진행한 이유가 2단계 기록에 남습니다."; ta.focus(); return; }
-    msg.textContent = "2단계를 여는 중…";
-    go.disabled = true;
-    try { await window.F1Stage2.startFromCandidate(runId, sel.value, reason); msg.textContent = "2단계를 열었습니다 — 아래로 이어집니다."; }
-    catch (e) { msg.textContent = e.message || "2단계를 열지 못했습니다."; }
-    finally { go.disabled = false; }
-  };
-  go.onclick = submit;
-  ta.onkeydown = (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } };
-}
-
 function devButton(id) {
   const ev = evidence[id] || {};
   const failed = (ev.failed || []).length, open = (ev.blocking || []).length - failed;
   if (failed) return `<button type="button" class="dev-start" disabled title="확인시험 부적합 — 재설계가 필요합니다">개발 불가(근거 부적합)</button>`;
-  return `<button type="button" class="dev-start${open ? " hold" : ""}" data-cand="${esc(id)}"
-    title="이 처방을 프로토타입으로 받아 2단계(QTPP → 위험평가 → DoE → 회귀·ANOVA → Design Space)를 시작합니다">${open ? "결손을 기록하고 개발 착수 →" : "이 후보로 개발 착수 →"}</button>`;
+  if (!open) {
+    return `<button type="button" class="dev-start" data-cand="${esc(id)}"
+      title="이 처방을 프로토타입으로 받아 2단계(QTPP → 위험평가 → DoE → 회귀·ANOVA → Design Space)를 시작합니다">이 후보로 개발 착수 →</button>`;
+  }
+  // 결손이 남은 후보 — 후보마다 연구자가 사유를 확인하고 승인하면 바로 2단계로(사유와 남은 결손은 Handoff 지문 · 2단계 보고서에)
+  const missing = ((ev.protocol || {}).before_protocol || []).filter((g) => g.status === "missing").map((g) => g.label);
+  return `<div class="ev-waive" data-cand="${esc(id)}">
+    <div class="ev-why">근거 결손 ${open}건(${missing.map(esc).join(" · ")})이 남아 있습니다. 값이 있으면 근거 결손 게이트 카드에 넣어 다시 판정하고, 지금 진행하려면
+      아래 사유를 확인(고칠 수 있음)한 뒤 승인하세요 — 사유와 남은 결손이 Handoff 지문과 2단계 보고서에 남습니다.</div>
+    <textarea rows="2" aria-label="${esc(id)} — 근거 결손을 둔 채 진행하는 사유">${esc(waiverText.has(id) ? waiverText.get(id) : waiverDefault(id))}</textarea>
+    <button type="button" class="dev-start hold ev-waive-go" data-cand="${esc(id)}">사유 기록 · 승인하고 2단계로 →</button>
+    <span class="ev-waive-msg" role="status"></span></div>`;
 }
 // 결손 사유 기본 문구 — 무엇이 비었는지와 언제 확인할지만 적는다(수치를 만들지 않는다). 연구자가 고쳐 쓸 수 있다.
 function waiverDefault(cid) {
@@ -551,33 +531,32 @@ function waiverDefault(cid) {
   return `선행 근거 결과 없이 진행: ${gaps.join(", ") || "결손 항목"} — 개발 초기 배치와 병행해 확인하기로 함(연구자 판단).`;
 }
 // 결과: "started"(2단계 열림) | "waiver"(결손 — 카드에 사유 칸을 열었음) | "error". 후보 카드 버튼과 입력 에이전트가 같은 길을 쓴다.
-async function startDevelopment(cid, _card, retried) {
+// 결과: "started"(2단계 열림) | "waiver"(결손 — 승인 사유가 필요해 후보 카드의 승인 칸으로 옮김) | "error".
+// reason = "auto"이면 연구자가 고친 사유(없으면 기본 사유)로 승인한다 — 입력 에이전트의 [실행]이 이 길을 쓴다(카드에 사유를 보여 준 뒤).
+async function startDevelopment(cid, _card, retried, reason) {
   if (!evidence[cid] && runId && !running) await loadEvidence();     // 판정을 읽기 전에 눌렀으면 먼저 읽는다
   const ev = evidence[cid] || {};
   const open = ((ev.blocking || []).length - (ev.failed || []).length) > 0;
-  if (open) {                   // 결손이 남았으면 사유를 받는다 — 근거 결손 게이트 카드의 사유 칸(후보를 골라 둔다)
-    const w = $("evg-body") && $("evg-body").querySelector(".ev-waive");
-    if (!w || w.closest("#stash")) {
-      notice(`후보 ${cid}의 근거 결손 게이트 카드가 화면에 없습니다 — 후보 카드 아래 근거 결손 게이트 카드에서 진행해 주세요.`, "warn");
-      return "error";
-    }
-    const sel = w.querySelector(".ev-waive-cand");
-    if ([...sel.options].some((o) => o.value === cid)) { sel.value = cid; sel.dispatchEvent(new Event("change")); }
-    w.scrollIntoView({ block: "center", behavior: "smooth" });
-    w.querySelector(".ev-waive-go").focus({ preventScroll: true });
-    w.classList.add("flash");
-    setTimeout(() => w.classList.remove("flash"), 1400);
+  if (reason === "auto") reason = (waiverText.get(cid) || waiverDefault(cid)).trim();
+  if (open && !reason) {
+    const w = [...document.querySelectorAll("#agent-log #panel-cands .ev-waive")].find((x) => x.dataset.cand === cid);
+    if (w) {
+      w.scrollIntoView({ block: "center", behavior: "smooth" });
+      w.querySelector("textarea").focus({ preventScroll: true });
+      w.classList.add("flash");
+      setTimeout(() => w.classList.remove("flash"), 1400);
+    } else notice(`후보 ${cid}에 근거 결손이 남아 있습니다 — 후보 카드의 승인 칸에서 사유를 확인하고 승인해 주세요.`, "warn");
     return "waiver";
   }
   try {
-    await window.F1Stage2.startFromCandidate(runId, cid);
+    await window.F1Stage2.startFromCandidate(runId, cid, open ? reason : undefined);
     return "started";
   } catch (e) {
-    if (e.code === "EVIDENCE_GAPS" && !retried) {   // 화면의 판정이 낡았다 — 다시 읽고 사유 칸을 연다
+    if (e.code === "EVIDENCE_GAPS" && !retried) {   // 화면의 판정이 낡았다 — 다시 읽고(사유가 있으면 그대로) 다시 시도
       await loadEvidence();
-      return startDevelopment(cid, null, true);
+      return startDevelopment(cid, null, true, reason || null);
     }
-    if (e.code === "EVIDENCE_GAPS") notice(e.message, "warn");
+    notice(e.message || "2단계를 열지 못했습니다.", "warn");
     return "error";
   }
 }
@@ -647,8 +626,24 @@ function renderCandidates() {
       chip.onclick = () => showRule(chip.dataset.rule);
     });
     // 후보 1위가 자동으로 개발에 들어가지 않는다(명세 v6.1 §0 경계 1) — 연구자가 고른 후보만 넘어간다.
-    const dev = card.querySelector(".dev-start");
-    if (dev) dev.onclick = () => startDevelopment(dev.dataset.cand, card);
+    const w = card.querySelector(".ev-waive");
+    if (w) {
+      const ta = w.querySelector("textarea"), msg = w.querySelector(".ev-waive-msg"), go = w.querySelector(".ev-waive-go");
+      ta.oninput = () => waiverText.set(id, ta.value);
+      go.onclick = async () => {
+        const reason = ta.value.trim();
+        if (!reason) { msg.textContent = "사유를 적어 주세요 — 근거 결손을 둔 채 진행한 이유가 2단계 기록에 남습니다."; ta.focus(); return; }
+        msg.textContent = "2단계를 여는 중…";
+        go.disabled = true;
+        const r = await startDevelopment(id, null, false, reason);
+        const m = card.isConnected ? msg : null;
+        if (m) m.textContent = r === "started" ? "승인을 기록하고 2단계를 열었습니다 — 아래로 이어집니다." : "2단계를 열지 못했습니다 — 알림을 확인해 주세요.";
+        go.disabled = false;
+      };
+    } else {
+      const dev = card.querySelector(".dev-start:not([disabled])");
+      if (dev) dev.onclick = () => startDevelopment(id, null);
+    }
     const jump = card.querySelector(".ev-jump");
     if (jump) jump.onclick = () => {
       const p = $("panel-evidence");
@@ -905,14 +900,22 @@ function startRunWith(p) {
   return true;
 }
 window.F1Discovery = { startRunWith, submitMeasurements: (m, g, src) => submitMeasurements(m, g || "user_statement", src || "agent"),
-  develop: (cid) => startDevelopment(cid, null),
+  develop: (cid, opts) => startDevelopment(cid, null, false, opts && opts.approve ? "auto" : null),
   runId: () => runId, running: () => running, pending: () => pendingRequests.length, status: () => lastStatus,
-  jurySize: () => summonedList.length };
+  jurySize: () => summonedList.length,
+  gapsOf: (cid) => {
+    const ev = evidence[cid];
+    if (!ev) return null;
+    const open = (ev.blocking || []).length - (ev.failed || []).length;
+    return { open, failed: (ev.failed || []).length,
+             labels: ((ev.protocol || {}).before_protocol || []).filter((g) => g.status === "missing").map((g) => g.label),
+             reason: open ? (waiverText.get(cid) || waiverDefault(cid)) : "" };
+  } };
 
 function resetView() {
   candidates.clear(); tokenBuffers.clear(); degraded.clear();
   unavailable.designs = 0; unavailable.judges = 0;
-  winnerId = null; pendingRequests = []; rankOf.clear(); evidence = {}; summonedList = []; scoreOf.clear();
+  winnerId = null; pendingRequests = []; rankOf.clear(); evidence = {}; summonedList = []; scoreOf.clear(); waiverText.clear();
   if ($("jury-body")) $("jury-body").innerHTML = "";
   resetNarration();
   $("trace").innerHTML = ""; $("cands").innerHTML = "";
@@ -1285,6 +1288,7 @@ async function submitMeasurements(measurements, grade = "self_measured", source 
       candidates.clear();
       rankOf.clear();
       evidence = {};
+      waiverText.clear();
       for (const r of out.results) {
         candidates.set(r.candidate_id, { recipe: r.recipe, verdicts: r.verdicts || [], judges: [],
           gate: { passed: r.passed, total: (r.verdicts || []).length, failures: (r.verdicts || []).filter((v) => v.status === "hard_fail").length } });

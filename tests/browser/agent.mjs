@@ -95,14 +95,9 @@ card = page.locator('#agent-log .ad-card').last();
 const txt = await card.innerText().catch(() => '');
 check('개발 착수 카드', txt.includes('개발 착수'), txt.replace(/\s+/g, ' ').slice(0, 100));
 if (txt.includes('개발 착수') && await card.locator('.ad-run').isEnabled()) {
+  // 근거 결손이 남은 후보면 카드에 결손과 승인 사유가 보이고, [실행] = 그 사유로 연구자 승인 → 바로 2단계(사용자 2026-10-01)
+  if (/승인 사유/.test(txt)) check('결손 후보 → 카드에 결손 · 승인 사유가 보임', /근거 결손/.test(txt) && /선행 근거/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 160));
   await card.locator('.ad-run').click();
-  // 근거 결손 게이트 — 결손이 남은 후보면 후보 카드에 사유 칸이 열린다(사유는 사람이 적는다)
-  const waive = page.locator('#agent-log #panel-evidence .ev-waive').first();
-  if (await waive.waitFor({ timeout: 8000 }).then(() => true).catch(() => false)) {
-    check('결손 후보 → 에이전트 결과가 사유 칸을 안내', /사유/.test(await card.innerText()));
-    await waive.locator('textarea').fill('선행 확인시험은 DoE 1차 배치와 병행 — 에이전트 회귀 테스트');
-    await waive.locator('.ev-waive-go').click();
-  }
   await page.waitForSelector('#s2 .s2-step.current[data-step="prototype"]', { timeout: 20000 }).catch(() => {});
   check('2단계 프로토타입 카드가 대화에 열림', await page.locator('#s2 .s2-step.current[data-step="prototype"]').count() === 1);
   check('프로토타입 = 후보 처방(API 행 포함)', await page.locator('#s2 [data-edit] input[data-k="role"][value="api"]').count() === 1);
